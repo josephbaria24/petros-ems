@@ -4,8 +4,8 @@ import { Geist } from "next/font/google"
 import "./globals.css"
 import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
-import { Toaster } from "@/components/ui/toaster"
-import AppShell from "@/components/app-shell" // NEW
+import { Toaster } from "sonner" // ✅ Fixed import
+import AppShell from "@/components/app-shell"
 
 const poppins = Geist({
   subsets: ["latin"],
@@ -28,7 +28,7 @@ export default function RootLayout({
       <body className={poppins.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AppShell>{children}</AppShell>
-          <Toaster />
+          <Toaster richColors position="top-right" /> {/* ✅ Optional config */}
         </ThemeProvider>
         <Analytics />
       </body>

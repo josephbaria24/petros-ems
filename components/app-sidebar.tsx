@@ -113,12 +113,13 @@ export function AppSidebar() {
                           className={cn(
                             "block rounded px-2 py-1 text-sm font-medium transition-colors",
                             isSubActive
-                              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                              ? "bg-sidebar-primary text-white"
                               : "text-muted-foreground hover:text-foreground hover:bg-accent"
                           )}
                         >
                           {sub.title}
                         </Link>
+
                       )
                     })}
                   </div>
@@ -135,14 +136,15 @@ export function AppSidebar() {
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                ? "bg-sidebar-primary text-white"
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                 collapsed && "justify-center"
               )}
             >
-              <Icon className="h-5 w-5 shrink-0" />
+              <Icon className={cn("h-5 w-5 shrink-0", isActive && "text")} />
               {!collapsed && <span>{item.title}</span>}
             </Link>
+
           )
         })}
       </nav>

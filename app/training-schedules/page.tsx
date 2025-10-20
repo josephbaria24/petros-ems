@@ -9,6 +9,12 @@ import { NewScheduleDialog } from "@/components/new-schedule-dialog"
 
 export default function TrainingSchedulesPage() {
   const [dialogOpen, setDialogOpen] = React.useState(false)
+  const [refreshTrigger, setRefreshTrigger] = React.useState(0)
+
+  const handleScheduleCreated = () => {
+    // Increment to trigger refresh in all tables
+    setRefreshTrigger(prev => prev + 1)
+  }
 
   return (
     <div className="space-y-6">
@@ -32,23 +38,27 @@ export default function TrainingSchedulesPage() {
         </TabsList>
 
         <TabsContent value="planned" className="space-y-4">
-          <ParticipantsTable status="planned" />
+          <ParticipantsTable status="planned" refreshTrigger={refreshTrigger} />
         </TabsContent>
 
         <TabsContent value="confirmed" className="space-y-4">
-          <ParticipantsTable status="confirmed" />
+          <ParticipantsTable status="confirmed" refreshTrigger={refreshTrigger} />
         </TabsContent>
 
         <TabsContent value="cancelled" className="space-y-4">
-          <ParticipantsTable status="cancelled" />
+          <ParticipantsTable status="cancelled" refreshTrigger={refreshTrigger} />
         </TabsContent>
 
         <TabsContent value="finished" className="space-y-4">
-          <ParticipantsTable status="finished" />
+          <ParticipantsTable status="finished" refreshTrigger={refreshTrigger} />
         </TabsContent>
       </Tabs>
 
-      <NewScheduleDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      <NewScheduleDialog 
+        open={dialogOpen} 
+        onOpenChange={setDialogOpen}
+        onScheduleCreated={handleScheduleCreated}
+      />
     </div>
   )
 }

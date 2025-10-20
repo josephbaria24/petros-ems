@@ -201,7 +201,7 @@ export default function TrainingCalendar() {
 
     for (let i = firstDay - 1; i >= 0; i--) {
       cells.push(
-        <div key={`prev-${i}`} className="min-h-24 bg-muted/30 text-muted-foreground text-sm border-r border-b">
+        <div key={`prev-${i}`} className="min-h-20 bg-muted/30 text-muted-foreground text-sm border-r border-b">
           <div className="p-2">{prevMonthDays - i}</div>
         </div>
       )
@@ -216,12 +216,12 @@ export default function TrainingCalendar() {
       const isWeekend = new Date(currentDate.getFullYear(), currentDate.getMonth(), day).getDay() % 6 === 0
 
       cells.push(
-        <div key={day} className={`min-h-24 border-r border-b ${isToday ? 'bg-blue-50 dark:bg-cyan-900' : ''} relative`}>
+        <div key={day} className={`border-r border-b ${isToday ? 'bg-blue-50 dark:bg-cyan-900' : ''} relative ${dayEvents.length === 0 ? 'min-h-20' : ''}`}>
           <div className={`text-sm font-semibold p-2 ${isToday ? 'text-blue-600' : isWeekend ? 'text-red-500' : ''}`}>
             {day}
           </div>
-          <div className="px-1 pb-1 relative" style={{ minHeight: `${allMonthEvents.length * 32}px` }}>
-            {allMonthEvents.map((event, idx) => {
+          <div className="px-1 pb-1 relative">
+            {dayEvents.length > 0 && allMonthEvents.map((event, idx) => {
               const eventDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
               const eventStart = new Date(event.startDate)
               const eventEnd = new Date(event.endDate)
@@ -239,11 +239,11 @@ export default function TrainingCalendar() {
               
               
               if (!isInRange) {
-                return <div key={`${event.id}-${idx}`} style={{ height: '32px' }} />
+                return null
               }
               
               const isStart = event.scheduleType === 'staggered'
-              ? true // treat every staggered day as start/end
+              ? true
               : eventStart.getDate() === day && eventStart.getMonth() === currentDate.getMonth()
             
             const isEnd = event.scheduleType === 'staggered'
@@ -288,7 +288,7 @@ export default function TrainingCalendar() {
     const remainingCells = Math.ceil(totalCells / 7) * 7 - totalCells
     for (let i = 1; i <= remainingCells; i++) {
       cells.push(
-        <div key={`next-${i}`} className="min-h-24 bg-muted/30 text-muted-foreground text-sm border-r border-b">
+        <div key={`next-${i}`} className="min-h-20 bg-muted/30 text-muted-foreground text-sm border-r border-b">
           <div className="p-2">{i}</div>
         </div>
       )
@@ -381,7 +381,7 @@ export default function TrainingCalendar() {
       <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center bg-white">
                 <Image
-                src="/logo.png" // Make sure logo.png is in your public/ directory
+                src="/logo.png"
                 alt="Logo"
                 width={48}
                 height={48}
