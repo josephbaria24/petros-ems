@@ -1,3 +1,4 @@
+//components\participants-table.tsx
 "use client"
 
 import { supabase } from "@/lib/supabase-client"
@@ -177,15 +178,21 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           <div className="space-y-2">
             <div className="font-medium text-card-foreground">{row.getValue("course")}</div>
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-muted">
-                <FileText className="h-3 w-3" />
-                Submission
-                {submissionCount > 0 && (
-                  <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
-                    {submissionCount}
-                  </Badge>
-                )}
-              </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 text-xs hover:bg-muted"
+              onClick={() => window.location.href = `/submissions?scheduleId=${row.original.id}`}
+            >
+              <FileText className="h-3 w-3" />
+              Submission
+              {submissionCount > 0 && (
+                <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                  {submissionCount}
+                </Badge>
+              )}
+            </Button>
+
               <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-muted">
                 <FolderOpen className="h-3 w-3" />
                 Directory
@@ -327,6 +334,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
             ? "confirmed"
             : "planned"
         )
+        .order("created_at", { ascending: false }) // 👈 Sort newest first
   
       if (error) {
         console.error("Supabase fetch error:", error)

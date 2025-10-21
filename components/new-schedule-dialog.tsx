@@ -52,7 +52,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
   const [courseOptions, setCourseOptions] = React.useState<{ id: string; name: string }[]>([])
   const [loadingCourses, setLoadingCourses] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
-
+  const isBranchRequired = eventType !== "online"
   React.useEffect(() => {
     const fetchCourses = async () => {
       const { data, error } = await supabase.from("courses").select("id, name").order("name")
@@ -76,7 +76,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
     const isRegularValid = scheduleType === "regular" && rangeDates?.from && rangeDates?.to
     const isStaggeredValid = scheduleType === "staggered" && multiDates.length > 0
   
-    if (!eventType || !course || !branch || (!isRegularValid && !isStaggeredValid)) {
+    if (!eventType || !course || (isBranchRequired && !branch) || (!isRegularValid && !isStaggeredValid)) {
       toast.error("Missing Information", {
         description: "Please fill in all required fields.",
       })
@@ -199,8 +199,9 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
               {/* Event Type */}
               <div className="grid gap-2">
                 <Label htmlFor="event-type">Event Type *</Label>
+                {/* Event Type */}
                 <Select value={eventType} onValueChange={setEventType} disabled={isSubmitting}>
-                  <SelectTrigger id="event-type">
+                  <SelectTrigger id="event-type" className="max-w-sm">
                     <SelectValue placeholder="Select event type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -209,6 +210,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                     <SelectItem value="online">Online</SelectItem>
                   </SelectContent>
                 </Select>
+
               </div>
 
               {/* Course - Searchable */}
@@ -216,48 +218,52 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                 <Label htmlFor="course">Course *</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      disabled={isSubmitting}
-                      className="w-full justify-between"
-                    >
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    disabled={isSubmitting}
+                    className="w-full max-w-[15vw] justify-between truncate text-left"
+                  >
+                    <span className="truncate block">
                       {course
                         ? courseOptions.find((c) => c.id === course)?.name
                         : loadingCourses
                         ? "Loading..."
                         : "Select course"}
-                    </Button>
-                        </PopoverTrigger>
-                        <PopoverContent
-                          className="w-full p-0"
-                          side="bottom"
-                          align="start"
-                          style={{
-                            maxHeight: "40vh",
-                            overflowY: "auto",
-                            overscrollBehavior: "contain",
-                          }}
-                        >
-                          <Command>
-                            <CommandInput placeholder="Search course..." />
-                            <CommandEmpty>No course found.</CommandEmpty>
-                            <CommandGroup>
-                              {courseOptions.map((c) => (
-                                <CommandItem
-                                  key={c.id}
-                                  value={c.name}
-                                  onSelect={() => setCourse(c.id)}
-                                >
-                                  {c.name}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          </Command>
-                        </PopoverContent>
+                    </span>
+                  </Button>
 
-                      </Popover>
-                    </div>
+                  </PopoverTrigger>
+
+                  <PopoverContent
+                    className="w-full max-w-sm p-0" // ⬅️ Add max width here too
+                    side="bottom"
+                    align="start"
+                    style={{
+                      maxHeight: "40vh",
+                      overflowY: "auto",
+                      overscrollBehavior: "contain",
+                    }}
+                  >
+                    <Command>
+                      <CommandInput placeholder="Search course..." />
+                      <CommandEmpty>No course found.</CommandEmpty>
+                      <CommandGroup>
+                        {courseOptions.map((c) => (
+                          <CommandItem
+                            key={c.id}
+                            value={c.name}
+                            onSelect={() => setCourse(c.id)}
+                          >
+                            {c.name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
               {/* Branch */}
               {eventType !== "online" && (
                 <div className="grid gap-2">

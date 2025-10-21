@@ -1,216 +1,175 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+"use client"
+
+import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { supabase } from "@/lib/supabase-client"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { FileText, Download, Eye, CheckCircle, Clock, XCircle } from "lucide-react"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Card } from "@/components/ui/card"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
+import { MoreVertical } from "lucide-react"
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 
-const submissions = [
-  {
-    id: 1,
-    participant: "Alice Johnson",
-    course: "Advanced React Development",
-    submissionDate: "Oct 12, 2025",
-    status: "Reviewed",
-    score: 95,
-    fileName: "react-project-final.zip",
-  },
-  {
-    id: 2,
-    participant: "Bob Smith",
-    course: "TypeScript Fundamentals",
-    submissionDate: "Oct 14, 2025",
-    status: "Pending",
-    score: null,
-    fileName: "typescript-assignment.pdf",
-  },
-  {
-    id: 3,
-    participant: "Carol Williams",
-    course: "Next.js Workshop",
-    submissionDate: "Oct 10, 2025",
-    status: "Reviewed",
-    score: 88,
-    fileName: "nextjs-app.zip",
-  },
-  {
-    id: 4,
-    participant: "David Brown",
-    course: "Node.js Backend Development",
-    submissionDate: "Oct 15, 2025",
-    status: "Pending",
-    score: null,
-    fileName: "backend-api.zip",
-  },
-  {
-    id: 5,
-    participant: "Emma Davis",
-    course: "Database Design",
-    submissionDate: "Oct 8, 2025",
-    status: "Reviewed",
-    score: 92,
-    fileName: "database-schema.sql",
-  },
-  {
-    id: 6,
-    participant: "Frank Miller",
-    course: "Web Security Essentials",
-    submissionDate: "Oct 13, 2025",
-    status: "Rejected",
-    score: 45,
-    fileName: "security-audit.pdf",
-  },
-  {
-    id: 7,
-    participant: "Grace Lee",
-    course: "UI/UX Design Principles",
-    submissionDate: "Oct 11, 2025",
-    status: "Reviewed",
-    score: 97,
-    fileName: "design-portfolio.pdf",
-  },
-  {
-    id: 8,
-    participant: "Henry Wilson",
-    course: "Python for Data Science",
-    submissionDate: "Oct 14, 2025",
-    status: "Pending",
-    score: null,
-    fileName: "data-analysis.ipynb",
-  },
-]
+export default function SubmissionPage() {
+  const searchParams = useSearchParams()
+  const scheduleId = searchParams.get("scheduleId")
 
-const stats = [
-  {
-    title: "Total Submissions",
-    value: "248",
-    icon: FileText,
-    color: "text-primary",
-  },
-  {
-    title: "Pending Review",
-    value: "42",
-    icon: Clock,
-    color: "text-secondary",
-  },
-  {
-    title: "Reviewed",
-    value: "198",
-    icon: CheckCircle,
-    color: "text-chart-4",
-  },
-  {
-    title: "Rejected",
-    value: "8",
-    icon: XCircle,
-    color: "text-destructive",
-  },
-]
+  const [trainees, setTrainees] = useState<any[]>([])
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedTrainee, setSelectedTrainee] = useState<any | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
 
-export default function SubmissionsPage() {
+  useEffect(() => {
+    if (!scheduleId) return
+
+    const fetchTrainees = async () => {
+      const { data, error } = await supabase
+        .from("trainings")
+        .select("id, first_name, last_name, phone_number, status, id_picture_url, picture_2x2_url")
+        .eq("schedule_id", scheduleId)
+
+      if (error) console.error(error)
+      else setTrainees(data || [])
+    }
+
+    fetchTrainees()
+  }, [scheduleId])
+
+  const handleView = (trainee: any) => {
+    setSelectedTrainee(trainee)
+    setDialogOpen(true)
+  }
+
+  const updateStatus = async (status: string) => {
+    if (!selectedTrainee) return
+
+    const { error } = await supabase
+      .from("trainings")
+      .update({ status })
+      .eq("id", selectedTrainee.id)
+
+    if (!error) {
+      setTrainees((prev) =>
+        prev.map((t) => (t.id === selectedTrainee.id ? { ...t, status } : t))
+      )
+      setDialogOpen(false)
+    }
+  }
+
+  const filteredTrainees = trainees.filter((t) => {
+    const fullName = `${t.first_name} ${t.last_name}`.toLowerCase()
+    return fullName.includes(searchTerm.toLowerCase())
+  })
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Submissions</h1>
-        <p className="text-muted-foreground mt-2">Review and manage participant submissions and assessments</p>
-      </div>
+    <div className="p-6 space-y-4">
+      <h1 className="text-2xl font-bold text-indigo-900">Trainee Submissions</h1>
 
-      {/* Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => {
-          const Icon = stat.icon
-          return (
-            <Card key={stat.title}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
-                <Icon className={`h-4 w-4 ${stat.color}`} />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stat.value}</div>
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
+      <Input
+        type="text"
+        placeholder="Search trainee..."
+        className="max-w-md"
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+      />
 
-      {/* Submissions Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>Recent Submissions</CardTitle>
-          <CardDescription>Latest participant submissions across all courses</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-md border border-border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Participant</TableHead>
-                  <TableHead>Course</TableHead>
-                  <TableHead>File</TableHead>
-                  <TableHead>Submission Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {submissions.map((submission) => (
-                  <TableRow key={submission.id}>
-                    <TableCell className="font-medium text-card-foreground">{submission.participant}</TableCell>
-                    <TableCell className="text-card-foreground">{submission.course}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">{submission.fileName}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-card-foreground">{submission.submissionDate}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          submission.status === "Reviewed"
-                            ? "default"
-                            : submission.status === "Pending"
-                              ? "secondary"
-                              : "destructive"
-                        }
-                      >
-                        {submission.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {submission.score !== null ? (
-                        <span
-                          className={`font-medium ${
-                            submission.score >= 90
-                              ? "text-chart-4"
-                              : submission.score >= 70
-                                ? "text-primary"
-                                : "text-destructive"
-                          }`}
-                        >
-                          {submission.score}%
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                          <Download className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow className="">
+              <TableHead className="">#</TableHead>
+              <TableHead className="">Name</TableHead>
+              <TableHead className="">Phone</TableHead>
+              <TableHead className="">Status</TableHead>
+              <TableHead className="">Photo</TableHead>
+              <TableHead className="">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredTrainees.map((trainee, index) => (
+              <TableRow
+                key={trainee.id}
+                className="cursor-pointer hover:bg-slate-50"
+                onClick={() => handleView(trainee)}
+              >
+                <TableCell>{index + 1}</TableCell>
+                <TableCell>{trainee.first_name} {trainee.last_name}</TableCell>
+                <TableCell>{trainee.phone_number || "N/A"}</TableCell>
+                <TableCell>
+                  <Badge variant="outline">{trainee.status || "Active"}</Badge>
+                </TableCell>
+                <TableCell>
+                  <Avatar>
+                    <AvatarImage src={trainee.picture_2x2_url} alt="2x2" />
+                    <AvatarFallback>{trainee.first_name[0]}{trainee.last_name[0]}</AvatarFallback>
+                  </Avatar>
+                </TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleView(trainee)}>Edit</DropdownMenuItem>
+                      <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Review Submission</DialogTitle>
+          </DialogHeader>
+          {selectedTrainee && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-sm font-semibold mb-2">ID Picture</h4>
+                <img
+                  src={selectedTrainee.id_picture_url}
+                  alt="ID Picture"
+                  className="w-full rounded border"
+                />
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold mb-2">2x2 Photo</h4>
+                <img
+                  src={selectedTrainee.picture_2x2_url}
+                  alt="2x2 Photo"
+                  className="w-full rounded border"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter className="pt-4">
+            <Button variant="destructive" onClick={() => updateStatus("Declined")}>Decline</Button>
+            <Button onClick={() => updateStatus("Verified")}>Verify</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
