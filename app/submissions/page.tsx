@@ -105,7 +105,7 @@ export default function SubmissionPage() {
             {filteredTrainees.map((trainee, index) => (
               <TableRow
                 key={trainee.id}
-                className="cursor-pointer hover:bg-slate-50"
+                className="cursor-pointer"
                 onClick={() => handleView(trainee)}
               >
                 <TableCell>{index + 1}</TableCell>

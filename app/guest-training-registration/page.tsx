@@ -325,7 +325,7 @@ export default function GuestTrainingRegistration() {
 
       <div className="flex-1 flex flex-col">
         {step > 0 && (
-          <div className="lg:ml-55 sm:ml-5 md:ml-5 p-2">
+          <div className=" p-2">
             <Button 
               variant="ghost"
               onClick={() => {
@@ -374,12 +374,13 @@ export default function GuestTrainingRegistration() {
               </div>
             )}
 
-            {step === 1 && (
-              <div className="space-y-2">
-                <div>
-                  <h2 className="text-3xl font-bold text-gray-900 mb-2">Personal Details</h2>
-                  <p className="text-gray-600">Tell us a bit about yourself</p>
-                </div>
+{step === 1 && (
+  <div className="space-y-2">
+    <div className="flex items-center justify-between mb-2">
+      <h2 className="text-3xl font-bold ">Personal Details</h2>
+      
+    </div>
+    <p className="text-gray-500">Tell us a bit about yourself</p>
                 
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

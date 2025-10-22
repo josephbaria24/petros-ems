@@ -82,11 +82,15 @@ export default function CoursesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Form states
-  const [formData, setFormData] = useState<CourseFormData>({
+  const [formData, setFormData] = useState({
     name: "",
     description: "",
     training_fee: "",
-  })
+    title: "",
+    serial_number: "",
+    serial_number_pad: ""
+  });
+  
 
   useEffect(() => {
     fetchCourses()
@@ -118,6 +122,9 @@ export default function CoursesPage() {
       name: "",
       description: "",
       training_fee: "",
+      title: "",
+      serial_number: "",
+      serial_number_pad: ""
     })
   }
 
@@ -137,6 +144,9 @@ export default function CoursesPage() {
       name: course.name,
       description: course.description || "",
       training_fee: course.training_fee?.toString() || "",
+      title: "",
+      serial_number: "",
+      serial_number_pad: ""
     })
     setIsEditDialogOpen(true)
   }
@@ -265,7 +275,7 @@ export default function CoursesPage() {
         cell: ({ row }) => (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 cursor-pointer">
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -322,14 +332,16 @@ export default function CoursesPage() {
         header: "Exam",
         cell: ({ row }) => (
           <div className="flex gap-2">
-            <Button
+            <Button 
+              className="cursor-pointer"
               variant="outline"
               size="sm"
               onClick={() => handleCreatePreTest(row.original)}
             >
               Pre-test
             </Button>
-            <Button
+            <Button  
+              className="cursor-pointer"
               variant="outline"
               size="sm"
               onClick={() => handleCreatePostTest(row.original)}
@@ -378,7 +390,7 @@ export default function CoursesPage() {
             onChange={(e) => setSearch(e.target.value)}
             className="w-64"
           />
-          <Button onClick={handleAddCourse}>
+          <Button className="cursor-pointer" onClick={handleAddCourse}>
             <Plus className="mr-2 h-4 w-4" />
             New Course
           </Button>
@@ -615,7 +627,7 @@ export default function CoursesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Course Dialog */}
+       {/* Edit Course Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -635,6 +647,43 @@ export default function CoursesPage() {
                   setFormData({ ...formData, name: e.target.value })
                 }
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-title">Course Title</Label>
+              <Input
+                id="edit-title"
+                placeholder="Enter course title"
+                value={formData.title || ""}
+                onChange={(e) =>
+                  setFormData({ ...formData, title: e.target.value })
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-serial">Serial Number</Label>
+                <Input
+                  id="edit-serial"
+                  type="number"
+                  placeholder="00000"
+                  value={formData.serial_number || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, serial_number: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-pad">Serial Number Pad</Label>
+                <Input
+                  id="edit-pad"
+                  type="number"
+                  placeholder="e.g. 6"
+                  value={formData.serial_number_pad || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, serial_number_pad: e.target.value })
+                  }
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-description">Description</Label>
@@ -675,6 +724,7 @@ export default function CoursesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
 
       {/* Delete Confirmation Alert */}
       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>

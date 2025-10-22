@@ -28,7 +28,7 @@ export function AppHeader() {
   }
 
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-border bg-card px-6">
+    <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-0 shadow-md border-border bg-card px-6">
       <div className="flex items-center gap-4">
         <h2 className="text-xl font-semibold text-card-foreground">Training Management System</h2>
       </div>

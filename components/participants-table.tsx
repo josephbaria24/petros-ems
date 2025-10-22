@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { type PostgrestSingleResponse } from "@supabase/supabase-js"
 import { toast } from "sonner"
+import ParticipantDirectoryDialog from "@/components/trainee-directory-dialog"
 
 type Participant = {
   id: string
@@ -66,6 +67,12 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const [viewDialogOpen, setViewDialogOpen] = React.useState(false)
   const [selectedParticipant, setSelectedParticipant] = React.useState<Participant | null>(null)
   const [isDeleting, setIsDeleting] = React.useState(false)
+
+  const [directoryOpen, setDirectoryOpen] = React.useState(false)
+  const [directoryScheduleId, setDirectoryScheduleId] = React.useState<string | null>(null)
+  const [directoryCourseName, setDirectoryCourseName] = React.useState("")
+  const [directoryRange, setDirectoryRange] = React.useState("")
+
 
   const handleView = (participant: Participant) => {
     setSelectedParticipant(participant)
@@ -181,23 +188,34 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 gap-1 text-xs hover:bg-muted"
+              className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
               onClick={() => window.location.href = `/submissions?scheduleId=${row.original.id}`}
             >
               <FileText className="h-3 w-3" />
               Submission
               {submissionCount > 0 && (
-                <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">
+                <Badge variant="destructive" className="ml-1 h-4 px-1 text-xs">
                   {submissionCount}
                 </Badge>
               )}
             </Button>
 
-              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-muted">
-                <FolderOpen className="h-3 w-3" />
-                Directory
-              </Button>
-              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-muted">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
+              onClick={() => {
+                setDirectoryScheduleId(row.original.id)
+                setDirectoryCourseName(row.original.course)
+                setDirectoryRange(row.original.schedule) // format as needed
+                setDirectoryOpen(true)
+              }}
+            >
+              <FolderOpen className="h-3 w-3" />
+              Directory
+            </Button>
+
+              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer">
                 <ClipboardCheck className="h-3 w-3" />
                 Exam Result
               </Button>
@@ -547,6 +565,14 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ParticipantDirectoryDialog
+        open={directoryOpen}
+        onOpenChange={setDirectoryOpen}
+        scheduleId={directoryScheduleId}
+        courseName={directoryCourseName}
+        scheduleRange={directoryRange}
+      />
+
     </>
   )
 }

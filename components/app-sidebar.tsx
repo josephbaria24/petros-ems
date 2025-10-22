@@ -59,13 +59,32 @@ export function AppSidebar() {
   return (
     <div
       className={cn(
-        "relative flex h-screen flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300",
+        "relative flex h-screen flex-col border-0 shadow-lg border-sidebar-border bg-sidebar transition-all duration-300",
         collapsed ? "w-16" : "w-64"
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center border-b border-sidebar-border px-4">
-        {!collapsed && <h1 className="text-lg font-semibold text-sidebar-foreground">Petrosphere Training Manager</h1>}
+      <div className="flex h-16 items-center border-0 border-sidebar-border px-4">
+      {!collapsed && (
+  <>
+    {/* Light mode logo */}
+    <img
+        src="/trans-logo-dark.png"
+      alt="Petrosphere Training Manager"
+      className="h-8 w-auto dark:hidden"
+    />
+
+    {/* Dark mode logo */}
+    <img
+    src="/trans-logo.png"
+    
+      alt="Petrosphere Training Manager"
+      className="h-8 w-auto hidden dark:block"
+    />
+  </>
+)}
+
+
         {collapsed && (
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold">
             T
@@ -150,7 +169,7 @@ export function AppSidebar() {
       </nav>
 
       {/* Collapse Toggle */}
-      <div className="border-t border-sidebar-border p-2">
+      <div className="border-0 border-sidebar-border p-2">
         <Button
           variant="ghost"
           size="sm"
