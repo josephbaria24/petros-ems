@@ -7,7 +7,9 @@ import { Suspense } from "react"
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const isGuestPage = pathname.startsWith("/guest")
+
+  // Define which routes should hide sidebar and header
+  const isGuestPage = pathname.startsWith("/guest") || pathname === "/login"
 
   return (
     <div className="flex h-screen overflow-hidden">

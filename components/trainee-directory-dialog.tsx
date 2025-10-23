@@ -2,6 +2,9 @@
 
 "use client"
 
+
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from "@/components/ui/alert-dialog"
+import { Progress } from "@/components/ui/progress"
 import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -71,10 +74,37 @@ export default function ParticipantDirectoryDialog({
   const [isTraineeDialogOpen, setIsTraineeDialogOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
 
-const handleDownloadCertificates = () => {
-  if (!scheduleId) return
-  exportCertificates(scheduleId, scheduleRange)
-}
+
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [totalCount, setTotalCount] = useState(0)
+  const [alertOpen, setAlertOpen] = useState(false)
+
+
+  const handleDownloadCertificates = async () => {
+    if (!scheduleId) return
+    
+    
+    setAlertOpen(true)
+    setIsGenerating(true)
+    setProgress(0)
+    
+    
+    const onProgress = (current: number, total: number) => {
+    setProgress(Math.floor((current / total) * 100))
+    setTotalCount(total)
+    }
+    
+    
+    try {
+    await exportCertificates(scheduleId, scheduleRange, onProgress)
+    } catch (err) {
+    console.error("❌ Export error:", err)
+    alert("Failed to generate certificates.")
+    } finally {
+    setIsGenerating(false)
+    }
+    }
 
 
   const handleDownloadExcel = () => {
@@ -214,6 +244,30 @@ const handleDownloadCertificates = () => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl pt-10">
+
+      <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
+          <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+            {isGenerating ? "Generating Certificates" : "Done"}
+            </AlertDialogTitle>
+              </AlertDialogHeader>
+                <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                {isGenerating
+                ? `Please wait while we generate ${totalCount} certificate(s)...`
+                : "Certificates were successfully downloaded."}
+                </p>
+              {isGenerating && <Progress value={progress} className="h-2" />}
+            </div>
+            <AlertDialogFooter className="pt-4">
+              <Button onClick={() => setAlertOpen(false)} disabled={isGenerating}>
+                Close
+              </Button>
+           </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-white bg-primary p-2 rounded-md flex justify-between items-center">
             Directory of Participants
@@ -276,8 +330,8 @@ const handleDownloadCertificates = () => {
         </div>
 
         <DialogFooter className="justify-start pt-4 gap-2 flex-wrap">
-          <Button variant="outline" onClick={handleDownloadCertificates}>Download Certificates</Button>
-          <Button variant="secondary">Send Manual & Digital Certificates</Button>
+          <Button variant="outline" className="cursor-pointer" onClick={handleDownloadCertificates}>Download Certificates</Button>
+          <Button variant="secondary" className="cursor-pointer">Send Manual & Digital Certificates</Button>
         </DialogFooter>
 
         {/* View/Edit Trainee Dialog */}

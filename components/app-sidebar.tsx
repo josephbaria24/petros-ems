@@ -19,7 +19,7 @@ const menuItems = [
   {
     title: "Dashboard",
     icon: LayoutDashboard,
-    href: "/",
+    href: "/dashboard",
   },
   {
     title: "Trainings",
@@ -59,45 +59,43 @@ export function AppSidebar() {
   return (
     <div
       className={cn(
-        "relative flex h-screen flex-col border-0 shadow-lg border-sidebar-border bg-sidebar transition-all duration-300",
+        "relative flex h-screen flex-col border-0 shadow-lg border-sidebar-border bg-sidebar transition-all duration-300 ease-in-out",
         collapsed ? "w-16" : "w-64"
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center border-0 border-sidebar-border px-4">
-      {!collapsed && (
-  <>
-    {/* Light mode logo */}
-    <img
-        src="/trans-logo-dark.png"
-      alt="Petrosphere Training Manager"
-      className="h-8 w-auto dark:hidden"
-    />
-
-    {/* Dark mode logo */}
-    <img
-    src="/trans-logo.png"
-    
-      alt="Petrosphere Training Manager"
-      className="h-8 w-auto hidden dark:block"
-    />
-  </>
-)}
-
+      <div className="flex h-16 items-center border-0 border-sidebar-border px-4 transition-all duration-300 ease-in-out">
+        {!collapsed && (
+          <>
+            {/* Light mode logo */}
+            <img
+              src="/trans-logo-dark.png"
+              alt="Petrosphere Training Manager"
+              className="h-8 w-auto dark:hidden transition-opacity duration-300"
+            />
+            {/* Dark mode logo */}
+            <img
+              src="/trans-logo.png"
+              alt="Petrosphere Training Manager"
+              className="h-8 w-auto hidden dark:block transition-opacity duration-300"
+            />
+          </>
+        )}
 
         {collapsed && (
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold transition-all duration-300">
             T
           </div>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-2">
+      <nav className="flex-1 space-y-1 p-2 overflow-y-auto">
         {menuItems.map((item) => {
           const Icon = item.icon
           const isActive =
-            item.href === pathname || item.children?.some((child) => child.href === pathname)
+            item.href === pathname ||
+            item.children?.some((child) => child.href === pathname)
           const isDropdownOpen = openDropdown === item.title
 
           // Item with submenu
@@ -118,11 +116,25 @@ export function AppSidebar() {
                     <Icon className="h-5 w-5 shrink-0" />
                     {!collapsed && <span>{item.title}</span>}
                   </span>
-                  {!collapsed && <ChevronDown className="h-4 w-4 ml-auto" />}
+
+                  {!collapsed && (
+                    <ChevronRight
+                      className={cn(
+                        "h-4 w-4 ml-auto transform transition-transform duration-300",
+                        isDropdownOpen ? "rotate-90" : "rotate-0"
+                      )}
+                    />
+                  )}
                 </button>
 
-                {!collapsed && isDropdownOpen && (
-                  <div className="ml-7 mt-1 space-y-1 rounded-md border border-border bg-muted p-1">
+                {/* Dropdown submenu with animation */}
+                <div
+                  className={cn(
+                    "overflow-hidden transition-all duration-300 ease-in-out ml-6",
+                    collapsed ? "max-h-0" : isDropdownOpen ? "max-h-40" : "max-h-0"
+                  )}
+                >
+                  <div className="mt-1 space-y-1 rounded-md border border-border bg-muted p-1">
                     {item.children.map((sub) => {
                       const isSubActive = pathname === sub.href
                       return (
@@ -138,11 +150,10 @@ export function AppSidebar() {
                         >
                           {sub.title}
                         </Link>
-
                       )
                     })}
                   </div>
-                )}
+                </div>
               </div>
             )
           }
@@ -155,15 +166,14 @@ export function AppSidebar() {
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 isActive
-                ? "bg-sidebar-primary text-white"
+                  ? "bg-sidebar-primary text-white"
                   : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                 collapsed && "justify-center"
               )}
             >
-              <Icon className={cn("h-5 w-5 shrink-0", isActive && "text")} />
+              <Icon className={cn("h-5 w-5 shrink-0")} />
               {!collapsed && <span>{item.title}</span>}
             </Link>
-
           )
         })}
       </nav>
@@ -174,13 +184,13 @@ export function AppSidebar() {
           variant="ghost"
           size="sm"
           onClick={() => setCollapsed(!collapsed)}
-          className={cn("w-full", collapsed && "justify-center")}
+          className={cn("w-full flex items-center justify-center transition-all duration-300 cursor-pointer")}
         >
           {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-4 w-4 transition-transform duration-300" />
           ) : (
             <>
-              <ChevronLeft className="h-4 w-4 mr-2" />
+              <ChevronLeft className="h-4 w-4 mr-2 transition-transform duration-300" />
               <span>Collapse</span>
             </>
           )}

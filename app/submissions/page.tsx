@@ -57,20 +57,79 @@ export default function SubmissionPage() {
   }
 
   const updateStatus = async (status: string) => {
-    if (!selectedTrainee) return
-
-    const { error } = await supabase
-      .from("trainings")
-      .update({ status })
-      .eq("id", selectedTrainee.id)
-
-    if (!error) {
-      setTrainees((prev) =>
-        prev.map((t) => (t.id === selectedTrainee.id ? { ...t, status } : t))
-      )
-      setDialogOpen(false)
+    if (!selectedTrainee || !scheduleId) return;
+  
+    let certNumber = null;
+  
+    if (status === "Verified") {
+      // 1. Get course name via schedule
+      const { data: scheduleData, error: scheduleError } = await supabase
+        .from("schedules")
+        .select("course_id")
+        .eq("id", scheduleId)
+        .single();
+  
+      if (scheduleError || !scheduleData) {
+        console.error("Failed to fetch schedule:", scheduleError);
+        return;
+      }
+  
+      const { data: courseData, error: courseError } = await supabase
+      .from("courses")
+      .select("name, serial_number_pad")
+      .eq("id", scheduleData.course_id)
+      .single();
+    
+    if (courseError || !courseData) {
+      console.error("Failed to fetch course name and pad:", courseError);
+      return;
     }
-  }
+    
+    const courseName = courseData.name;
+    const padLength = courseData.serial_number_pad || 6; // fallback to 6 if not set
+    
+  
+      // 2. Count existing trainees with cert numbers for this course
+      const { count, error: countError } = await supabase
+        .from("trainings")
+        .select("certificate_number", { count: "exact", head: true })
+        .eq("course_id", scheduleData.course_id)
+        .not("certificate_number", "is", null)
+  
+      if (countError) {
+        console.error("Failed to count existing certs:", countError);
+        return;
+      }
+  
+      const nextNumber = (count ?? 0) + 1;
+      const padded = nextNumber.toString().padStart(padLength, "0");
+  
+      certNumber = `PSI-${courseName}-${padded}`;
+    }
+  
+    // 3. Update trainee with status (+ cert_number if verified)
+    const { error: updateError } = await supabase
+      .from("trainings")
+      .update({
+        status,
+        ...(certNumber && { certificate_number: certNumber }),
+      })
+      .eq("id", selectedTrainee.id);
+  
+    if (!updateError) {
+      setTrainees((prev) =>
+        prev.map((t) =>
+          t.id === selectedTrainee.id
+            ? { ...t, status, ...(certNumber && { certificate_number: certNumber }) }
+            : t
+        )
+      );
+      setDialogOpen(false);
+    } else {
+      console.error("Failed to update trainee status:", updateError);
+    }
+  };
+  
 
   const filteredTrainees = trainees.filter((t) => {
     const fullName = `${t.first_name} ${t.last_name}`.toLowerCase()

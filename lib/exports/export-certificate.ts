@@ -1,7 +1,12 @@
 // lib/exports/exportCertificates.ts
 import { supabase } from "@/lib/supabase-client"
 
-export async function exportCertificates(scheduleId: string, scheduleRange: string): Promise<void> {
+export async function exportCertificates(
+  scheduleId: string,
+  scheduleRange: string,
+  onProgress?: (current: number, total: number) => void
+): Promise<void> {
+
   try {
     const { data: scheduleData, error: scheduleError } = await supabase
       .from("schedules")
@@ -12,6 +17,7 @@ export async function exportCertificates(scheduleId: string, scheduleRange: stri
     if (!scheduleData || scheduleError) {
       throw new Error("Failed to fetch schedule information.")
     }
+    
 
     const { data: courseData, error: courseError } = await supabase
       .from("courses")
@@ -36,8 +42,23 @@ export async function exportCertificates(scheduleId: string, scheduleRange: stri
       if (rangeData) {
         const start = new Date(rangeData.start_date)
         const end = new Date(rangeData.end_date)
-        formattedDateRange = `${start.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} & ${end.toLocaleDateString('en-US', { day: 'numeric', year: 'numeric' })}`
-        givenThisDate = end.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+        
+        // Calculate days difference
+        const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+        
+        if (daysDiff > 1) {
+          // Multi-day training: show start date - end date in mm/dd/yyyy format
+          const startFormatted = `${(start.getMonth() + 1).toString().padStart(2, '0')}/${start.getDate().toString().padStart(2, '0')}/${start.getFullYear()}`
+          const endFormatted = `${(end.getMonth() + 1).toString().padStart(2, '0')}/${end.getDate().toString().padStart(2, '0')}/${end.getFullYear()}`
+          formattedDateRange = `${startFormatted} - ${endFormatted}`
+        } else {
+          // Single day training: use original format
+          formattedDateRange = `${start.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} & ${end.toLocaleDateString('en-US', { day: 'numeric', year: 'numeric' })}`
+        }
+        
+        // Given this date is always today's date
+        const today = new Date()
+        givenThisDate = today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
       }
     } else {
       const { data: datesData } = await supabase
@@ -48,8 +69,36 @@ export async function exportCertificates(scheduleId: string, scheduleRange: stri
 
       if (datesData && datesData.length > 0) {
         const dates = datesData.map(d => new Date(d.date))
-        formattedDateRange = dates.map(d => d.getDate()).join(' & ') + `, ${dates[0].getFullYear()}`
-        givenThisDate = dates[dates.length - 1].toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+        
+        // Group dates by month
+        const datesByMonth: { [key: string]: number[] } = {}
+        dates.forEach(date => {
+          const monthYear = `${date.toLocaleDateString('en-US', { month: 'short' })} ${date.getFullYear()}`
+          if (!datesByMonth[monthYear]) {
+            datesByMonth[monthYear] = []
+          }
+          datesByMonth[monthYear].push(date.getDate())
+        })
+        
+        // Format: "Month Day,Day & Month Day, Year"
+        const entries = Object.entries(datesByMonth)
+        const formattedParts = entries.map(([monthYear, days], index) => {
+          const daysStr = days.join(',')
+          const [month, year] = monthYear.split(' ')
+          
+          // Only add year to the last month group
+          if (index === entries.length - 1) {
+            return `${month}. ${daysStr}, ${year}`
+          } else {
+            return `${month}. ${daysStr}`
+          }
+        })
+        
+        formattedDateRange = formattedParts.join(' & ')
+        
+        // Given this date is always today's date
+        const today = new Date()
+        givenThisDate = today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
       }
     }
 
@@ -58,13 +107,19 @@ export async function exportCertificates(scheduleId: string, scheduleRange: stri
     const coursePrefix = courseName.replace(/\s+/g, "").toUpperCase() // remove spaces for SerialNo
 
     let templatePath = ""
+    let courseType: "boshso1" | "boshso2" = "boshso1"
 
     if (courseName.includes("BOSH") && courseName.includes("SO1")) {
       templatePath = "/templates/certificates/BOSHS01-template.png"
+      courseType = "boshso1"
+    } else if (courseName.includes("BOSH") && courseName.includes("SO2")) {
+      templatePath = "/templates/certificates/BOSHSO2-template.png"
+      courseType = "boshso2"
     } else {
       alert("No certificate template found for this course.")
       return
     }
+    
 
     const { data: traineesData } = await supabase
       .from("trainings")
@@ -79,15 +134,14 @@ export async function exportCertificates(scheduleId: string, scheduleRange: stri
       return
     }
 
-    alert(`Generating ${traineesWithCerts.length} certificate(s)...`)
-
-    for (const trainee of traineesWithCerts) {
-      const serialNumber = `PSI-${coursePrefix}-${courseSerial}${trainee.certificate_number}`
-      await generateCertificate(trainee, templatePath, formattedDateRange, givenThisDate, serialNumber)
-      await new Promise(resolve => setTimeout(resolve, 300))
+    for (let i = 0; i < traineesWithCerts.length; i++) {
+      const trainee = traineesWithCerts[i]
+      const serialNumber = trainee.certificate_number
+      await generateCertificate(trainee, templatePath, formattedDateRange, givenThisDate, serialNumber, courseType)
+      onProgress?.(i + 1, traineesWithCerts.length)
+      await new Promise(resolve => setTimeout(resolve, 200))
     }
-
-    alert("All certificates downloaded successfully!")
+    
   } catch (error: any) {
     console.error("❌ Certificate generation error:", error)
     alert(`Failed to download certificates: ${error.message}`)
@@ -99,7 +153,8 @@ async function generateCertificate(
   templatePath: string,
   heldOnDate: string,
   givenThisDate: string,
-  serialNumber: string
+  serialNumber: string,
+  courseType: "boshso1" | "boshso2"
 ): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const canvas = document.createElement('canvas')
@@ -115,21 +170,35 @@ async function generateCertificate(
       ctx.drawImage(templateImg, 0, 0)
 
       if (trainee.picture_2x2_url) {
-        const pictureImg = new Image()
-        pictureImg.crossOrigin = "anonymous"
-        await new Promise<void>((res, rej) => {
-          pictureImg.onload = () => {
-            const x = canvas.width * 0.845
-            const y = canvas.height * 0.044
-            const size = canvas.width * 0.105
-            ctx.drawImage(pictureImg, x, y, size, size)
-            res()
+        const img = new Image()
+        img.crossOrigin = "anonymous"
+        img.src = `/api/image-proxy?url=${encodeURIComponent(trainee.picture_2x2_url)}`
+
+        await new Promise<void>((resolveImg) => {
+          img.onload = () => {
+            const size = canvas.width * 0.097
+            const x = canvas.width * 0.848
+            const y = canvas.height * 0.048
+            ctx.drawImage(img, x, y, size, size)
+            resolveImg()
           }
-          pictureImg.onerror = () => res() // continue without image
-          pictureImg.src = trainee.picture_2x2_url
+
+          img.onerror = () => {
+            console.warn("⚠️ Failed to load 2x2 image for:", trainee.certificate_number)
+            resolveImg() // continue even if failed
+          }
         })
       }
-
+      
+      function capitalize(word: string | null | undefined): string {
+        if (!word) return "";
+        return word
+          .toLowerCase()
+          .split(" ")
+          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(" ");
+      }
+      
       const baseFontSize = canvas.width / 25.7
       const smallFontSize = canvas.width / 78
       const tinyFontSize = canvas.width / 77
@@ -138,18 +207,33 @@ async function generateCertificate(
       ctx.fillStyle = '#000'
 
       ctx.font = `bold ${baseFontSize}px Arial`
-      const fullName = `${trainee.first_name} ${trainee.middle_initial ? trainee.middle_initial + '. ' : ''}${trainee.last_name}`
-      ctx.fillText(fullName, canvas.width / 2, canvas.height * 0.389)
-
-      ctx.font = `${smallFontSize}px Arial`
-      ctx.fillText(heldOnDate, canvas.width * 0.330, canvas.height * 0.688)
-      ctx.fillText("Via Zoom Meeting", canvas.width * 0.500, canvas.height * 0.694)
-      ctx.fillText(givenThisDate, canvas.width * 0.466, canvas.height * 0.732)
-
-      ctx.font = `${tinyFontSize}px Arial`
-      ctx.textAlign = 'right'
-      ctx.fillText(`${serialNumber}`, canvas.width * 0.965, canvas.height * 0.200)
-
+      const first = capitalize(trainee.first_name)
+      const middle = trainee.middle_initial ? capitalize(trainee.middle_initial) + ". " : ""
+      const last = capitalize(trainee.last_name)
+      const fullName = `${first} ${middle}${last}`
+      
+      if (courseType === "boshso1") {
+        // 💡 BOSH SO1 positioning
+        ctx.fillText(fullName, canvas.width / 2, canvas.height * 0.389)
+        ctx.font = `italic ${smallFontSize}px Arial`
+        ctx.fillText(heldOnDate, canvas.width * 0.330, canvas.height * 0.694)
+        ctx.fillText("Via Zoom Meeting", canvas.width * 0.500, canvas.height * 0.694)
+        ctx.fillText(givenThisDate, canvas.width * 0.450, canvas.height * 0.732)
+        ctx.font = `${tinyFontSize}px Arial`
+        ctx.textAlign = 'right'
+        ctx.fillText(`${serialNumber}`, canvas.width * 0.960, canvas.height * 0.200)
+      } else if (courseType === "boshso2") {
+        // 💡 BOSH SO2 positioning (slightly lower)
+        ctx.fillText(fullName, canvas.width / 2, canvas.height * 0.389)
+        ctx.font = `italic ${smallFontSize}px Arial`
+        ctx.fillText(heldOnDate, canvas.width * 0.330, canvas.height * 0.660)
+        ctx.fillText("Via Zoom Meeting", canvas.width * 0.500, canvas.height * 0.660)
+        ctx.fillText(givenThisDate, canvas.width * 0.430, canvas.height * 0.700)
+        ctx.font = `${tinyFontSize}px Arial`
+        ctx.textAlign = 'right'
+        ctx.fillText(`${serialNumber}`, canvas.width * 0.960, canvas.height * 0.200)
+      }
+      
       canvas.toBlob(blob => {
         if (blob) {
           const url = URL.createObjectURL(blob)

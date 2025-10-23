@@ -1,4 +1,3 @@
-//components\participants-table.tsx
 "use client"
 
 import { supabase } from "@/lib/supabase-client"
@@ -40,6 +39,7 @@ import {
 import { type PostgrestSingleResponse } from "@supabase/supabase-js"
 import { toast } from "sonner"
 import ParticipantDirectoryDialog from "@/components/trainee-directory-dialog"
+import { EditScheduleDialog } from "@/components/edit-schedule-dialog"
 
 type Participant = {
   id: string
@@ -65,6 +65,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   // Alert dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [viewDialogOpen, setViewDialogOpen] = React.useState(false)
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false)
   const [selectedParticipant, setSelectedParticipant] = React.useState<Participant | null>(null)
   const [isDeleting, setIsDeleting] = React.useState(false)
 
@@ -83,13 +84,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   }
 
   const handleEdit = (participant: Participant) => {
-    console.log("Edit participant:", participant)
-    toast.info("Edit functionality", {
-      description: "Edit feature coming soon!",
-    })
-    // Add your edit logic here
-    // Example: open edit modal or navigate to edit page
-    // router.push(`/participants/${participant.id}/edit`)
+    setSelectedParticipant(participant)
+    setEditDialogOpen(true)
   }
 
   const handleDeleteClick = (participant: Participant) => {
@@ -101,6 +97,10 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     if (!selectedParticipant) return
 
     setIsDeleting(true)
+    const toastId = toast.loading("Deleting schedule...", {
+      description: "Removing all related records...",
+    })
+
     try {
       // Delete related records first (in order of dependencies)
       // 1. Delete trainings
@@ -110,8 +110,10 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         .eq("schedule_id", selectedParticipant.id)
 
       if (trainingsError) {
-        console.error("Error deleting trainings:", trainingsError)
-        alert(`Failed to delete trainings: ${trainingsError.message}`)
+        toast.error("Failed to delete trainings", {
+          id: toastId,
+          description: trainingsError.message,
+        })
         setIsDeleting(false)
         return
       }
@@ -123,8 +125,10 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         .eq("schedule_id", selectedParticipant.id)
 
       if (datesError) {
-        console.error("Error deleting schedule dates:", datesError)
-        alert(`Failed to delete schedule dates: ${datesError.message}`)
+        toast.error("Failed to delete schedule dates", {
+          id: toastId,
+          description: datesError.message,
+        })
         setIsDeleting(false)
         return
       }
@@ -136,8 +140,10 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         .eq("schedule_id", selectedParticipant.id)
 
       if (rangesError) {
-        console.error("Error deleting schedule ranges:", rangesError)
-        alert(`Failed to delete schedule ranges: ${rangesError.message}`)
+        toast.error("Failed to delete schedule ranges", {
+          id: toastId,
+          description: rangesError.message,
+        })
         setIsDeleting(false)
         return
       }
@@ -149,22 +155,116 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         .eq("id", selectedParticipant.id)
 
       if (scheduleError) {
-        console.error("Error deleting schedule:", scheduleError)
-        alert(`Failed to delete schedule: ${scheduleError.message}`)
+        toast.error("Failed to delete schedule", {
+          id: toastId,
+          description: scheduleError.message,
+        })
       } else {
-        console.log("Deleted participant:", selectedParticipant)
+        toast.success("Schedule deleted successfully", {
+          id: toastId,
+          description: `${selectedParticipant.course} schedule has been removed.`,
+        })
         // Refresh data
         setData((prevData) => prevData.filter((item) => item.id !== selectedParticipant.id))
       }
     } catch (error) {
       console.error("Error:", error)
-      alert("An error occurred while deleting")
+      toast.error("Unexpected error", {
+        id: toastId,
+        description: "An error occurred while deleting",
+      })
     } finally {
       setIsDeleting(false)
       setDeleteDialogOpen(false)
       setSelectedParticipant(null)
     }
   }
+
+  const fetchTrainings = React.useCallback(async () => {
+    setLoading(true)
+
+    const { data, error }: PostgrestSingleResponse<any[]> = await supabase
+      .from("schedules")
+      .select(`
+        id,
+        branch,
+        event_type,
+        schedule_type,
+        status,
+        courses (
+          name
+        ),
+        schedule_ranges (
+          start_date,
+          end_date
+        ),
+        schedule_dates (
+          date
+        ),
+        trainings (
+          id,
+          training_type
+        )
+      `)
+      .eq(
+        "status",
+        status === "finished"
+          ? "finished"
+          : status === "cancelled"
+          ? "cancelled"
+          : status === "confirmed"
+          ? "confirmed"
+          : "planned"
+      )
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Supabase fetch error:", error)
+      console.error("Error details:", JSON.stringify(error, null, 2))
+      setData([])
+    } else {
+      console.log("Fetched schedules data:", data)
+      const mapped: Participant[] = (data ?? []).map((schedule) => {
+        const courseName = schedule.courses?.name ?? "Unknown Course"
+        const branch = schedule.branch ?? "N/A"
+        
+        const firstTraining = schedule.trainings?.[0]
+        const type = firstTraining?.training_type ?? schedule.event_type ?? "Public"
+        const scheduleStatus = schedule.status ?? "planned"
+
+        let scheduleDisplay = ""
+
+        if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length) {
+          const range = schedule.schedule_ranges[0]
+          scheduleDisplay = `${new Date(range.start_date).toLocaleDateString()} – ${new Date(
+            range.end_date
+          ).toLocaleDateString()}`
+        } else if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length) {
+          scheduleDisplay = schedule.schedule_dates
+            .map((d: { date: string }) => new Date(d.date).toLocaleDateString())
+            .join(", ")
+        }
+
+        return {
+          id: schedule.id,
+          course: courseName,
+          branch,
+          schedule: scheduleDisplay,
+          status: scheduleStatus,
+          type,
+          submissionCount: schedule.trainings?.length ?? 0,
+        }
+      })
+
+      setData(mapped)
+    }
+
+    setLoading(false)
+  }, [status])
+
+  React.useEffect(() => {
+    fetchTrainings()
+  }, [status, refreshTrigger, fetchTrainings])
 
   const columns: ColumnDef<Participant>[] = [
     {
@@ -207,7 +307,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               onClick={() => {
                 setDirectoryScheduleId(row.original.id)
                 setDirectoryCourseName(row.original.course)
-                setDirectoryRange(row.original.schedule) // format as needed
+                setDirectoryRange(row.original.schedule)
                 setDirectoryOpen(true)
               }}
             >
@@ -314,93 +414,6 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       },
     },
   ]
-
-  React.useEffect(() => {
-    const fetchTrainings = async () => {
-      setLoading(true)
-  
-      const { data, error }: PostgrestSingleResponse<any[]> = await supabase
-        .from("schedules")
-        .select(`
-          id,
-          branch,
-          event_type,
-          schedule_type,
-          status,
-          courses (
-            name
-          ),
-          schedule_ranges (
-            start_date,
-            end_date
-          ),
-          schedule_dates (
-            date
-          ),
-          trainings (
-            id,
-            training_type
-          )
-        `)
-        .eq(
-          "status",
-          status === "finished"
-            ? "finished"
-            : status === "cancelled"
-            ? "cancelled"
-            : status === "confirmed"
-            ? "confirmed"
-            : "planned"
-        )
-        .order("created_at", { ascending: false }) // 👈 Sort newest first
-  
-      if (error) {
-        console.error("Supabase fetch error:", error)
-        console.error("Error details:", JSON.stringify(error, null, 2))
-        setData([])
-      } else {
-        console.log("Fetched schedules data:", data)
-        const mapped: Participant[] = (data ?? []).map((schedule) => {
-          const courseName = schedule.courses?.name ?? "Unknown Course"
-          const branch = schedule.branch ?? "N/A"
-          
-          // Get training info from first training entry (if exists)
-          const firstTraining = schedule.trainings?.[0]
-          const type = firstTraining?.training_type ?? schedule.event_type ?? "Public"
-          const scheduleStatus = schedule.status ?? "planned"
-  
-          let scheduleDisplay = ""
-  
-          if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length) {
-            const range = schedule.schedule_ranges[0]
-            scheduleDisplay = `${new Date(range.start_date).toLocaleDateString()} – ${new Date(
-              range.end_date
-            ).toLocaleDateString()}`
-          } else if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length) {
-            scheduleDisplay = schedule.schedule_dates
-              .map((d: { date: string }) => new Date(d.date).toLocaleDateString())
-              .join(", ")
-          }
-  
-          return {
-            id: schedule.id,
-            course: courseName,
-            branch,
-            schedule: scheduleDisplay,
-            status: scheduleStatus,
-            type,
-            submissionCount: schedule.trainings?.length ?? 0,
-          }
-        })
-  
-        setData(mapped)
-      }
-  
-      setLoading(false)
-    }
-  
-    fetchTrainings()
-  }, [status, refreshTrigger])
 
   const table = useReactTable({
     data,
@@ -534,6 +547,14 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Edit Dialog */}
+      <EditScheduleDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        scheduleId={selectedParticipant?.id || null}
+        onScheduleUpdated={fetchTrainings}
+      />
+
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
@@ -565,6 +586,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Directory Dialog */}
       <ParticipantDirectoryDialog
         open={directoryOpen}
         onOpenChange={setDirectoryOpen}
@@ -572,7 +595,6 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         courseName={directoryCourseName}
         scheduleRange={directoryRange}
       />
-
     </>
   )
 }
