@@ -83,8 +83,8 @@ export function AppSidebar() {
         )}
 
         {collapsed && (
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold transition-all duration-300">
-            T
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-950 text-primary-foreground font-bold transition-all duration-300">
+            <img src="/logo.png" alt="" className="" />
           </div>
         )}
       </div>

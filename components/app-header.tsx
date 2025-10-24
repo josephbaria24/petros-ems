@@ -112,6 +112,35 @@ export function AppHeader() {
     )
   }
 
+  const markAllAsRead = async () => {
+    const supabase = createClient()
+    const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id)
+    
+    if (unreadIds.length === 0) return
+
+    await supabase
+      .from("notifications")
+      .update({ read: true })
+      .in("id", unreadIds)
+    
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, read: true }))
+    )
+  }
+
+  const formatTimeAgo = (dateString: string) => {
+    const now = new Date()
+    const date = new Date(dateString)
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+    if (seconds < 60) return "just now"
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`
+    
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
   if (!mounted) return null
 
   const userName =
@@ -134,6 +163,7 @@ export function AppHeader() {
 
       <div className="flex items-center gap-3">
         <Button
+          className="cursor-pointer"
           variant="ghost"
           size="icon"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -147,7 +177,7 @@ export function AppHeader() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
+            <Button variant="ghost" size="icon" className="relative cursor-pointer">
               <Bell className="h-5 w-5" />
               {unreadCount > 0 && (
                 <Badge
@@ -159,8 +189,20 @@ export function AppHeader() {
               )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-auto">
-            <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+          <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-auto bg-background">
+            <div className="flex items-center justify-between px-2 py-1.5">
+              <DropdownMenuLabel className="p-0">Notifications</DropdownMenuLabel>
+              {unreadCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={markAllAsRead}
+                  className="h-auto py-1 px-2 text-xs cursor-pointer hover:bg-muted"
+                >
+                  Mark all as read
+                </Button>
+              )}
+            </div>
             <DropdownMenuSeparator />
             {notifications.length === 0 ? (
               <DropdownMenuItem disabled>No notifications</DropdownMenuItem>
@@ -169,9 +211,11 @@ export function AppHeader() {
                 <DropdownMenuItem
                   key={note.id}
                   onClick={() => markAsRead(note.id)}
-                  className="flex items-start space-x-3 cursor-pointer py-2"
+                  className={`flex items-start space-x-3 cursor-pointer py-3 ${
+                    !note.read ? "bg-muted/50" : ""
+                  }`}
                 >
-                  <Avatar className="h-10 w-10">
+                  <Avatar className="h-10 w-10 flex-shrink-0">
                     <AvatarImage src={note.photo_url || "/placeholder.svg"} alt={note.trainee_name || "User"} />
                     <AvatarFallback>
                       {note.trainee_name
@@ -182,12 +226,17 @@ export function AppHeader() {
                         .toUpperCase() || "?"}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="flex flex-col">
-                    <p className={`text-sm ${note.read ? "text-muted-foreground" : "font-medium"}`}>
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <p className={`text-sm ${!note.read ? "font-bold" : "text-muted-foreground"}`}>
                       {note.trainee_name || "Unknown"}
                     </p>
-                    <p className="text-xs text-muted-foreground">{note.title}</p>
+                    <p className={`text-xs ${!note.read ? "font-semibold" : "text-muted-foreground"}`}>
+                      {note.title}
+                    </p>
                   </div>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+                    {formatTimeAgo(note.created_at)}
+                  </span>
                 </DropdownMenuItem>
               ))
             )}
@@ -213,10 +262,10 @@ export function AppHeader() {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile Settings</DropdownMenuItem>
-            <DropdownMenuItem>Account</DropdownMenuItem>
-            <DropdownMenuItem>Preferences</DropdownMenuItem>
-            <DropdownMenuSeparator />
+            {/* <DropdownMenuItem>Profile Settings</DropdownMenuItem> */}
+            {/* <DropdownMenuItem>Account</DropdownMenuItem> */}
+            {/* <DropdownMenuItem>Preferences</DropdownMenuItem> */}
+            
             <DropdownMenuItem
               onClick={handleLogout}
               className="text-destructive cursor-pointer"

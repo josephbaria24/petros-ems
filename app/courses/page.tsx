@@ -47,7 +47,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { MoreVertical, Edit, Trash2, ChevronLeft, ChevronRight, Plus } from "lucide-react"
+import { MoreVertical, Edit, Trash2, ChevronLeft, ChevronRight, Plus, ExternalLink, Eye, Link as LinkIcon } from "lucide-react"
 import { toast } from "sonner"
 
 type Course = {
@@ -55,6 +55,11 @@ type Course = {
   name: string
   description: string | null
   training_fee: number | null
+  title: string | null
+  serial_number: number | null
+  serial_number_pad: number | null
+  pretest_link: string | null
+  posttest_link: string | null
   created_at: string
 }
 
@@ -62,6 +67,14 @@ type CourseFormData = {
   name: string
   description: string
   training_fee: string
+  title: string
+  serial_number: string
+  serial_number_pad: string
+}
+
+type ExamLinkData = {
+  pretest_link: string
+  posttest_link: string
 }
 
 export default function CoursesPage() {
@@ -78,19 +91,27 @@ export default function CoursesPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false)
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false)
+  const [isExamLinkDialogOpen, setIsExamLinkDialogOpen] = useState(false)
+  const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState("")
+  const [previewTitle, setPreviewTitle] = useState("")
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Form states
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CourseFormData>({
     name: "",
     description: "",
     training_fee: "",
     title: "",
     serial_number: "",
     serial_number_pad: ""
-  });
-  
+  })
+
+  const [examLinkData, setExamLinkData] = useState<ExamLinkData>({
+    pretest_link: "",
+    posttest_link: ""
+  })
 
   useEffect(() => {
     fetchCourses()
@@ -100,7 +121,7 @@ export default function CoursesPage() {
     try {
       const { data, error } = await supabase
         .from("courses")
-        .select("id, name, description, training_fee, created_at")
+        .select("id, name, description, training_fee, title, serial_number, serial_number_pad, pretest_link, posttest_link, created_at")
         .order("name", { ascending: true })
 
       if (error) {
@@ -128,6 +149,13 @@ export default function CoursesPage() {
     })
   }
 
+  const resetExamLinkForm = () => {
+    setExamLinkData({
+      pretest_link: "",
+      posttest_link: ""
+    })
+  }
+
   const handleAddCourse = () => {
     resetForm()
     setIsAddDialogOpen(true)
@@ -144,9 +172,9 @@ export default function CoursesPage() {
       name: course.name,
       description: course.description || "",
       training_fee: course.training_fee?.toString() || "",
-      title: "",
-      serial_number: "",
-      serial_number_pad: ""
+      title: course.title || "",
+      serial_number: course.serial_number?.toString() || "",
+      serial_number_pad: course.serial_number_pad?.toString() || ""
     })
     setIsEditDialogOpen(true)
   }
@@ -154,6 +182,21 @@ export default function CoursesPage() {
   const handleDeleteClick = (course: Course) => {
     setSelectedCourse(course)
     setIsDeleteAlertOpen(true)
+  }
+
+  const handleManageExamLinks = (course: Course) => {
+    setSelectedCourse(course)
+    setExamLinkData({
+      pretest_link: course.pretest_link || "",
+      posttest_link: course.posttest_link || ""
+    })
+    setIsExamLinkDialogOpen(true)
+  }
+
+  const handlePreviewExam = (url: string, title: string) => {
+    setPreviewUrl(url)
+    setPreviewTitle(title)
+    setIsPreviewDialogOpen(true)
   }
 
   const handleSubmitAdd = async () => {
@@ -171,6 +214,9 @@ export default function CoursesPage() {
             name: formData.name.trim(),
             description: formData.description.trim() || null,
             training_fee: formData.training_fee ? parseFloat(formData.training_fee) : null,
+            title: formData.title.trim() || null,
+            serial_number: formData.serial_number ? parseInt(formData.serial_number) : null,
+            serial_number_pad: formData.serial_number_pad ? parseInt(formData.serial_number_pad) : null,
           },
         ])
         .select()
@@ -207,6 +253,9 @@ export default function CoursesPage() {
           name: formData.name.trim(),
           description: formData.description.trim() || null,
           training_fee: formData.training_fee ? parseFloat(formData.training_fee) : null,
+          title: formData.title.trim() || null,
+          serial_number: formData.serial_number ? parseInt(formData.serial_number) : null,
+          serial_number_pad: formData.serial_number_pad ? parseInt(formData.serial_number_pad) : null,
         })
         .eq("id", selectedCourse.id)
         .select()
@@ -221,6 +270,39 @@ export default function CoursesPage() {
         setIsEditDialogOpen(false)
         setSelectedCourse(null)
         resetForm()
+      }
+    } catch (err) {
+      console.error("Unexpected error:", err)
+      toast.error("An unexpected error occurred")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleSubmitExamLinks = async () => {
+    if (!selectedCourse) return
+
+    setIsSubmitting(true)
+    try {
+      const { data: updatedCourse, error } = await supabase
+        .from("courses")
+        .update({
+          pretest_link: examLinkData.pretest_link.trim() || null,
+          posttest_link: examLinkData.posttest_link.trim() || null,
+        })
+        .eq("id", selectedCourse.id)
+        .select()
+        .single()
+
+      if (error) {
+        console.error("Error updating exam links:", error)
+        toast.error(error.message || "Failed to update exam links")
+      } else {
+        setData(data.map((c) => (c.id === selectedCourse.id ? updatedCourse : c)))
+        toast.success("Exam links updated successfully")
+        setIsExamLinkDialogOpen(false)
+        setSelectedCourse(null)
+        resetExamLinkForm()
       }
     } catch (err) {
       console.error("Unexpected error:", err)
@@ -257,16 +339,6 @@ export default function CoursesPage() {
     }
   }
 
-  const handleCreatePreTest = (course: Course) => {
-    console.log("Create Pre-test for:", course)
-    toast.info("Pre-test creation coming soon")
-  }
-
-  const handleCreatePostTest = (course: Course) => {
-    console.log("Create Post-test for:", course)
-    toast.info("Post-test creation coming soon")
-  }
-
   const columns = useMemo<ColumnDef<Course>[]>(
     () => [
       {
@@ -283,6 +355,10 @@ export default function CoursesPage() {
               <DropdownMenuItem onClick={() => handleEditCourse(row.original)}>
                 <Edit className="mr-2 h-4 w-4" />
                 Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleManageExamLinks(row.original)}>
+                <LinkIcon className="mr-2 h-4 w-4" />
+                Manage Exam Links
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleDeleteClick(row.original)}
@@ -305,14 +381,32 @@ export default function CoursesPage() {
         ),
       },
       {
+        accessorKey: "title",
+        header: "Title",
+        cell: ({ row }) => (
+          <div className="text-sm max-w-40 truncate" title={row.original.title || "N/A"}>
+            {row.original.title || "N/A"}
+          </div>
+        ),
+      },
+      {
         accessorKey: "description",
         header: "Description",
         cell: ({ row }) => (
           <div 
-            className="text-muted-foreground text-sm max-w-md line-clamp-2" 
+            className="text-muted-foreground text-sm max-w-40 truncate" 
             title={row.original.description || "No description"}
           >
             {row.original.description || "No description"}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "serial_number",
+        header: "Serial #",
+        cell: ({ row }) => (
+          <div className="text-sm font-mono">
+            {row.original.serial_number !== null ? row.original.serial_number : "N/A"}
           </div>
         ),
       },
@@ -329,36 +423,60 @@ export default function CoursesPage() {
       },
       {
         id: "exam",
-        header: "Exam",
+        header: "Exam Links",
         cell: ({ row }) => (
           <div className="flex gap-2">
-            <Button 
-              className="cursor-pointer"
-              variant="outline"
-              size="sm"
-              onClick={() => handleCreatePreTest(row.original)}
-            >
-              Pre-test
-            </Button>
-            <Button  
-              className="cursor-pointer"
-              variant="outline"
-              size="sm"
-              onClick={() => handleCreatePostTest(row.original)}
-            >
-              Post-test
-            </Button>
+            {row.original.pretest_link ? (
+              <Button 
+                className="cursor-pointer"
+                variant="outline"
+                size="sm"
+                onClick={() => handlePreviewExam(row.original.pretest_link!, "Pre-test")}
+              >
+                <Eye className="mr-1 h-3 w-3" />
+                Pre-test
+              </Button>
+            ) : (
+              <Button 
+                className="cursor-pointer"
+                variant="ghost"
+                size="sm"
+                disabled
+              >
+                No Pre-test
+              </Button>
+            )}
+            {row.original.posttest_link ? (
+              <Button  
+                className="cursor-pointer"
+                variant="outline"
+                size="sm"
+                onClick={() => handlePreviewExam(row.original.posttest_link!, "Post-test")}
+              >
+                <Eye className="mr-1 h-3 w-3" />
+                Post-test
+              </Button>
+            ) : (
+              <Button  
+                className="cursor-pointer"
+                variant="ghost"
+                size="sm"
+                disabled
+              >
+                No Post-test
+              </Button>
+            )}
           </div>
         ),
       },
-      
     ],
     []
   )
 
   const filteredData = useMemo(() => {
     return data.filter((course) =>
-      course.name.toLowerCase().includes(search.toLowerCase())
+      course.name.toLowerCase().includes(search.toLowerCase()) ||
+      (course.title && course.title.toLowerCase().includes(search.toLowerCase()))
     )
   }, [data, search])
 
@@ -431,7 +549,6 @@ export default function CoursesPage() {
                     <TableCell 
                       key={cell.id}
                       onClick={(e) => {
-                        // Prevent row click when clicking on action buttons
                         if (
                           cell.column.id === "actions" || 
                           cell.column.id === "exam" ||
@@ -459,7 +576,6 @@ export default function CoursesPage() {
           </TableBody>
         </Table>
 
-        {/* Pagination */}
         <div className="flex items-center justify-between px-4 py-4 border-t">
           <div className="text-sm text-muted-foreground">
             Showing{" "}
@@ -517,10 +633,34 @@ export default function CoursesPage() {
                 <p className="text-lg font-semibold">{selectedCourse.name}</p>
               </div>
               <div className="space-y-2">
+                <Label className="text-muted-foreground">Course Title</Label>
+                <p className="text-sm">
+                  {selectedCourse.title || "Not specified"}
+                </p>
+              </div>
+              <div className="space-y-2">
                 <Label className="text-muted-foreground">Description</Label>
                 <p className="text-sm whitespace-pre-wrap">
                   {selectedCourse.description || "No description provided"}
                 </p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Serial Number</Label>
+                  <p className="text-sm font-mono">
+                    {selectedCourse.serial_number !== null
+                      ? selectedCourse.serial_number
+                      : "Not specified"}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground">Serial Padding</Label>
+                  <p className="text-sm">
+                    {selectedCourse.serial_number_pad !== null
+                      ? `${selectedCourse.serial_number_pad} digits`
+                      : "Not specified"}
+                  </p>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -540,6 +680,39 @@ export default function CoursesPage() {
                       day: 'numeric'
                     })}
                   </p>
+                </div>
+              </div>
+              <div className="space-y-2 border-t pt-4">
+                <Label className="text-muted-foreground">Exam Links</Label>
+                <div className="flex flex-col gap-2">
+                  {selectedCourse.pretest_link ? (
+                    <div className="flex items-center justify-between p-2 bg-muted rounded-md">
+                      <span className="text-sm">Pre-test</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => window.open(selectedCourse.pretest_link!, '_blank')}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No pre-test link</p>
+                  )}
+                  {selectedCourse.posttest_link ? (
+                    <div className="flex items-center justify-between p-2 bg-muted rounded-md">
+                      <span className="text-sm">Post-test</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => window.open(selectedCourse.posttest_link!, '_blank')}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No post-test link</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -566,16 +739,127 @@ export default function CoursesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Manage Exam Links Dialog */}
+      <Dialog open={isExamLinkDialogOpen} onOpenChange={setIsExamLinkDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Manage Exam Links</DialogTitle>
+            <DialogDescription>
+              Add or update pre-test and post-test links for {selectedCourse?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="pretest-link">Pre-test Link</Label>
+              <Input
+                id="pretest-link"
+                placeholder="https://forms.office.com/..."
+                value={examLinkData.pretest_link}
+                onChange={(e) =>
+                  setExamLinkData({ ...examLinkData, pretest_link: e.target.value })
+                }
+              />
+              {examLinkData.pretest_link && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePreviewExam(examLinkData.pretest_link, "Pre-test Preview")}
+                  className="w-full"
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  Preview Pre-test
+                </Button>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="posttest-link">Post-test Link</Label>
+              <Input
+                id="posttest-link"
+                placeholder="https://forms.office.com/..."
+                value={examLinkData.posttest_link}
+                onChange={(e) =>
+                  setExamLinkData({ ...examLinkData, posttest_link: e.target.value })
+                }
+              />
+              {examLinkData.posttest_link && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePreviewExam(examLinkData.posttest_link, "Post-test Preview")}
+                  className="w-full"
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  Preview Post-test
+                </Button>
+              )}
+            </div>
+            <div className="bg-muted p-3 rounded-md">
+              <p className="text-xs text-muted-foreground">
+                💡 Tip: Paste the full URL from Microsoft Forms or any other online form platform.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsExamLinkDialogOpen(false)
+                resetExamLinkForm()
+              }}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSubmitExamLinks} disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Save Links"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Preview Dialog */}
+      <Dialog open={isPreviewDialogOpen} onOpenChange={setIsPreviewDialogOpen}>
+        <DialogContent className="max-w-4xl h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>{previewTitle}</DialogTitle>
+            <DialogDescription>
+              Preview of the exam form
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden">
+            <iframe
+              src={previewUrl}
+              className="w-full h-full border-0 rounded-md"
+              title={previewTitle}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsPreviewDialogOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              onClick={() => window.open(previewUrl, '_blank')}
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Open in New Tab
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Add Course Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Add New Course</DialogTitle>
             <DialogDescription>
               Create a new training course. Fill in the details below.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
             <div className="space-y-2">
               <Label htmlFor="add-name">Course Name *</Label>
               <Input
@@ -586,6 +870,46 @@ export default function CoursesPage() {
                   setFormData({ ...formData, name: e.target.value })
                 }
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="add-title">Course Title</Label>
+              <Input
+                id="add-title"
+                placeholder="Enter course title"
+                value={formData.title}
+                onChange={(e) =>
+                  setFormData({ ...formData, title: e.target.value })
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="add-serial">Serial Number</Label>
+                <Input
+                  id="add-serial"
+                  type="number"
+                  placeholder="e.g., 1"
+                  value={formData.serial_number}
+                  onChange={(e) =>
+                    setFormData({ ...formData, serial_number: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-pad">Serial Number Pad</Label>
+                <Input
+                  id="add-pad"
+                  type="number"
+                  placeholder="e.g., 6"
+                  value={formData.serial_number_pad}
+                  onChange={(e) =>
+                    setFormData({ ...formData, serial_number_pad: e.target.value })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Total digits for serial (e.g., 6 = 000001)
+                </p>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="add-description">Description</Label>
@@ -604,6 +928,7 @@ export default function CoursesPage() {
               <Input
                 id="add-fee"
                 type="number"
+                step="0.01"
                 placeholder="0.00"
                 value={formData.training_fee}
                 onChange={(e) =>
@@ -615,7 +940,10 @@ export default function CoursesPage() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setIsAddDialogOpen(false)}
+              onClick={() => {
+                setIsAddDialogOpen(false)
+                resetForm()
+              }}
               disabled={isSubmitting}
             >
               Cancel
@@ -627,16 +955,16 @@ export default function CoursesPage() {
         </DialogContent>
       </Dialog>
 
-       {/* Edit Course Dialog */}
+      {/* Edit Course Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit Course</DialogTitle>
             <DialogDescription>
               Update the course details below.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
             <div className="space-y-2">
               <Label htmlFor="edit-name">Course Name *</Label>
               <Input
@@ -653,7 +981,7 @@ export default function CoursesPage() {
               <Input
                 id="edit-title"
                 placeholder="Enter course title"
-                value={formData.title || ""}
+                value={formData.title}
                 onChange={(e) =>
                   setFormData({ ...formData, title: e.target.value })
                 }
@@ -665,8 +993,8 @@ export default function CoursesPage() {
                 <Input
                   id="edit-serial"
                   type="number"
-                  placeholder="00000"
-                  value={formData.serial_number || ""}
+                  placeholder="e.g., 1"
+                  value={formData.serial_number}
                   onChange={(e) =>
                     setFormData({ ...formData, serial_number: e.target.value })
                   }
@@ -677,12 +1005,15 @@ export default function CoursesPage() {
                 <Input
                   id="edit-pad"
                   type="number"
-                  placeholder="e.g. 6"
-                  value={formData.serial_number_pad || ""}
+                  placeholder="e.g., 6"
+                  value={formData.serial_number_pad}
                   onChange={(e) =>
                     setFormData({ ...formData, serial_number_pad: e.target.value })
                   }
                 />
+                <p className="text-xs text-muted-foreground">
+                  Total digits for serial (e.g., 6 = 000001)
+                </p>
               </div>
             </div>
             <div className="space-y-2">
@@ -702,6 +1033,7 @@ export default function CoursesPage() {
               <Input
                 id="edit-fee"
                 type="number"
+                step="0.01"
                 placeholder="0.00"
                 value={formData.training_fee}
                 onChange={(e) =>
@@ -713,7 +1045,10 @@ export default function CoursesPage() {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setIsEditDialogOpen(false)}
+              onClick={() => {
+                setIsEditDialogOpen(false)
+                resetForm()
+              }}
               disabled={isSubmitting}
             >
               Cancel
@@ -724,7 +1059,6 @@ export default function CoursesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
 
       {/* Delete Confirmation Alert */}
       <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
