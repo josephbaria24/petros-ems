@@ -23,14 +23,11 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "azure",
         options: {
-          redirectTo:
-            process.env.NODE_ENV === "development"
-              ? "http://localhost:3000/auth/callback"
-              : "https://tms.petros-global.com/auth/callback",
-          scopes: "openid profile email offline_access User.Read"
+          redirectTo: `${window.location.origin}/auth/callback`,
+          scopes: "openid profile email offline_access User.Read",
         },
       })
-
+      
       if (error) {
         setErrorMsg("SSO Login failed. Please try again.")
         console.error("OAuth error:", error)
