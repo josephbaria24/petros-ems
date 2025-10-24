@@ -1,10 +1,11 @@
+//components\app-header.tsx
 "use client"
 
 import * as React from "react"
 import { useTheme } from "next-themes"
 import { useRouter } from "next/navigation"
 import { Moon, Sun, Bell } from "lucide-react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { createClient } from "@/lib/supabase-client"
 
 import { fetchMicrosoftPhoto } from "@/lib/fetchMicrosoftPhoto"
 import {
@@ -25,7 +26,6 @@ import { Badge } from "@/components/ui/badge"
 
 export function AppHeader() {
   const { theme, setTheme } = useTheme()
-  const supabase = createClientComponentClient()
   const router = useRouter()
 
   const [mounted, setMounted] = React.useState(false)
@@ -34,6 +34,8 @@ export function AppHeader() {
   const [notifications, setNotifications] = React.useState<any[]>([])
 
   React.useEffect(() => {
+    const supabase = createClient()
+
     const fetchUserAndPhoto = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user)
@@ -48,7 +50,7 @@ export function AppHeader() {
     const fetchNotifications = async () => {
       const { data, error } = await supabase
         .from("notifications")
-        .select("id, title, read, created_at")
+        .select("id, title, read, created_at, trainee_name, photo_url")
         .order("created_at", { ascending: false })
   
       if (!error) setNotifications(data || [])
@@ -83,13 +85,24 @@ export function AppHeader() {
   
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push("/login")
+    try {
+      await fetch("/api/logout", {
+        method: "POST",
+        headers: { "Cache-Control": "no-store" },
+      })
+      
+      // Force redirect to login
+      window.location.href = "/login"
+    } catch (error) {
+      console.error("Logout error:", error)
+      router.push("/login")
+    }
   }
-
+  
   const unreadCount = notifications.filter((n) => !n.read).length
 
   const markAsRead = async (id: string) => {
+    const supabase = createClient()
     await supabase
       .from("notifications")
       .update({ read: true })
@@ -151,34 +164,33 @@ export function AppHeader() {
             <DropdownMenuSeparator />
             {notifications.length === 0 ? (
               <DropdownMenuItem disabled>No notifications</DropdownMenuItem>
-            ) : notifications.map((note) => (
-              <DropdownMenuItem
-                key={note.id}
-                onClick={() => markAsRead(note.id)}
-                className="flex items-start space-x-3 cursor-pointer py-2"
-              >
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={note.photo_url || "/placeholder.svg"} alt={note.trainee_name || "User"} />
-                  <p>{note.trainee_name}</p>
-<p>{note.title}</p>
-                  <AvatarFallback>
-                    {note.trainee_name
-                      ?.split(" ")
-                      .map((n: string) => n[0])
-                      .join("")
-                      .substring(0, 2)
-                      .toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex flex-col">
-                  <p className={`text-sm ${note.read ? "text-muted-foreground" : "font-medium"}`}>
-                    {note.trainee_name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{note.title}</p>
-                </div>
-              </DropdownMenuItem>
-            ))
-            }
+            ) : (
+              notifications.map((note) => (
+                <DropdownMenuItem
+                  key={note.id}
+                  onClick={() => markAsRead(note.id)}
+                  className="flex items-start space-x-3 cursor-pointer py-2"
+                >
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={note.photo_url || "/placeholder.svg"} alt={note.trainee_name || "User"} />
+                    <AvatarFallback>
+                      {note.trainee_name
+                        ?.split(" ")
+                        .map((n: string) => n[0])
+                        .join("")
+                        .substring(0, 2)
+                        .toUpperCase() || "?"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex flex-col">
+                    <p className={`text-sm ${note.read ? "text-muted-foreground" : "font-medium"}`}>
+                      {note.trainee_name || "Unknown"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{note.title}</p>
+                  </div>
+                </DropdownMenuItem>
+              ))
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
 

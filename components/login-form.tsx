@@ -1,22 +1,23 @@
 "use client"
 
 import { useState } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { createClient } from "@/lib/supabase-client"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { FieldGroup, FieldSeparator } from "@/components/ui/field"
 
 export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
   const router = useRouter()
-  const supabase = createClientComponentClient()
   const [errorMsg, setErrorMsg] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
 
   const handleMicrosoftLogin = async () => {
     setErrorMsg("")
+    setIsLoading(true)
 
     try {
+      const supabase = createClient()
       await supabase.auth.signOut() // clear old session
 
       const { error } = await supabase.auth.signInWithOAuth({
@@ -25,7 +26,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
           redirectTo:
             process.env.NODE_ENV === "development"
               ? "http://localhost:3000/auth/callback"
-              : "https://tms.petros-global.com/auth/callback", // change to your prod domain
+              : "https://tms.petros-global.com/auth/callback",
           scopes: "openid profile email offline_access User.Read"
         },
       })
@@ -33,10 +34,13 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
       if (error) {
         setErrorMsg("SSO Login failed. Please try again.")
         console.error("OAuth error:", error)
+        setIsLoading(false)
       }
+      // If no error, user will be redirected to Microsoft login
     } catch (err) {
       console.error("Unexpected error:", err)
       setErrorMsg("Unexpected error occurred. Please contact support.")
+      setIsLoading(false)
     }
   }
 
@@ -45,7 +49,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
       <Card>
         <CardHeader className="text-center">
           <div className="relative text-center text-sm">
-            <img src="/petroslogo.png" alt="Petrosphere Logo" className="mx-auto h-10" />
+            <img src="/trans-logo-dark.png" alt="Petrosphere Logo" className="mx-auto h-10" />
           </div>
           <CardTitle className="text-xl">Sign in to your account</CardTitle>
         </CardHeader>
@@ -56,14 +60,19 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
               className="w-full flex items-center gap-2 cursor-pointer"
               type="button"
               onClick={handleMicrosoftLogin}
+              disabled={isLoading}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 23 23" width="20" height="20">
-                <path fill="#F25022" d="M1 1h10v10H1z" />
-                <path fill="#7FBA00" d="M12 1h10v10H12z" />
-                <path fill="#00A4EF" d="M1 12h10v10H1z" />
-                <path fill="#FFB900" d="M12 12h10v10H12z" />
-              </svg>
-              Login with Microsoft
+              {isLoading ? (
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current"></div>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 23 23" width="20" height="20">
+                  <path fill="#F25022" d="M1 1h10v10H1z" />
+                  <path fill="#7FBA00" d="M12 1h10v10H12z" />
+                  <path fill="#00A4EF" d="M1 12h10v10H1z" />
+                  <path fill="#FFB900" d="M12 12h10v10H12z" />
+                </svg>
+              )}
+              {isLoading ? "Redirecting..." : "Login with Microsoft"}
             </Button>
 
             {errorMsg && (

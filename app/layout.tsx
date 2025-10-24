@@ -16,6 +16,9 @@ export const metadata: Metadata = {
   title: "Training Management System",
   description: "Professional training scheduler and management platform",
   generator: "v0.app",
+  icons: {
+    icon: "/favicon.ico",
+  },
 }
 
 export default function RootLayout({

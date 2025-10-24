@@ -1,12 +1,13 @@
+//dashboard/app.tsx
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { createClient } from "@/lib/supabase-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Calendar, Users, BookOpen, TrendingUp } from "lucide-react"
 
 export default function DashboardPage() {
-  const supabase = createClientComponentClient()
+  const supabase = createClient()
 
   const [stats, setStats] = useState([
     { title: "Total Participants", value: "—", change: "", icon: Users, color: "text-primary" },
