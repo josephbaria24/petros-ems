@@ -619,7 +619,7 @@ export default function CoursesPage() {
 
       {/* View Course Dialog */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="lg:w-[40vw] sm:w-[90vw]">
           <DialogHeader>
             <DialogTitle>Course Details</DialogTitle>
             <DialogDescription>
@@ -741,7 +741,7 @@ export default function CoursesPage() {
 
       {/* Manage Exam Links Dialog */}
       <Dialog open={isExamLinkDialogOpen} onOpenChange={setIsExamLinkDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="lg:w-[40vw] sm:w-[90vw]">
           <DialogHeader>
             <DialogTitle>Manage Exam Links</DialogTitle>
             <DialogDescription>
@@ -819,7 +819,7 @@ export default function CoursesPage() {
 
       {/* Preview Dialog */}
       <Dialog open={isPreviewDialogOpen} onOpenChange={setIsPreviewDialogOpen}>
-        <DialogContent className="max-w-4xl h-[80vh]">
+        <DialogContent className="lg:w-[40vw] sm:w-[90vw] h-[50vh]">
           <DialogHeader>
             <DialogTitle>{previewTitle}</DialogTitle>
             <DialogDescription>
@@ -852,7 +852,7 @@ export default function CoursesPage() {
 
       {/* Add Course Dialog */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="lg:w-[40vw] sm:w-[90vw]">
           <DialogHeader>
             <DialogTitle>Add New Course</DialogTitle>
             <DialogDescription>
@@ -957,7 +957,7 @@ export default function CoursesPage() {
 
       {/* Edit Course Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="lg:w-[40vw] sm:w-[90vw]">
           <DialogHeader>
             <DialogTitle>Edit Course</DialogTitle>
             <DialogDescription>

@@ -123,3 +123,37 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+
+@keyframes wave {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@layer utilities {
+  .animate-wave {
+    animation: wave 5s ease infinite;
+    background-size: 200% 200%;
+  }
+}
+
+
+
+@layer utilities {
+  .bg-banded {
+    background: linear-gradient(
+      to bottom,
+      #0d0d52 0%,      /* dark navy */
+      #0d0d52 10%,     /* solid dark blue top band */
+      #5d5d86 10%,     /* slate band start */
+      #5d5d86 18%,     /* slate band end */
+      #ffffff 18%,     /* white middle */
+      #ffffff 85%,     
+      #ffec80 80%,     /* pale yellow band */
+      #fcd535 92%,     /* golden yellow band */
+      #fcd535 100%     /* bottom */
+    );
+  }
+}

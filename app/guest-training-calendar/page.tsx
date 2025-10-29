@@ -1,13 +1,15 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, Calendar, List, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar, List, X, Sun, Moon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { supabase } from '@/lib/supabase-client'
 import Image from "next/image"
 import { useRouter } from "next/navigation"
+import { useTheme } from 'next-themes'
+import { CheckCircle, Clock, RefreshCcw } from 'lucide-react'
 
 type ScheduleEvent = {
   id: string
@@ -29,6 +31,7 @@ export default function TrainingCalendar() {
   const [showModal, setShowModal] = useState(false)
   const [hoveredEventId, setHoveredEventId] = useState<string | null>(null)
   const router = useRouter()
+  const { theme, setTheme } = useTheme()
   useEffect(() => {
     fetchSchedules()
   }, [])
@@ -395,6 +398,18 @@ export default function TrainingCalendar() {
         <div className="flex items-center gap-4">
           <div className="flex gap-2 bg-muted rounded-lg p-1">
             <Button
+              className="cursor-pointer"
+              variant="ghost"
+              size="sm"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            >
+              {theme === "dark" ? (
+                <Sun className="h-3 w-3" />
+              ) : (
+                <Moon className="h-3 w-3" />
+              )}
+            </Button>
+            <Button
               variant={viewType === 'calendar' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setViewType('calendar')}
@@ -474,57 +489,71 @@ export default function TrainingCalendar() {
         </Card>
       )}
 
-      {showModal && selectedEvent && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeModal}>
-          <div className="bg-card rounded-lg max-w-lg w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b flex items-start justify-between">
-              <h2 className="text-xl font-bold">{selectedEvent.course}</h2>
-              <Button variant="ghost" size="icon" onClick={closeModal}>
-                <X className="w-5 h-5" />
+{showModal && selectedEvent && (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeModal}>
+    <div className="relative bg-black rounded-2xl overflow-hidden max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+
+      {/* Cover Image with Overlays */}
+      <div className="relative w-full h-[580px]">
+        {/* Image */}
+        <Image
+          src={`/course-covers/${selectedEvent.course.toLowerCase()}.png`}
+          onError={(e) => {
+            e.currentTarget.src = '/course-covers/default.png'
+          }}
+          alt={`${selectedEvent.course} cover`}
+          fill
+          className="object-cover"
+        />
+
+        {/* Close Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={closeModal}
+          className="absolute top-2 right-2 z-10 bg-white/80 hover:bg-white rounded-full cursor-pointer"
+        >
+          <X className="w-5 h-5 text-black" />
+        </Button>
+
+        {/* Text Overlay with Enroll Button */}
+        <div className="absolute bottom-0 left-0 w-full p-5 bg-gradient-to-t from-black/90 via-black/70 to-transparent text-white space-y-0">
+          <h2 className="text-xl font-bold">{selectedEvent.course}</h2>
+          <p className="text-sm">{selectedEvent.branch === 'online' ? 'Online' : selectedEvent.branch}</p>
+          <p className="text-sm">
+            {selectedEvent.startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} -{' '}
+            {selectedEvent.endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+          </p>
+{/* Status with Icon */}
+<Badge className="text-white inline-flex items-center gap-1" style={{ backgroundColor: getStatusColor(selectedEvent) }}>
+  {getStatusLabel(selectedEvent) === 'Finished' && <CheckCircle className="w-4 h-4" />}
+  {getStatusLabel(selectedEvent) === 'Ongoing' && <RefreshCcw className="w-4 h-4" />}
+  {getStatusLabel(selectedEvent) === 'Upcoming' && <Clock className="w-4 h-4" />}
+  {getStatusLabel(selectedEvent)}
+</Badge>
+
+          <div className="mt-4">
+            {new Date() > new Date(selectedEvent.endDate) ? (
+              <Button variant="outline"  disabled className="w-full text-white">
+                Enrollment Closed
               </Button>
-            </div>
-            
-            <div className="p-6 space-y-4">
-              <div>
-                <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Course Name</div>
-                <div className="text-sm">{selectedEvent.course}</div>
-              </div>
-              
-              <div>
-                <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Location</div>
-                <div className="text-sm">{selectedEvent.branch === 'online' ? 'Online' : selectedEvent.branch}</div>
-              </div>
-              
-              <div>
-                <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Schedule</div>
-                <div className="text-sm">
-                  {selectedEvent.startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} - {selectedEvent.endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                </div>
-              </div>
-              
-              <div>
-                <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Status</div>
-                <Badge 
-                  className="text-white"
-                  style={{ backgroundColor: getStatusColor(selectedEvent) }}
-                >
-                  {getStatusLabel(selectedEvent)}
-                </Badge>
-              </div>
-            </div>
-            
-            <div className="p-6 border-t flex gap-3 justify-end">
-              <Button variant="secondary" onClick={closeModal}>Close</Button>
-              {selectedEvent.status !== 'finished' && (
-                <Button onClick={() => router.push(`/guest-training-registration?schedule_id=${selectedEvent.id}`)}>
-                  Enroll Now
-                </Button>
-              
-              )}
-            </div>
+            ) : (
+              <Button
+                className="w-full bg-white text-black hover:bg-gray-200 cursor-pointer"
+                onClick={() => router.push(`/guest-training-registration?schedule_id=${selectedEvent.id}`)}
+              >
+                Enroll Now
+              </Button>
+            )}
           </div>
         </div>
-      )}
+
+      </div>
+
+    </div>
+  </div>
+)}
+
     </div>
   )
 }

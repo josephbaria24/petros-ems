@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
+import Link from "next/link"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -285,11 +286,9 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           <div className="space-y-2">
             <div className="font-medium text-card-foreground">{row.getValue("course")}</div>
             <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
-              onClick={() => window.location.href = `/submissions?scheduleId=${row.original.id}`}
+            <Link
+              href={`/submissions?scheduleId=${row.original.id}`}
+              className="flex items-center gap-1 text-xs hover:bg-muted rounded-md px-2 py-1.5 cursor-pointer"
             >
               <FileText className="h-3 w-3" />
               Submission
@@ -298,7 +297,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                   {submissionCount}
                 </Badge>
               )}
-            </Button>
+            </Link>
+
 
             <Button
               variant="ghost"

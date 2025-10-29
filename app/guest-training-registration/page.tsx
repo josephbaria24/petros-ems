@@ -7,9 +7,10 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Card, CardContent } from "@/components/ui/card"
-import { Check, User, Briefcase, FileCheck, CheckCircle2, Upload, ArrowLeft, CreditCard, Calendar, ClipboardList } from "lucide-react"
+import { Check, User, Briefcase, Upload, ArrowLeft, CreditCard, Calendar, CheckCircle2, Crop, X } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { supabase } from "@/lib/supabase-client"
 import { toast } from "sonner"
 
@@ -29,6 +30,7 @@ export default function GuestTrainingRegistration() {
   const [course, setCourse] = useState<any>(null)
   const [regions, setRegions] = useState<{ code: string; name: string }[]>([])
   const [cities, setCities] = useState<{ code: string; name: string }[]>([])
+  const [paymentMethod, setPaymentMethod] = useState("BPI")
 
   useEffect(() => {
     const fetchCourseAndSchedule = async () => {
@@ -155,42 +157,143 @@ export default function GuestTrainingRegistration() {
     setUploading(true);
   
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const previewUrl = reader.result as string;
-      if (field === "id_picture_url") setIdPreview(previewUrl);
-      if (field === "picture_2x2_url") setPhotoPreview(previewUrl);
-    };
-    reader.readAsDataURL(file);
   
-    try {
-      const formData = new FormData();
-      formData.append("image", file);
+      if (field === "picture_2x2_url") {
+        // Direct upload for 2x2 photo (no cropping)
+        setPhotoPreview(previewUrl);
+      } else if (field === "id_picture_url") {
+        setIdPreview(previewUrl);
+      }
   
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
+      try {
+        const formData = new FormData();
+        formData.append("image", file);
   
-      const result = await res.json();
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+        });
   
-      if (res.ok) {
-        setForm((prevForm: any) => {
-          const updatedForm = {
+        const result = await res.json();
+  
+        if (res.ok) {
+          setForm((prevForm: any) => ({
             ...prevForm,
             [field]: result.url,
-          };
-          return updatedForm;
-        });
-      } else {
-        toast.error("Upload failed: " + result.error);
+          }));
+          toast.success("Image uploaded successfully!");
+        } else {
+          toast.error("Upload failed: " + result.error);
+        }
+      } catch (err) {
+        console.error("Upload error:", err);
+        toast.error("Unexpected upload error.");
+      } finally {
+        setUploading(false);
       }
-    } catch (err) {
-      console.error("Upload error:", err);
-      toast.error("Unexpected upload error.");
-    } finally {
-      setUploading(false);
-    }
+    };
+    reader.readAsDataURL(file);
   };
+  
+
+  // const handleCrop = async () => {
+  //   if (!imageToCrop) return;
+  
+  //   const canvas = document.createElement('canvas');
+  //   const ctx = canvas.getContext('2d');
+  //   const img = new Image();
+  
+  //   img.onload = async () => {
+  //     const cropSize = 300;
+  //     canvas.width = cropSize;
+  //     canvas.height = cropSize;
+  
+  //     // Get the actual rendered image size from the DOM
+  //     const container = document.querySelector("#crop-image-container img") as HTMLImageElement;
+  //     if (!container) return;
+  
+  //     const renderedWidth = container.clientWidth;
+  //     const renderedHeight = container.clientHeight;
+  
+  //     // Calculate scale based on rendered vs actual image
+  //     const scaleX = img.width / renderedWidth;
+  //     const scaleY = img.height / renderedHeight;
+  
+  //     const cropX = cropPosition.x * scaleX;
+  //     const cropY = cropPosition.y * scaleY;
+  //     const cropW = cropSize * scaleX;
+  //     const cropH = cropSize * scaleY;
+  
+  //     ctx?.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropSize, cropSize);
+  
+  //     const croppedImage = canvas.toDataURL('image/jpeg', 0.9);
+  //     setPhotoPreview(croppedImage);
+  
+  //     // Upload logic
+  //     setUploading(true);
+  //     try {
+  //       const blob = await (await fetch(croppedImage)).blob();
+  //       const file = new File([blob], "2x2-photo.jpg", { type: "image/jpeg" });
+  //       const formData = new FormData();
+  //       formData.append("image", file);
+  
+  //       const res = await fetch("/api/upload", {
+  //         method: "POST",
+  //         body: formData,
+  //       });
+  
+  //       const result = await res.json();
+  
+  //       if (res.ok) {
+  //         setForm((prevForm: any) => ({
+  //           ...prevForm,
+  //           picture_2x2_url: result.url,
+  //         }));
+  //         toast.success("2x2 photo uploaded successfully!");
+  //       } else {
+  //         toast.error("Upload failed: " + result.error);
+  //       }
+  //     } catch (err) {
+  //       console.error("Upload error:", err);
+  //       toast.error("Unexpected upload error.");
+  //     } finally {
+  //       setUploading(false);
+  //     }
+  
+  //     setShowCropDialog(false);
+  //     setImageToCrop(null);
+  //     setCropPosition({ x: 0, y: 0 });
+  //   };
+  
+  //   img.src = imageToCrop;
+  // };
+  
+  // const handleMouseDown = (e: React.MouseEvent) => {
+  //   setIsDragging(true);
+  //   setDragStart({ x: e.clientX - cropPosition.x, y: e.clientY - cropPosition.y });
+  // };
+
+  // const handleMouseMove = (e: React.MouseEvent) => {
+  //   if (!isDragging) return;
+    
+  //   const newX = e.clientX - dragStart.x;
+  //   const newY = e.clientY - dragStart.y;
+    
+  //   // Constrain within bounds (assuming container is 500x400 and crop box is 300x300)
+  //   const maxX = 200;
+  //   const maxY = 100;
+    
+  //   setCropPosition({
+  //     x: Math.max(0, Math.min(newX, maxX)),
+  //     y: Math.max(0, Math.min(newY, maxY))
+  //   });
+  // };
+
+  // const handleMouseUp = () => {
+  //   setIsDragging(false);
+  // };
 
   const handleSubmit = async () => {
     toast.loading("Submitting registration...");
@@ -204,6 +307,7 @@ export default function GuestTrainingRegistration() {
     }
   
     try {
+      // 1️⃣ Get course linked to schedule
       const { data: schedule, error: scheduleError } = await supabase
         .from("schedules")
         .select("course_id")
@@ -217,30 +321,49 @@ export default function GuestTrainingRegistration() {
   
       const courseId = schedule.course_id;
   
-      const payload = {
+      // 2️⃣ Fetch training fee
+      const { data: courseData, error: feeError } = await supabase
+        .from("courses")
+        .select("training_fee")
+        .eq("id", courseId)
+        .single();
+  
+      if (feeError) console.error("Error fetching course fee:", feeError);
+  
+      const trainingFee = courseData?.training_fee || 0;
+  
+      // 3️⃣ Create trainee record (store payment summary info here)
+      const trainingPayload = {
         ...form,
         schedule_id: scheduleId,
         course_id: courseId,
         status: "pending",
+        payment_method: paymentMethod,            // ✅ record chosen method
+        payment_status:
+          paymentMethod === "COUNTER" ? "pending" : "awaiting receipt",
+        amount_paid: 0,                           // ✅ start at 0
       };
   
       const { data: insertedTraining, error: insertError } = await supabase
         .from("trainings")
-        .insert([payload])
+        .insert([trainingPayload])
         .select("id")
         .single();
   
       if (insertError || !insertedTraining) {
-        console.error("Insert error:", insertError);
-        toast.error("Submission failed.");
+        console.error("Insert training error:", insertError);
+        toast.error("Failed to submit registration.");
         return;
       }
   
+      const trainingId = insertedTraining.id;
+  
+      // 4️⃣ Create booking summary record
       const { error: bookingError } = await supabase
         .from("booking_summary")
         .insert([
           {
-            training_id: insertedTraining.id,
+            training_id: trainingId,
             reference_number: bookingReference,
           },
         ]);
@@ -250,7 +373,8 @@ export default function GuestTrainingRegistration() {
         toast.error("Failed to create booking summary.");
         return;
       }
-  
+
+      // 5️⃣ Success feedback
       toast.dismiss();
       toast.success("Registration submitted successfully!", {
         duration: 3000,
@@ -262,7 +386,7 @@ export default function GuestTrainingRegistration() {
       toast.error("Something went wrong.");
     }
   };
-
+  
   const isEmployed = form.employment_status === "Employed"
   
   const steps = [
@@ -273,25 +397,26 @@ export default function GuestTrainingRegistration() {
   ]
 
   return (
-    <div className="min-h-screen bg-background flex">
-      <div className="hidden lg:flex lg:w-[400px] rounded-2xl bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 text-black p-8 flex-col">
-        <div className="mb-12">
+    <div className="fixed inset-0 bg-gradient-to-br from-orange-50 via-white to-emerald-50 flex items-center justify-center p-8">
+      <div className="w-full max-w-7xl h-full flex gap-8">
+      <div className="hidden lg:flex lg:w-[45%] rounded-3xl bg-banded text-black p-8 flex-col backdrop-blur-sm shadow-[0_20px_60px_rgba(0,0,0,0.3)] border-0">
+        <div className="mb-10">
           <h1 className="text-2xl font-bold text-white">Training Registration</h1>
         </div>
 
-        <div className="space-y-0 flex-1">
+        <div className="space-y-0 flex-1 pt-10">
           {steps.map((s, i) => {
             const Icon = s.icon
             const isActive = step === s.id
             const isCompleted = s.completed
             
             return (
-              <div key={s.id} className="flex items-start gap-4">
+              <div key={s.id} className="flex items-start gap-4 ">
                 <div className="flex flex-col items-center">
                   <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border-2 transition-all ${
                     isCompleted ? "bg-emerald-500 border-emerald-500" : 
-                    isActive ? "bg-white border-slate-500" : 
-                    "bg-slate-400 border-slate-600"
+                    isActive ? "bg-primary border-slate-500 text-white" : 
+                    "bg-slate-300 border-slate-400"
                   }`}>
                     {isCompleted ? (
                       <Check className="w-5 h-5" />
@@ -307,7 +432,7 @@ export default function GuestTrainingRegistration() {
                 </div>
                 
                 <div className="flex-1 pt-2">
-                  <h3 className={`font-semibold text-sm ${isActive ? "text-white" : "text-slate-400"}`}>
+                  <h3 className={`font-semibold text-sm ${isActive ? "text-primary" : "text-slate-600"}`}>
                     {s.title}
                   </h3>
                   <p className="text-xs text-slate-500 mt-1">{s.subtitle}</p>
@@ -317,15 +442,15 @@ export default function GuestTrainingRegistration() {
           })}
         </div>
 
-        <div className="mt-2 pt-0 border-t border-slate-700">
-          <h3 className="font-semibold mb-2 text-white">Complete your registration!</h3>
-          <p className="text-sm text-slate-400">Explore many different options we offer after your trial.</p>
+        <div className=" border-0 p-3 rounded-2xl">
+          <h3 className="font-semibold mb-2 text-primary">Complete your registration!</h3>
+          <p className="text-sm text-slate-600">Start your training career now.</p>
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col bg-white/70 backdrop-blur-xl rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.3)] border border-white/40 overflow-hidden">
         {step > 0 && (
-          <div className=" p-2">
+          <div className="p-2">
             <Button 
               variant="ghost"
               onClick={() => {
@@ -343,42 +468,59 @@ export default function GuestTrainingRegistration() {
           </div>
         )}
 
-        <div className="flex-1 overflow-auto p-6 lg:p-5 flex items-center justify-center">
-          <div className="w-full max-w-2xl">
+        <div className="flex-1 overflow-auto p-6 lg:p-8 flex items-center justify-center">
+          <div className="w-full max-w-2xl overflow-auto max-h-full">
             
             {step === 0 && (
               <div className="text-center space-y-8">
-                <div className="inline-flex w-auto h-auto bg-slate-800/80 p-2 rounded-xl items-center justify-center">
-                    <img src="/trans-logo.png" alt="Logo" className="w-full h-10 object-contain" />
+                  <div className="inline-flex px-4 py-2 from-slate-800 to-slate-700 ">
+                    <img src="/trans-logo-dark.png" alt="logo" className="w-60 h-auto" />
+                  </div>
+                <div className="flex flex-col items-center space-y-6">
+                  <img 
+                    src="/registration.svg" 
+                    alt="Registration" 
+                    className="w-64 h-64 object-contain"
+                  />
+                  
+
+
                 </div>
 
-                <div>
-                  <h2 className="text-4xl font-bold text-gray-900 mb-3">Welcome</h2>
-                  <p className="text-gray-600">Hi there, please fill in all required fields and click submit button</p>
+                <div className="space-y-3">
+                <h2 className="text-5xl font-bold mb-3 bg-gradient-to-r from-blue-700 via-slate-800 to-yellow-600 text-transparent bg-clip-text animate-wave">
+                    Welcome!
+                  </h2>
+                  <p className="text-lg text-gray-600 max-w-md mx-auto">
+                    Begin your training journey with us. Please complete all required fields to get started.
+                  </p>
                 </div>
                 
-                <Card className="border shadow-sm">
-                  <CardContent className="p-6 space-y-4">
-                    <Button 
-                      onClick={() => setStep(1)}
-                      variant="ghost"
-                      className="w-full flex items-center gap-4 p-4 h-auto justify-start"
-                    >
-                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <User className="w-5 h-5 text-blue-600" />
-                      </div>
-                      <span className="font-medium text-gray-900">Start your registration</span>
-                    </Button>
-                  </CardContent>
-                </Card>
+                <div className="max-w-md mx-auto">
+                  <Button 
+
+                  variant={"outline"}
+                    onClick={() => setStep(1)}
+                    size="lg"
+                    className="w-full border-1   py-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 text-lg font-semibold cursor-pointer"
+                  >
+                    <div className="flex items-center justify-center gap-3">
+                      <User className="w-6 h-6" />
+                      <span>Start Your Registration</span>
+                    </div>
+                  </Button>
+                  
+                  <p className="text-sm text-gray-500 mt-4">
+                    Takes approximately 5 minutes to complete
+                  </p>
+                </div>
               </div>
             )}
 
 {step === 1 && (
   <div className="space-y-2">
     <div className="flex items-center justify-between mb-2">
-      <h2 className="text-3xl font-bold ">Personal Details</h2>
-      
+      <h2 className="text-3xl font-bold">Personal Details</h2>
     </div>
     <p className="text-gray-500">Tell us a bit about yourself</p>
                 
@@ -465,23 +607,6 @@ export default function GuestTrainingRegistration() {
                 <div className="flex justify-end pt-4">
                   <Button 
                     onClick={() => {
-                      const missingFields = []
-                      if (!form.first_name) missingFields.push("First Name")
-                      if (!form.last_name) missingFields.push("Last Name")
-                      if (!form.phone_number) missingFields.push("Mobile Number")
-                      if (!form.email) missingFields.push("Email Address")
-                      if (!form.gender) missingFields.push("Gender")
-                      if (!form.age) missingFields.push("Age")
-                      if (!form.mailing_street) missingFields.push("Street Address")
-                      if (!form.mailing_city) missingFields.push("City")
-                      if (!form.mailing_province) missingFields.push("Province")
-                      if (!form.employment_status) missingFields.push("Employment Status")
-                      
-                      if (missingFields.length > 0) {
-                        toast.error(`Please fill in: ${missingFields.join(", ")}`)
-                        return
-                      }
-                      
                       if (form.employment_status === "Unemployed") {
                         setStep(3)
                       } else {
@@ -567,17 +692,7 @@ export default function GuestTrainingRegistration() {
 
                 <div className="flex justify-end pt-4">
                   <Button 
-                    onClick={() => {
-                      const missingFields = []
-                      if (!form.company_region) missingFields.push("Region")
-                      if (!form.company_city) missingFields.push("City / Municipality")
-                      
-                      if (missingFields.length > 0) {
-                        toast.error(`Please fill in: ${missingFields.join(", ")}`)
-                        return
-                      }
-                      setStep(3)
-                    }} 
+                    onClick={() => setStep(3)} 
                     size="lg" 
                     className="bg-slate-900 hover:bg-slate-700 cursor-pointer"
                   >
@@ -642,7 +757,14 @@ export default function GuestTrainingRegistration() {
                       <label htmlFor="picture_2x2" className="cursor-pointer block">
                         {photoPreview ? (
                           <div className="space-y-3">
-                            <img src={photoPreview} alt="Photo Preview" className="w-full h-40 object-cover rounded-lg" />
+                            <div className="relative w-full aspect-[1/1] rounded-lg overflow-hidden">
+                                <img 
+                                  src={photoPreview} 
+                                  alt="Photo Preview" 
+                                  className="w-full h-full object-cover rounded-lg" 
+                                />
+                              </div>
+
                             <div className="flex items-center justify-center gap-2 text-emerald-600">
                               <Check className="w-4 h-4" />
                               <span className="text-sm font-medium">Uploaded</span>
@@ -664,23 +786,7 @@ export default function GuestTrainingRegistration() {
 
                 <div className="flex justify-end pt-4">
                   <Button 
-                    onClick={() => {
-                      const missingFiles = []
-                      if (!form.id_picture_url && !idPreview) missingFiles.push("Valid ID")
-                      if (!form.picture_2x2_url && !photoPreview) missingFiles.push("2x2 Photo")
-                      
-                      if (missingFiles.length > 0) {
-                        toast.error(`Please upload: ${missingFiles.join(", ")}`)
-                        return
-                      }
-                      
-                      if (uploading) {
-                        toast.error("Please wait for uploads to complete")
-                        return
-                      }
-                      
-                      setStep(4)
-                    }} 
+                    onClick={() => setStep(4)} 
                     size="lg" 
                     className="bg-slate-900 hover:bg-slate-700 cursor-pointer"
                     disabled={uploading}
@@ -766,10 +872,8 @@ export default function GuestTrainingRegistration() {
                                 onClick={() => {
                                   if (couponCode === "PETRO10") {
                                     setDiscount(0.1 * (course?.training_fee || 0))
-                                    toast.success("Coupon applied: 10% discount")
                                   } else {
                                     setDiscount(0)
-                                    toast.error("Invalid coupon code")
                                   }
                                 }}
                                 variant="outline"
@@ -777,6 +881,77 @@ export default function GuestTrainingRegistration() {
                               >
                                 Apply
                               </Button>
+                            </div>
+                          </div>
+                        </fieldset>
+                        <fieldset className="border border-gray-300 rounded-md px-4 pt-4 pb-2 bg-slate-50 relative">
+                          <legend className="text-sm font-medium px-2 text-gray-700 flex items-center gap-1">
+                            <CreditCard className="w-4 h-4 text-gray-500" />
+                            Payment Method
+                          </legend>
+
+                          <div className="space-y-2 mt-2">
+                            <RadioGroup
+                              value={paymentMethod}
+                              onValueChange={(val) => setPaymentMethod(val)}
+                              className="flex flex-col gap-2"
+                            >
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="BPI" id="pm-bpi" />
+                                <img src="/bpi.svg" alt="BPI" className="w-8 h-8" />
+                                <Label htmlFor="pm-bpi" className="cursor-pointer">BPI Bank Deposit/Transfer</Label>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="GCASH" id="pm-gcash" />
+                                <img src="/gcash.jpeg" alt="GCash" className="w-8 h-8 rounded-sm" />
+                                <Label htmlFor="pm-gcash" className="cursor-pointer">GCash</Label>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <RadioGroupItem value="COUNTER" id="pm-counter" />
+                                <img src="/otc.svg" alt="Over the Counter" className="w-8 h-8" />
+                                <Label htmlFor="pm-counter" className="cursor-pointer">Pay Over the Counter</Label>
+                              </div>
+                            </RadioGroup>
+
+                            <div className="text-sm text-gray-700 mt-4 border-t pt-4">
+                              {paymentMethod === "BPI" && (
+                                <div>
+                                  <p className="font-medium text-gray-900 mb-1">BPI Bank Deposit/Transfer</p>
+                                  <p>Make your payment via deposit at any nearest BPI branches or via bank transfer with the following details:</p>
+                                  <p className="mt-2"><strong>Account Name:</strong> PETROSPHERE INCORPORATED</p>
+                                  <p><strong>Account Number:</strong> 3481 0038 99</p>
+                                </div>
+                              )}
+
+                              {paymentMethod === "GCASH" && (
+                                <div>
+                                  <p className="font-medium text-gray-900 mb-1">GCash</p>
+                                  <ol className="list-decimal ml-5 space-y-1">
+                                    <li>Login in your GCash App and tap Bank Transfer.</li>
+                                    <li>Select BPI from the list of banks.</li>
+                                    <li>Enter the corresponding training fee and the following details:</li>
+                                    <ul className="list-disc ml-6">
+                                      <li><strong>Account Name:</strong> PETROSPHERE INCORPORATED</li>
+                                      <li><strong>Account Number:</strong> 3481 0038 99</li>
+                                    </ul>
+                                    <li>Tap send money, review the details, then tap confirm to complete your transaction.</li>
+                                    <li>Download receipt and upload it by clicking the submit payment button found below this email.</li>
+                                  </ol>
+                                  <p className="mt-2">If you have questions, feel free to contact us at 0917 708 7994.</p>
+                                </div>
+                              )}
+
+                              {paymentMethod === "COUNTER" && (
+                                <div>
+                                  <p className="font-medium text-gray-900 mb-1">Pay Over the Counter</p>
+                                  <p>To process your payment, drop by the office at:</p>
+                                  <p className="mt-2">
+                                    Unit 305 3F, Trigold Business Park,<br />
+                                    Barangay San Pedro National Highway,<br />
+                                    Puerto Princesa City, 5300 Palawan, Philippines
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </fieldset>
@@ -924,28 +1099,14 @@ export default function GuestTrainingRegistration() {
                       <Button
                         style={{ backgroundColor: '#059669', color: 'white' }}
                         onClick={() => {
-                          const element = document.getElementById('summary-download');
-                          if (element) {
-                            import('html2canvas').then((html2canvas) => {
-                              html2canvas.default(element, {
-                                scale: 2,
-                                backgroundColor: '#ffffff'
-                              }).then((canvas) => {
-                                const link = document.createElement('a');
-                                link.download = `booking-${bookingReference}.png`;
-                                link.href = canvas.toDataURL();
-                                link.click();
-                              });
-                            });
-                          }
+                          alert('Download feature - would save as image in production')
                         }}
                       >
                         Download Summary
                       </Button>
-                
                       <Button
                         variant="outline"
-                        onClick={() => window.location.href = "https://petrosphere.com.ph/"}
+                        onClick={() => window.location.href = 'https://petrosphere.com.ph'}
                       >
                         Return to Homepage
                       </Button>
@@ -979,6 +1140,7 @@ export default function GuestTrainingRegistration() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </div>
     </div>
   )
 }

@@ -9,6 +9,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  CalendarCheck,
+  CalendarCheckIcon,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -41,10 +43,15 @@ const menuItems = [
     href: "/courses",
   },
   {
-    title: "Submissions",
-    icon: FileText,
-    href: "/submissions",
+    title: "Event Management",
+    icon: CalendarCheckIcon,
+    href: "/event-management",
   },
+  // {
+  //   title: "Submissions",
+  //   icon: FileText,
+  //   href: "/submissions",
+  // },
 ]
 
 export function AppSidebar() {

@@ -33,6 +33,7 @@ interface Trainee {
   middle_initial?: string
   picture_2x2_url?: string
   schedule_id: string
+  status?: string 
   schedules?: {
     id: string
     course_id: string
@@ -51,6 +52,7 @@ interface SupabaseTrainee {
   middle_initial?: string
   picture_2x2_url?: string
   schedule_id: string
+  status?: string   
   schedules: Array<{
     id: string
     course_id: string
@@ -126,6 +128,7 @@ export default function ParticipantDirectoryDialog({
           middle_initial,
           schedule_id,
           picture_2x2_url,
+          status, 
           schedules!inner (
             id,
             course_id,
@@ -243,7 +246,7 @@ export default function ParticipantDirectoryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl pt-10">
+      <DialogContent className="lg:w-[40vw] sm:w-[90vw] pt-10">
 
       <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
           <AlertDialogContent className="max-w-sm">
@@ -291,42 +294,64 @@ export default function ParticipantDirectoryDialog({
           Attendee Details
         </div>
 
-        <div className="max-h-[400px] overflow-y-auto border border-border rounded-md">
-          <Table>
-            <TableHeader className="sticky top-0 bg-background z-10">
-              <TableRow>
-                <TableHead className="text-sm font-medium">Last Name</TableHead>
-                <TableHead className="text-sm font-medium">First Name</TableHead>
-                <TableHead className="text-sm font-medium">Middle Name</TableHead>
-                <TableHead className="text-sm font-medium">ID Picture</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {trainees.map((trainee) => (
-                <TableRow
-                  key={trainee.id}
-                  className="cursor-pointer hover:bg-muted"
-                  onClick={() => {
-                    setSelectedTrainee(trainee)
-                    setIsTraineeDialogOpen(true)
-                  }}
-                >
-                  <TableCell className="dark:text-white capitalize">{trainee.last_name}</TableCell>
-                  <TableCell className="dark:text-white capitalize">{trainee.first_name}</TableCell>
-                  <TableCell className="dark:text-white capitalize">{trainee.middle_initial ?? "-"}</TableCell>
-                  <TableCell>
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage src={trainee.picture_2x2_url} alt="ID Picture" />
-                      <AvatarFallback>
-                        {trainee.first_name?.[0]}
-                        {trainee.last_name?.[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="max-h-[350px] overflow-y-auto border border-border rounded-md">
+        <Table>
+  <TableHeader className="sticky top-0 bg-background z-10">
+    <TableRow>
+      <TableHead className="text-sm font-medium">Last Name</TableHead>
+      <TableHead className="text-sm font-medium">First Name</TableHead>
+      <TableHead className="text-sm font-medium">Middle Name</TableHead>
+      <TableHead className="text-sm font-medium">Status</TableHead>
+      <TableHead className="text-sm font-medium">ID Picture</TableHead>
+    </TableRow>
+  </TableHeader>
+
+  <TableBody>
+    {trainees.map((trainee) => (
+      <TableRow
+        key={trainee.id}
+        className="cursor-pointer hover:bg-muted"
+        onClick={() => {
+          setSelectedTrainee(trainee)
+          setIsTraineeDialogOpen(true)
+        }}
+      >
+        <TableCell className="dark:text-white capitalize">
+          {trainee.last_name}
+        </TableCell>
+        <TableCell className="dark:text-white capitalize">
+          {trainee.first_name}
+        </TableCell>
+        <TableCell className="dark:text-white capitalize">
+          {trainee.middle_initial ?? "-"}
+        </TableCell>
+        <TableCell>
+          <Badge
+            variant={
+              trainee.status === "verified"
+                ? "default"
+                : trainee.status === "declined"
+                ? "destructive"
+                : "outline"
+            }
+          >
+            {trainee.status ?? "pending"}
+          </Badge>
+        </TableCell>
+        <TableCell>
+          <Avatar className="h-10 w-10">
+            <AvatarImage src={trainee.picture_2x2_url} alt="ID Picture" />
+            <AvatarFallback>
+              {trainee.first_name?.[0]}
+              {trainee.last_name?.[0]}
+            </AvatarFallback>
+          </Avatar>
+        </TableCell>
+      </TableRow>
+    ))}
+  </TableBody>
+</Table>
+
         </div>
 
         <DialogFooter className="justify-start pt-4 gap-2 flex-wrap">
@@ -336,7 +361,7 @@ export default function ParticipantDirectoryDialog({
 
         {/* View/Edit Trainee Dialog */}
         <Dialog open={isTraineeDialogOpen} onOpenChange={setIsTraineeDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="lg:w-[40vw] sm:w-[90vw]">
             <DialogHeader>
               <DialogTitle>Edit Participant Details</DialogTitle>
             </DialogHeader>
