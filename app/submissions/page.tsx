@@ -186,39 +186,39 @@ export default function SubmissionPage() {
     let certNumber: string | null = null;
 
     try {
-      if (status === "Pending Payment") {
+      if (status === "Pending Payment" || status === "Payment Completed") {
         const { data: scheduleData, error: scheduleError } = await supabase
           .from("schedules")
           .select("course_id")
           .eq("id", scheduleId)
           .single();
-  
+    
         if (scheduleError || !scheduleData) throw scheduleError;
-  
+    
         const { data: courseData, error: courseError } = await supabase
           .from("courses")
           .select("name, serial_number_pad")
           .eq("id", scheduleData.course_id)
           .single();
-  
+    
         if (courseError || !courseData) throw courseError;
-  
+    
         const courseName = courseData.name;
         const padLength = courseData.serial_number_pad || 6;
-  
+    
         const { count, error: countError } = await supabase
           .from("trainings")
           .select("certificate_number", { count: "exact", head: true })
           .eq("course_id", scheduleData.course_id)
           .not("certificate_number", "is", null);
-  
+    
         if (countError) throw countError;
-  
+    
         const nextNumber = (count ?? 0) + 1;
         const padded = nextNumber.toString().padStart(padLength, "0");
         certNumber = `PSI-${courseName}-${padded}`;
       }
-  
+    
       const { error: updateError } = await supabase
         .from("trainings")
         .update({
@@ -226,9 +226,9 @@ export default function SubmissionPage() {
           ...(certNumber && { certificate_number: certNumber }),
         })
         .eq("id", selectedTrainee.id);
-  
+    
       if (updateError) throw updateError;
-  
+    
       setTrainees((prev) =>
         prev.map((t) =>
           t.id === selectedTrainee.id
@@ -236,14 +236,16 @@ export default function SubmissionPage() {
             : t
         )
       );
-  
+    
       setDialogOpen(false);
-  
+    
       toast.success(
         status === "Declined"
           ? "Trainee has been declined."
           : status === "Pending Payment"
           ? "Trainee has been verified and marked for payment."
+          : status === "Payment Completed"
+          ? "Trainee payment has been completed."
           : `Trainee updated to ${status}.`
       );
       
@@ -251,6 +253,7 @@ export default function SubmissionPage() {
       console.error("Status update failed:", err);
       toast.error(`Failed to update status: ${err.message || "Unknown error"}`);
     }
+    
   };
 
   // Bulk action handlers

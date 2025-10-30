@@ -1,7 +1,5 @@
 // components/participant-directory-dialog.tsx
-
 "use client"
-
 
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from "@/components/ui/alert-dialog"
 import { Progress } from "@/components/ui/progress"
@@ -14,7 +12,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase-client"
-import { Download } from "lucide-react"
+import { Download, Mail, Loader2 } from "lucide-react"
 import { exportTraineeExcel } from "@/lib/exports/export-excel"
 import { exportCertificates } from "@/lib/exports/export-certificate"
 
@@ -44,7 +42,6 @@ interface Trainee {
   }
 }
 
-// Type for data coming from Supabase (with arrays)
 interface SupabaseTrainee {
   id: string
   first_name: string
@@ -75,45 +72,122 @@ export default function ParticipantDirectoryDialog({
   const [selectedTrainee, setSelectedTrainee] = useState<Trainee | null>(null)
   const [isTraineeDialogOpen, setIsTraineeDialogOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
-
-
   const [isGenerating, setIsGenerating] = useState(false)
   const [progress, setProgress] = useState(0)
-  const [totalCount, setTotalCount] = useState(0)
+  const [, setTotalCount] = useState(0)
   const [alertOpen, setAlertOpen] = useState(false)
-
+  const [alertTitle, setAlertTitle] = useState("")
+  const [alertMessage, setAlertMessage] = useState("")
+  const [isSendingEmails, setIsSendingEmails] = useState(false)
 
   const handleDownloadCertificates = async () => {
     if (!scheduleId) return
     
-    
+    setAlertTitle("Generating Certificates")
+    setAlertMessage("Please wait while we generate certificates...")
     setAlertOpen(true)
     setIsGenerating(true)
     setProgress(0)
     
-    
     const onProgress = (current: number, total: number) => {
-    setProgress(Math.floor((current / total) * 100))
-    setTotalCount(total)
+      setProgress(Math.floor((current / total) * 100))
+      setTotalCount(total)
     }
-    
     
     try {
-    await exportCertificates(scheduleId, scheduleRange, onProgress)
+      await exportCertificates(scheduleId, scheduleRange, onProgress)
+      setAlertTitle("Done")
+      setAlertMessage("Certificates were successfully downloaded.")
     } catch (err) {
-    console.error("❌ Export error:", err)
-    alert("Failed to generate certificates.")
+      console.error("❌ Export error:", err)
+      setAlertTitle("Error")
+      setAlertMessage("Failed to generate certificates.")
     } finally {
-    setIsGenerating(false)
+      setIsGenerating(false)
     }
-    }
+  }
 
+  const handleSendCertificates = async () => {
+    if (!scheduleId) return
+
+    setAlertTitle("Sending Certificates")
+    setAlertMessage("Preparing to send certificates...")
+    setAlertOpen(true)
+    setIsSendingEmails(true)
+    setProgress(0)
+
+    try {
+      const response = await fetch("/api/send-certificates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scheduleId }),
+      })
+
+      if (!response.ok) {
+        const result = await response.json()
+        setAlertTitle("Error")
+        setAlertMessage(result.error || "Failed to send certificates.")
+        setIsSendingEmails(false)
+        return
+      }
+
+      // Read the SSE stream
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        throw new Error("Failed to get response reader")
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split("\n")
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.substring(6))
+
+              if (data.type === "progress") {
+                const progressPercent = Math.floor((data.current / data.total) * 100)
+                setProgress(progressPercent)
+                setTotalCount(data.total)
+                setAlertMessage(
+                  `${data.message}${data.lastSent ? `\nLast sent: ${data.lastSent}` : ""}${
+                    data.lastError ? `\nError: ${data.lastError}` : ""
+                  }`
+                )
+              } else if (data.type === "complete") {
+                setProgress(100)
+                setAlertTitle("Done")
+                setAlertMessage(
+                  `Successfully sent ${data.successCount} certificate(s). ${
+                    data.failCount > 0 ? `${data.failCount} failed.` : ""
+                  }`
+                )
+                setIsSendingEmails(false)
+              }
+            } catch (parseError) {
+              console.error("Failed to parse SSE data:", parseError)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error sending certificates:", error)
+      setAlertTitle("Error")
+      setAlertMessage("An error occurred while sending certificates.")
+      setIsSendingEmails(false)
+    }
+  }
 
   const handleDownloadExcel = () => {
     if (!scheduleId) return
     exportTraineeExcel(scheduleId, scheduleRange)
   }
-
 
   useEffect(() => {
     if (!scheduleId) return
@@ -144,7 +218,6 @@ export default function ParticipantDirectoryDialog({
       if (error) {
         console.error("Error fetching trainees:", error)
       } else {
-        // Transform Supabase data to our Trainee format
         const transformedData: Trainee[] = (data as SupabaseTrainee[])?.map(trainee => ({
           ...trainee,
           schedules: trainee.schedules?.[0] ? {
@@ -206,7 +279,6 @@ export default function ParticipantDirectoryDialog({
       const result = await res.json()
       
       if (result.url) {
-        // ✅ Update the database immediately with the new URL
         const { data, error } = await supabase
           .from("trainings")
           .update({ picture_2x2_url: result.url })
@@ -219,13 +291,11 @@ export default function ParticipantDirectoryDialog({
         } else if (data && data[0]) {
           console.log("✅ Picture updated successfully:", data[0])
           
-          // Update local state
           setSelectedTrainee((prev: any) => ({
             ...prev,
             picture_2x2_url: result.url,
           }))
 
-          // Update the trainees list to reflect the change immediately
           setTrainees((prev) =>
             prev.map((t) => (t.id === selectedTrainee.id ? { ...t, picture_2x2_url: result.url } : t))
           )
@@ -248,26 +318,25 @@ export default function ParticipantDirectoryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="lg:w-[40vw] sm:w-[90vw] pt-10">
 
-      <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
+        <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
           <AlertDialogContent className="max-w-sm">
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-            {isGenerating ? "Generating Certificates" : "Done"}
-            </AlertDialogTitle>
-              </AlertDialogHeader>
-                <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                {isGenerating
-                ? `Please wait while we generate ${totalCount} certificate(s)...`
-                : "Certificates were successfully downloaded."}
-                </p>
-              {isGenerating && <Progress value={progress} className="h-2" />}
+            <AlertDialogHeader>
+              <AlertDialogTitle>{alertTitle}</AlertDialogTitle>
+            </AlertDialogHeader>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">{alertMessage}</p>
+              {(isGenerating || isSendingEmails) && (
+                <Progress value={progress} className="h-2" />
+              )}
             </div>
             <AlertDialogFooter className="pt-4">
-              <Button onClick={() => setAlertOpen(false)} disabled={isGenerating}>
+              <Button
+                onClick={() => setAlertOpen(false)}
+                disabled={isGenerating || isSendingEmails}
+              >
                 Close
               </Button>
-           </AlertDialogFooter>
+            </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
 
@@ -275,8 +344,8 @@ export default function ParticipantDirectoryDialog({
           <DialogTitle className="text-lg font-semibold text-white bg-primary p-2 rounded-md flex justify-between items-center">
             Directory of Participants
             <Button className="cursor-pointer" variant="default" onClick={handleDownloadExcel}>
-            <Download/>
-          </Button>
+              <Download/>
+            </Button>
           </DialogTitle>
         </DialogHeader>
 
@@ -295,68 +364,101 @@ export default function ParticipantDirectoryDialog({
         </div>
 
         <div className="max-h-[350px] overflow-y-auto border border-border rounded-md">
-        <Table>
-  <TableHeader className="sticky top-0 bg-background z-10">
-    <TableRow>
-      <TableHead className="text-sm font-medium">Last Name</TableHead>
-      <TableHead className="text-sm font-medium">First Name</TableHead>
-      <TableHead className="text-sm font-medium">Middle Name</TableHead>
-      <TableHead className="text-sm font-medium">Status</TableHead>
-      <TableHead className="text-sm font-medium">ID Picture</TableHead>
-    </TableRow>
-  </TableHeader>
+          <Table>
+            <TableHeader className="sticky top-0 bg-background z-10">
+              <TableRow>
+                <TableHead className="text-sm font-medium">Last Name</TableHead>
+                <TableHead className="text-sm font-medium">First Name</TableHead>
+                <TableHead className="text-sm font-medium">Middle Name</TableHead>
+                <TableHead className="text-sm font-medium">Status</TableHead>
+                <TableHead className="text-sm font-medium">ID Picture</TableHead>
+              </TableRow>
+            </TableHeader>
 
-  <TableBody>
-    {trainees.map((trainee) => (
-      <TableRow
-        key={trainee.id}
-        className="cursor-pointer hover:bg-muted"
-        onClick={() => {
-          setSelectedTrainee(trainee)
-          setIsTraineeDialogOpen(true)
-        }}
-      >
-        <TableCell className="dark:text-white capitalize">
-          {trainee.last_name}
-        </TableCell>
-        <TableCell className="dark:text-white capitalize">
-          {trainee.first_name}
-        </TableCell>
-        <TableCell className="dark:text-white capitalize">
-          {trainee.middle_initial ?? "-"}
-        </TableCell>
-        <TableCell>
-          <Badge
-            variant={
-              trainee.status === "verified"
-                ? "default"
-                : trainee.status === "declined"
-                ? "destructive"
-                : "outline"
-            }
-          >
-            {trainee.status ?? "pending"}
-          </Badge>
-        </TableCell>
-        <TableCell>
-          <Avatar className="h-10 w-10">
-            <AvatarImage src={trainee.picture_2x2_url} alt="ID Picture" />
-            <AvatarFallback>
-              {trainee.first_name?.[0]}
-              {trainee.last_name?.[0]}
-            </AvatarFallback>
-          </Avatar>
-        </TableCell>
-      </TableRow>
-    ))}
-  </TableBody>
-</Table>
-
+            <TableBody>
+              {trainees.map((trainee) => (
+                <TableRow
+                  key={trainee.id}
+                  className="cursor-pointer hover:bg-muted"
+                  onClick={() => {
+                    setSelectedTrainee(trainee)
+                    setIsTraineeDialogOpen(true)
+                  }}
+                >
+                  <TableCell className="dark:text-white capitalize">
+                    {trainee.last_name}
+                  </TableCell>
+                  <TableCell className="dark:text-white capitalize">
+                    {trainee.first_name}
+                  </TableCell>
+                  <TableCell className="dark:text-white capitalize">
+                    {trainee.middle_initial ?? "-"}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={
+                        trainee.status === "verified"
+                          ? "default"
+                          : trainee.status === "declined"
+                          ? "destructive"
+                          : "outline"
+                      }
+                    >
+                      {trainee.status ?? "pending"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={trainee.picture_2x2_url} alt="ID Picture" />
+                      <AvatarFallback>
+                        {trainee.first_name?.[0]}
+                        {trainee.last_name?.[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
 
         <DialogFooter className="justify-start pt-4 gap-2 flex-wrap">
-          <Button variant="outline" className="cursor-pointer" onClick={handleDownloadCertificates}>Download Certificates</Button>
-          <Button variant="secondary" className="cursor-pointer">Send Manual & Digital Certificates</Button>
+          <Button 
+            variant="outline" 
+            className="cursor-pointer" 
+            onClick={handleDownloadCertificates}
+            disabled={isGenerating}
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                Download Certificates
+              </>
+            )}
+          </Button>
+          <Button 
+            variant="secondary" 
+            className="cursor-pointer"
+            onClick={handleSendCertificates}
+            disabled={isSendingEmails}
+          >
+            {isSendingEmails ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sending...
+              </>
+            ) : (
+              <>
+                <Mail className="mr-2 h-4 w-4" />
+                Send Manual & Digital Certificates
+              </>
+            )}
+          </Button>
         </DialogFooter>
 
         {/* View/Edit Trainee Dialog */}
@@ -462,7 +564,6 @@ export default function ParticipantDirectoryDialog({
                   } else if (data && data[0]) {
                     console.log("✅ Supabase update success:", data)
                     
-                    // Transform the updated data
                     const supabaseData = data as SupabaseTrainee[]
                     const transformedData: Trainee = {
                       ...supabaseData[0],

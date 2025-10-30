@@ -207,16 +207,9 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           training_type
         )
       `)
-      .eq(
-        "status",
-        status === "finished"
-          ? "finished"
-          : status === "cancelled"
-          ? "cancelled"
-          : status === "confirmed"
-          ? "confirmed"
-          : "planned"
-      )
+      .in("status", ["planned", "confirmed", "cancelled", "finished"])
+
+
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -225,39 +218,59 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       setData([])
     } else {
       console.log("Fetched schedules data:", data)
-      const mapped: Participant[] = (data ?? []).map((schedule) => {
-        const courseName = schedule.courses?.name ?? "Unknown Course"
-        const branch = schedule.branch ?? "N/A"
-        
-        const firstTraining = schedule.trainings?.[0]
-        const type = firstTraining?.training_type ?? schedule.event_type ?? "Public"
-        const scheduleStatus = schedule.status ?? "planned"
+      const mapped: Participant[] = (data ?? [])
+  .map((schedule) => {
+    // Get the end date
+    let endDate: Date | null = null
+    if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length) {
+      endDate = new Date(schedule.schedule_ranges[0].end_date)
+    } else if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length) {
+      const lastDate = schedule.schedule_dates
+        .map((d: { date: string }) => new Date(d.date))
+        .sort((a: Date, b: Date) => b.getTime() - a.getTime())[0]
+      endDate = lastDate
+    }
 
-        let scheduleDisplay = ""
+    const now = new Date()
+    const isFinished = endDate && endDate < now
 
-        if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length) {
-          const range = schedule.schedule_ranges[0]
-          scheduleDisplay = `${new Date(range.start_date).toLocaleDateString()} – ${new Date(
-            range.end_date
-          ).toLocaleDateString()}`
-        } else if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length) {
-          scheduleDisplay = schedule.schedule_dates
-            .map((d: { date: string }) => new Date(d.date).toLocaleDateString())
-            .join(", ")
-        }
+    if (status === "finished") {
+      if (!isFinished && schedule.status !== "finished") return null
+    } else {
+      if (isFinished || schedule.status !== status) return null
+    }
+    
 
-        return {
-          id: schedule.id,
-          course: courseName,
-          branch,
-          schedule: scheduleDisplay,
-          status: scheduleStatus,
-          type,
-          submissionCount: schedule.trainings?.length ?? 0,
-        }
-      })
+    const courseName = schedule.courses?.name ?? "Unknown Course"
+    const branch = schedule.branch ?? "N/A"
+    const firstTraining = schedule.trainings?.[0]
+    const type = firstTraining?.training_type ?? schedule.event_type ?? "Public"
+    const scheduleStatus = isFinished ? "finished" : schedule.status ?? "planned"
 
-      setData(mapped)
+    let scheduleDisplay = ""
+    if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length) {
+      const range = schedule.schedule_ranges[0]
+      scheduleDisplay = `${new Date(range.start_date).toLocaleDateString()} – ${new Date(range.end_date).toLocaleDateString()}`
+    } else if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length) {
+      scheduleDisplay = schedule.schedule_dates
+        .map((d: { date: string }) => new Date(d.date).toLocaleDateString())
+        .join(", ")
+    }
+
+    return {
+      id: schedule.id,
+      course: courseName,
+      branch,
+      schedule: scheduleDisplay,
+      status: scheduleStatus,
+      type,
+      submissionCount: schedule.trainings?.length ?? 0,
+    }
+  })
+  .filter((item): item is Participant => item !== null) // ✅ Ensures valid array type
+
+
+      setData(mapped.filter(Boolean))
     }
 
     setLoading(false)

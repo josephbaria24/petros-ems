@@ -35,6 +35,10 @@ const menuItems = [
         title: "Calendar",
         href: "/training-calendar",
       },
+      {
+        title: "Directory of Trainees",
+        href: "/directory-of-trainees",
+      },
     ],
   },
   {

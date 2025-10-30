@@ -144,8 +144,22 @@ export default function GuestTrainingRegistration() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
-    setForm({ ...form, [name]: value })
-  }
+     // Fields to auto-capitalize
+    const fieldsToCapitalize = [
+      "first_name",
+      "middle_initial",
+      "last_name",
+      "suffix",
+      "mailing_street",
+      "mailing_city",
+      "mailing_province"
+    ]
+
+    const formattedValue = fieldsToCapitalize.includes(name)
+      ? value.replace(/\b\w/g, (char) => char.toUpperCase()) // Capitalize first letter of each word
+      : value
+      setForm({ ...form, [name]: formattedValue })
+    }
 
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -197,104 +211,6 @@ export default function GuestTrainingRegistration() {
     reader.readAsDataURL(file);
   };
   
-
-  // const handleCrop = async () => {
-  //   if (!imageToCrop) return;
-  
-  //   const canvas = document.createElement('canvas');
-  //   const ctx = canvas.getContext('2d');
-  //   const img = new Image();
-  
-  //   img.onload = async () => {
-  //     const cropSize = 300;
-  //     canvas.width = cropSize;
-  //     canvas.height = cropSize;
-  
-  //     // Get the actual rendered image size from the DOM
-  //     const container = document.querySelector("#crop-image-container img") as HTMLImageElement;
-  //     if (!container) return;
-  
-  //     const renderedWidth = container.clientWidth;
-  //     const renderedHeight = container.clientHeight;
-  
-  //     // Calculate scale based on rendered vs actual image
-  //     const scaleX = img.width / renderedWidth;
-  //     const scaleY = img.height / renderedHeight;
-  
-  //     const cropX = cropPosition.x * scaleX;
-  //     const cropY = cropPosition.y * scaleY;
-  //     const cropW = cropSize * scaleX;
-  //     const cropH = cropSize * scaleY;
-  
-  //     ctx?.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropSize, cropSize);
-  
-  //     const croppedImage = canvas.toDataURL('image/jpeg', 0.9);
-  //     setPhotoPreview(croppedImage);
-  
-  //     // Upload logic
-  //     setUploading(true);
-  //     try {
-  //       const blob = await (await fetch(croppedImage)).blob();
-  //       const file = new File([blob], "2x2-photo.jpg", { type: "image/jpeg" });
-  //       const formData = new FormData();
-  //       formData.append("image", file);
-  
-  //       const res = await fetch("/api/upload", {
-  //         method: "POST",
-  //         body: formData,
-  //       });
-  
-  //       const result = await res.json();
-  
-  //       if (res.ok) {
-  //         setForm((prevForm: any) => ({
-  //           ...prevForm,
-  //           picture_2x2_url: result.url,
-  //         }));
-  //         toast.success("2x2 photo uploaded successfully!");
-  //       } else {
-  //         toast.error("Upload failed: " + result.error);
-  //       }
-  //     } catch (err) {
-  //       console.error("Upload error:", err);
-  //       toast.error("Unexpected upload error.");
-  //     } finally {
-  //       setUploading(false);
-  //     }
-  
-  //     setShowCropDialog(false);
-  //     setImageToCrop(null);
-  //     setCropPosition({ x: 0, y: 0 });
-  //   };
-  
-  //   img.src = imageToCrop;
-  // };
-  
-  // const handleMouseDown = (e: React.MouseEvent) => {
-  //   setIsDragging(true);
-  //   setDragStart({ x: e.clientX - cropPosition.x, y: e.clientY - cropPosition.y });
-  // };
-
-  // const handleMouseMove = (e: React.MouseEvent) => {
-  //   if (!isDragging) return;
-    
-  //   const newX = e.clientX - dragStart.x;
-  //   const newY = e.clientY - dragStart.y;
-    
-  //   // Constrain within bounds (assuming container is 500x400 and crop box is 300x300)
-  //   const maxX = 200;
-  //   const maxY = 100;
-    
-  //   setCropPosition({
-  //     x: Math.max(0, Math.min(newX, maxX)),
-  //     y: Math.max(0, Math.min(newY, maxY))
-  //   });
-  // };
-
-  // const handleMouseUp = () => {
-  //   setIsDragging(false);
-  // };
-
   const handleSubmit = async () => {
     toast.loading("Submitting registration...");
   
@@ -320,6 +236,22 @@ export default function GuestTrainingRegistration() {
       }
   
       const courseId = schedule.course_id;
+
+
+      // 2️⃣.5 Get the batch number from the schedule itself
+      const { data: scheduleDetails, error: scheduleDetailsError } = await supabase
+        .from("schedules")
+        .select("batch_number")
+        .eq("id", scheduleId)
+        .single()
+
+      if (scheduleDetailsError || !scheduleDetails?.batch_number) {
+        toast.error("Failed to get batch number from schedule.")
+        return
+      }
+
+      const batchNumber = scheduleDetails.batch_number
+
   
       // 2️⃣ Fetch training fee
       const { data: courseData, error: feeError } = await supabase
@@ -337,6 +269,7 @@ export default function GuestTrainingRegistration() {
         ...form,
         schedule_id: scheduleId,
         course_id: courseId,
+        batch_number: batchNumber,
         status: "pending",
         payment_method: paymentMethod,            // ✅ record chosen method
         payment_status:

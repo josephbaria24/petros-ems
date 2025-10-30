@@ -1,8 +1,9 @@
+//app/api/send-email/route.ts
 import nodemailer from "nodemailer";
 import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
-  const { to, subject, message } = await req.json();
+  const { to, subject, message, attachments } = await req.json();
 
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
@@ -15,12 +16,23 @@ export async function POST(req: Request) {
   });
 
   try {
-    await transporter.sendMail({
+    const mailOptions: any = {
       from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_USER}>`,
       to,
       subject,
       html: message,
-    });
+    };
+
+    // ✅ Add attachments if provided (backward compatible - optional)
+    if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+      mailOptions.attachments = attachments.map((attachment: any) => ({
+        filename: attachment.filename,
+        content: attachment.content,
+        encoding: attachment.encoding || "base64",
+      }));
+    }
+
+    await transporter.sendMail(mailOptions);
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {

@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 import { Calendar03 } from "@/components/calendar-03"
 import { Calendar05 } from "@/components/calendar-05"
 import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
+
 import { type DateRange } from "react-day-picker"
 import {
   Popover,
@@ -37,6 +37,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { supabase } from "@/lib/supabase-client"
 import { toast } from "sonner"
+import { Input } from "./ui/input"
 
 interface NewScheduleDialogProps {
   open: boolean
@@ -55,6 +56,9 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
   const [loadingCourses, setLoadingCourses] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const isBranchRequired = eventType !== "online"
+  const [batchNumber, setBatchNumber] = React.useState<number | null>(null)
+
+
   React.useEffect(() => {
     const fetchCourses = async () => {
       const { data, error } = await supabase.from("courses").select("id, name").order("name")
@@ -71,6 +75,31 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
 
     fetchCourses()
   }, [])
+
+
+  React.useEffect(() => {
+    if (!course) return
+  
+    const fetchNextBatchNumber = async () => {
+      const { data, error } = await supabase
+        .from("schedules")
+        .select("batch_number")
+        .eq("course_id", course)
+        .not("batch_number", "is", null)
+  
+      if (error) {
+        console.error("Error fetching batches:", error)
+        return
+      }
+  
+      const existingBatches = data.map(b => b.batch_number).filter(Boolean) as number[]
+      const nextBatch = existingBatches.length > 0 ? Math.max(...existingBatches) + 1 : 1
+      setBatchNumber(nextBatch)
+    }
+  
+    fetchNextBatchNumber()
+  }, [course])
+  
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -99,6 +128,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
           schedule_type: scheduleType,
           event_type: eventType,
           branch: branch,
+          batch_number: batchNumber, 
         })
         .select()
         .single()
@@ -265,6 +295,18 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                   </PopoverContent>
                 </Popover>
               </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="batch_number">Batch Number</Label>
+                <Input
+                  id="batch_number"
+                  value={batchNumber ?? ""}
+                  readOnly
+                  className="max-w-sm"
+                  placeholder="Auto-generated"
+                />
+              </div>
+
 
               {/* Branch */}
               {eventType !== "online" && (
