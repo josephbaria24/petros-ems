@@ -11,6 +11,8 @@ import {
   ChevronDown,
   CalendarCheck,
   CalendarCheckIcon,
+  IdCardIcon,
+  LucideAward,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -49,7 +51,12 @@ const menuItems = [
   {
     title: "Event Management",
     icon: CalendarCheckIcon,
-    href: "/event-management",
+    href: "https://ems.petros-global.com/",
+  },
+  {
+    title: "Certs & ID Management",
+    icon: LucideAward,
+    href: "certificate-id-management",
   },
   // {
   //   title: "Submissions",
@@ -174,6 +181,9 @@ export function AppSidebar() {
             <Link
               key={item.href}
               href={item.href}
+              {...(item.title === "Event Management"
+                ? { target: "_blank", rel: "noopener noreferrer" }
+                : {})}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 isActive
