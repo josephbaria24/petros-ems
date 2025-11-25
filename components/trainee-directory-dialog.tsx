@@ -12,12 +12,12 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { supabase } from "@/lib/supabase-client"
-import { Download, Mail, Loader2, Award, CalendarCheck, Trophy } from "lucide-react"
+import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2 } from "lucide-react"
 import { exportTraineeExcel } from "@/lib/exports/export-excel"
 import { exportCertificatesNew } from "@/lib/exports/export-certificate"
 import { batchAssignCertificateSerials } from "@/lib/certificate-serial"
-
 
 interface ParticipantDirectoryDialogProps {
   open: boolean
@@ -37,8 +37,8 @@ interface Trainee {
   status?: string
   email?: string
   certificate_number?: string
-  course_id: string   // <-- ADD THIS
-  batch_number?: number // <-- ADD THIS
+  course_id: string
+  batch_number?: number
 }
 
 type TemplateType = "participation" | "completion" | "excellence"
@@ -69,118 +69,215 @@ export default function ParticipantDirectoryDialog({
   const [isSendingEmails, setIsSendingEmails] = useState(false)
   const [progress, setProgress] = useState(0)
   const [loading, setLoading] = useState(false)
-// Add this function inside your component, before the return statement
-const ensureCertificateNumbers = async () => {
-  if (!scheduleId) return
+  const [databaseStats, setDatabaseStats] = useState<any>(null)
+  const [isLoadingStats, setIsLoadingStats] = useState(false)
 
-  try {
-    // Get course info
-    const { data: scheduleData } = await supabase
-      .from("schedules")
-      .select("course_id")
-      .eq("id", scheduleId)
-      .single()
-
-    if (!scheduleData) return
-
-    const { data: courseData } = await supabase
-      .from("courses")
-      .select("id, name")
-      .eq("id", scheduleData.course_id)
-      .single()
-
-    if (!courseData) return
-
-    // Check if any trainees are missing certificate numbers
-    const traineesNeedingSerials = trainees.filter((t) => !t.certificate_number)
-
-    if (traineesNeedingSerials.length > 0) {
-      setAlertTitle("Generating Certificate Numbers")
-      setAlertMessage(`Generating serial numbers for ${traineesNeedingSerials.length} trainee(s)...`)
-      setAlertOpen(true)
-
-      // Generate and assign certificate numbers
-      await batchAssignCertificateSerials(
-        trainees,
-        courseData.id,
-        courseData.name
-      )
-
-      // Refresh the trainee list
-      await fetchTrainees()
-
-      setAlertMessage("Certificate numbers generated successfully!")
+  // Database Management Functions
+  const fetchDatabaseStats = async () => {
+    setIsLoadingStats(true)
+    try {
+      const renderUrl = process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
+      const response = await fetch(`${renderUrl}/database/stats`)
+      const data = await response.json()
+      setDatabaseStats(data)
       
-      // Auto-close alert after 2 seconds
-      setTimeout(() => {
-        setAlertOpen(false)
-      }, 2000)
+      setAlertTitle("Database Statistics")
+      setAlertMessage(
+        `Total Records: ${data.records}\n` +
+        `Database Exists: ${data.exists ? "Yes" : "No"}\n` +
+        `Hostinger Configured: ${data.hostinger_configured ? "Yes" : "No"}`
+      )
+      setAlertOpen(true)
+    } catch (error) {
+      console.error("Error fetching stats:", error)
+      setAlertTitle("Error")
+      setAlertMessage("Failed to fetch database statistics")
+      setAlertOpen(true)
+    } finally {
+      setIsLoadingStats(false)
     }
-  } catch (error) {
-    console.error("Error ensuring certificate numbers:", error)
-    setAlertTitle("Error")
-    setAlertMessage("Failed to generate certificate numbers")
   }
-}
 
+  const handleResetDatabase = async () => {
+    if (!confirm("Are you sure you want to reset the master database? This will create a backup and start fresh.")) {
+      return
+    }
 
-useEffect(() => {
-  if (open && scheduleId) {
-    fetchTrainees().then(() => {
-      // Auto-generate certificate numbers if missing
-      ensureCertificateNumbers()
-    })
-    fetchScheduleStatus()
-  }
-}, [open, scheduleId])
+    setAlertTitle("Resetting Database")
+    setAlertMessage("Creating backup and resetting...")
+    setAlertOpen(true)
 
+    try {
+      const renderUrl = process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
+      const response = await fetch(`${renderUrl}/database/reset`, {
+        method: "POST"
+      })
+      const data = await response.json()
 
-
-
-// Also call before downloading certificates:
-const handleDownloadCertificates = async () => {
-  if (!scheduleId) return
-
-  // Ensure all trainees have certificate numbers first
-  await ensureCertificateNumbers()
-
-  setIsGenerating(true)
-  setAlertTitle("Generating Certificates")
-  setAlertMessage("Preparing downloads...")
-  setAlertOpen(true)
-
-  try {
-    await exportCertificatesNew(
-      scheduleId,
-      selectedTemplateType,
-      courseName,
-      scheduleRange,
-      trainees,
-      trainees[0]?.course_id,
-      (current, total) => {
-        const percent = Math.floor((current / total) * 100)
-        setProgress(percent)
-        setAlertMessage(`Generating ${current} of ${total} certificates...`)
+      if (data.status === "success") {
+        setAlertTitle("Success")
+        setAlertMessage(
+          `Database reset successfully!\n\n` +
+          `Backup created: ${data.backup_file}\n` +
+          `Timestamp: ${data.timestamp}`
+        )
+      } else {
+        setAlertTitle("Error")
+        setAlertMessage(`Reset failed: ${data.error}`)
       }
-    )
-
-    setAlertMessage("Download completed!")
-  } catch (err: any) {
-    setAlertTitle("Error")
-    setAlertMessage(err.message)
-  } finally {
-    setIsGenerating(false)
+    } catch (error: any) {
+      setAlertTitle("Error")
+      setAlertMessage(`Failed to reset database: ${error.message}`)
+    }
   }
-}
 
+  const handleBackupDatabase = async () => {
+    setAlertTitle("Creating Backup")
+    setAlertMessage("Backing up master database...")
+    setAlertOpen(true)
 
+    try {
+      const renderUrl = process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
+      const response = await fetch(`${renderUrl}/database/backup`)
+      const data = await response.json()
+
+      if (data.status === "success") {
+        setAlertTitle("Success")
+        setAlertMessage(
+          `Backup created successfully!\n\n` +
+          `File: ${data.backup_file}\n` +
+          `Size: ${(data.file_size / 1024).toFixed(2)} KB\n` +
+          `Timestamp: ${data.timestamp}`
+        )
+      } else {
+        setAlertTitle("Error")
+        setAlertMessage(`Backup failed: ${data.error}`)
+      }
+    } catch (error: any) {
+      setAlertTitle("Error")
+      setAlertMessage(`Failed to create backup: ${error.message}`)
+    }
+  }
+
+  const handleDeleteAllRecords = async () => {
+    if (!confirm("⚠️ WARNING: This will delete ALL records from the master database without creating a backup. Are you absolutely sure?")) {
+      return
+    }
+
+    setAlertTitle("Deleting Records")
+    setAlertMessage("Deleting all records from master database...")
+    setAlertOpen(true)
+
+    try {
+      const renderUrl = process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
+      const response = await fetch(`${renderUrl}/database/delete-all-records`, {
+        method: "POST"
+      })
+      const data = await response.json()
+
+      if (data.status === "success") {
+        setAlertTitle("Success")
+        setAlertMessage(`Deleted ${data.records_deleted} records successfully!`)
+      } else {
+        setAlertTitle("Error")
+        setAlertMessage(`Delete failed: ${data.error}`)
+      }
+    } catch (error: any) {
+      setAlertTitle("Error")
+      setAlertMessage(`Failed to delete records: ${error.message}`)
+    }
+  }
+
+  const ensureCertificateNumbers = async () => {
+    if (!scheduleId) return
+
+    try {
+      const { data: scheduleData } = await supabase
+        .from("schedules")
+        .select("course_id")
+        .eq("id", scheduleId)
+        .single()
+
+      if (!scheduleData) return
+
+      const { data: courseData } = await supabase
+        .from("courses")
+        .select("id, name")
+        .eq("id", scheduleData.course_id)
+        .single()
+
+      if (!courseData) return
+
+      const traineesNeedingSerials = trainees.filter((t) => !t.certificate_number)
+
+      if (traineesNeedingSerials.length > 0) {
+        setAlertTitle("Generating Certificate Numbers")
+        setAlertMessage(`Generating serial numbers for ${traineesNeedingSerials.length} trainee(s)...`)
+        setAlertOpen(true)
+
+        await batchAssignCertificateSerials(
+          trainees,
+          courseData.id,
+          courseData.name
+        )
+
+        await fetchTrainees()
+
+        setAlertMessage("Certificate numbers generated successfully!")
+        
+        setTimeout(() => {
+          setAlertOpen(false)
+        }, 2000)
+      }
+    } catch (error) {
+      console.error("Error ensuring certificate numbers:", error)
+      setAlertTitle("Error")
+      setAlertMessage("Failed to generate certificate numbers")
+    }
+  }
 
   useEffect(() => {
     if (open && scheduleId) {
-      fetchTrainees()
+      fetchTrainees().then(() => {
+        ensureCertificateNumbers()
+      })
       fetchScheduleStatus()
     }
   }, [open, scheduleId])
+
+  const handleDownloadCertificates = async () => {
+    if (!scheduleId) return
+
+    await ensureCertificateNumbers()
+
+    setIsGenerating(true)
+    setAlertTitle("Generating Certificates")
+    setAlertMessage("Preparing downloads...")
+    setAlertOpen(true)
+
+    try {
+      await exportCertificatesNew(
+        scheduleId,
+        selectedTemplateType,
+        courseName,
+        scheduleRange,
+        trainees,
+        trainees[0]?.course_id,
+        (current, total) => {
+          const percent = Math.floor((current / total) * 100)
+          setProgress(percent)
+          setAlertMessage(`Generating ${current} of ${total} certificates...`)
+        }
+      )
+
+      setAlertMessage("Download completed!")
+    } catch (err: any) {
+      setAlertTitle("Error")
+      setAlertMessage(err.message)
+    } finally {
+      setIsGenerating(false)
+    }
+  }
 
   const fetchTrainees = async () => {
     if (!scheduleId) return
@@ -206,8 +303,6 @@ const handleDownloadCertificates = async () => {
       setLoading(false)
     }
   }
-
-  
 
   const fetchScheduleStatus = async () => {
     if (!scheduleId) return
@@ -304,19 +399,16 @@ const handleDownloadCertificates = async () => {
     exportTraineeExcel(scheduleId, scheduleRange)
   }
 
+  const handleSendCertificates = async () => {
+    if (!scheduleId) return
 
+    await ensureCertificateNumbers()
 
-const handleSendCertificates = async () => {
-  if (!scheduleId) return
-
-  // Ensure all trainees have certificate numbers first
-  await ensureCertificateNumbers()
-
-  setAlertTitle("Sending Certificates")
-  setAlertMessage(`Preparing to send ${selectedTemplateType} certificates...`)
-  setAlertOpen(true)
-  setIsSendingEmails(true)
-  setProgress(0)
+    setAlertTitle("Sending Certificates")
+    setAlertMessage(`Preparing to send ${selectedTemplateType} certificates...`)
+    setAlertOpen(true)
+    setIsSendingEmails(true)
+    setProgress(0)
 
     try {
       const response = await fetch("/api/send-certificates", {
@@ -446,9 +538,40 @@ const handleSendCertificates = async () => {
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-white bg-primary p-2 rounded-md flex justify-between items-center">
             Directory of Participants
-            <Button variant="default" onClick={handleDownloadExcel}>
-              <Download className="h-4 w-4" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-primary-foreground/20">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleDownloadExcel}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Excel
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>Database Management</DropdownMenuLabel>
+                <DropdownMenuItem onClick={fetchDatabaseStats} disabled={isLoadingStats}>
+                  <Database className="mr-2 h-4 w-4" />
+                  View Statistics
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleBackupDatabase}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Create Backup
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleResetDatabase} className="text-orange-600">
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Reset Database
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleDeleteAllRecords} className="text-destructive">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete All Records
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </DialogTitle>
         </DialogHeader>
 
@@ -561,23 +684,23 @@ const handleSendCertificates = async () => {
         )}
 
         <DialogFooter className="justify-start pt-4 gap-2 flex-wrap">
-        <Button
-          variant="outline"
-          onClick={handleDownloadCertificates}
-          disabled={isGenerating || trainees.length === 0}
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Generating...
-            </>
-          ) : (
-            <>
-              <Download className="mr-2 h-4 w-4" />
-              Download Certificates
-            </>
-          )}
-        </Button>
+          <Button
+            variant="outline"
+            onClick={handleDownloadCertificates}
+            disabled={isGenerating || trainees.length === 0}
+          >
+            {isGenerating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Download className="mr-2 h-4 w-4" />
+                Download Certificates
+              </>
+            )}
+          </Button>
 
           <Button 
             variant="secondary" 
