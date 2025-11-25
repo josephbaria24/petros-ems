@@ -76,7 +76,7 @@ export default function ParticipantDirectoryDialog({
   const fetchDatabaseStats = async () => {
     setIsLoadingStats(true)
     try {
-      const renderUrl = process.env.RENDER_SERVICE_URL || "http://localhost:8000"
+      const renderUrl = process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
       const response = await fetch(`${renderUrl}/database/stats`)
       const data = await response.json()
       setDatabaseStats(data)
@@ -108,7 +108,7 @@ export default function ParticipantDirectoryDialog({
     setAlertOpen(true)
 
     try {
-      const renderUrl = process.env.RENDER_SERVICE_URL || "http://localhost:8000"
+      const renderUrl = process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
       const response = await fetch(`${renderUrl}/database/reset`, {
         method: "POST"
       })
@@ -137,7 +137,7 @@ export default function ParticipantDirectoryDialog({
     setAlertOpen(true)
 
     try {
-      const renderUrl = process.env.RENDER_SERVICE_URL || "http://localhost:8000"
+      const renderUrl = process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
       const response = await fetch(`${renderUrl}/database/backup`)
       const data = await response.json()
 
@@ -169,7 +169,7 @@ export default function ParticipantDirectoryDialog({
     setAlertOpen(true)
 
     try {
-      const renderUrl = process.env.RENDER_SERVICE_URL || "http://localhost:8000"
+      const renderUrl = process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
       const response = await fetch(`${renderUrl}/database/delete-all-records`, {
         method: "POST"
       })
