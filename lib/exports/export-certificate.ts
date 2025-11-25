@@ -1,257 +1,199 @@
-// lib/exports/exportCertificates.ts
+// lib/exports/export-certificate.ts
 import { supabase } from "@/lib/supabase-client"
 
-export async function exportCertificates(
+// CRITICAL: Must match the server-side generation exactly
+const CANVAS_WIDTH = 842
+const CANVAS_HEIGHT = 595
+
+export async function exportCertificatesNew(
   scheduleId: string,
+  templateType: string,
+  courseName: string,
   scheduleRange: string,
+  trainees: any[],
+  courseId: string,
   onProgress?: (current: number, total: number) => void
-): Promise<void> {
+) {
+  const { data: template, error: tplErr } = await supabase
+    .from("certificate_templates")
+    .select("*")
+    .eq("course_id", courseId)
+    .eq("template_type", templateType)
+    .maybeSingle()
 
-  try {
-    const { data: scheduleData, error: scheduleError } = await supabase
-      .from("schedules")
-      .select("id, course_id, schedule_type")
-      .eq("id", scheduleId)
-      .single()
+  if (tplErr || !template) throw new Error("No certificate template found.")
 
-    if (!scheduleData || scheduleError) {
-      throw new Error("Failed to fetch schedule information.")
-    }
-    
+  const templateImg = await loadImage(template.image_url)
 
-    const { data: courseData, error: courseError } = await supabase
-      .from("courses")
-      .select("id, name, serial_number")
-      .eq("id", scheduleData.course_id)
-      .single()
+  const total = trainees.length
+  let current = 0
 
-    if (!courseData || courseError) {
-      throw new Error("Failed to fetch course information.")
-    }
+  for (const trainee of trainees) {
+    current++
 
-    let formattedDateRange = scheduleRange
-    let givenThisDate = ""
+    await generateSingleCertificate(
+      trainee,
+      templateImg,
+      template.fields,
+      courseName,
+      scheduleRange
+    )
 
-    if (scheduleData.schedule_type === 'regular') {
-      const { data: rangeData } = await supabase
-        .from("schedule_ranges")
-        .select("start_date, end_date")
-        .eq("schedule_id", scheduleId)
-        .single()
-
-      if (rangeData) {
-        const start = new Date(rangeData.start_date)
-        const end = new Date(rangeData.end_date)
-        
-        // Calculate days difference
-        const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
-        
-        if (daysDiff > 1) {
-          // Multi-day training: show start date - end date in mm/dd/yyyy format
-          const startFormatted = `${(start.getMonth() + 1).toString().padStart(2, '0')}/${start.getDate().toString().padStart(2, '0')}/${start.getFullYear()}`
-          const endFormatted = `${(end.getMonth() + 1).toString().padStart(2, '0')}/${end.getDate().toString().padStart(2, '0')}/${end.getFullYear()}`
-          formattedDateRange = `${startFormatted} - ${endFormatted}`
-        } else {
-          // Single day training: use original format
-          formattedDateRange = `${start.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} & ${end.toLocaleDateString('en-US', { day: 'numeric', year: 'numeric' })}`
-        }
-        
-        // Given this date is always today's date
-        const today = new Date()
-        givenThisDate = today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-      }
-    } else {
-      const { data: datesData } = await supabase
-        .from("schedule_dates")
-        .select("date")
-        .eq("schedule_id", scheduleId)
-        .order("date", { ascending: true })
-
-      if (datesData && datesData.length > 0) {
-        const dates = datesData.map(d => new Date(d.date))
-        
-        // Group dates by month
-        const datesByMonth: { [key: string]: number[] } = {}
-        dates.forEach(date => {
-          const monthYear = `${date.toLocaleDateString('en-US', { month: 'short' })} ${date.getFullYear()}`
-          if (!datesByMonth[monthYear]) {
-            datesByMonth[monthYear] = []
-          }
-          datesByMonth[monthYear].push(date.getDate())
-        })
-        
-        // Format: "Month Day,Day & Month Day, Year"
-        const entries = Object.entries(datesByMonth)
-        const formattedParts = entries.map(([monthYear, days], index) => {
-          const daysStr = days.join(',')
-          const [month, year] = monthYear.split(' ')
-          
-          // Only add year to the last month group
-          if (index === entries.length - 1) {
-            return `${month}. ${daysStr}, ${year}`
-          } else {
-            return `${month}. ${daysStr}`
-          }
-        })
-        
-        formattedDateRange = formattedParts.join(' & ')
-        
-        // Given this date is always today's date
-        const today = new Date()
-        givenThisDate = today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
-      }
-    }
-
-    const courseName = courseData.name
-    const courseSerial = courseData.serial_number || "0000" // fallback
-    const coursePrefix = courseName.replace(/\s+/g, "").toUpperCase() // remove spaces for SerialNo
-
-    let templatePath = ""
-    let courseType: "boshso1" | "boshso2" = "boshso1"
-
-    if (courseName.includes("BOSH") && courseName.includes("SO1")) {
-      templatePath = "/templates/certificates/BOSHS01-template.png"
-      courseType = "boshso1"
-    } else if (courseName.includes("BOSH") && courseName.includes("SO2")) {
-      templatePath = "/templates/certificates/BOSHSO2-template.png"
-      courseType = "boshso2"
-    } else {
-      alert("No certificate template found for this course.")
-      return
-    }
-    
-
-    const { data: traineesData } = await supabase
-      .from("trainings")
-      .select("id, first_name, last_name, middle_initial, certificate_number, picture_2x2_url")
-      .eq("schedule_id", scheduleId)
-      .order("last_name", { ascending: true })
-
-    const traineesWithCerts = traineesData?.filter(t => t.certificate_number) || []
-
-    if (traineesWithCerts.length === 0) {
-      alert("No trainees have certificate numbers assigned yet.")
-      return
-    }
-
-    for (let i = 0; i < traineesWithCerts.length; i++) {
-      const trainee = traineesWithCerts[i]
-      const serialNumber = trainee.certificate_number
-      await generateCertificate(trainee, templatePath, formattedDateRange, givenThisDate, serialNumber, courseType)
-      onProgress?.(i + 1, traineesWithCerts.length)
-      await new Promise(resolve => setTimeout(resolve, 200))
-    }
-    
-  } catch (error: any) {
-    console.error("❌ Certificate generation error:", error)
-    alert(`Failed to download certificates: ${error.message}`)
+    onProgress?.(current, total)
+    await new Promise((r) => setTimeout(r, 150))
   }
 }
 
-async function generateCertificate(
-  trainee: any,
-  templatePath: string,
-  heldOnDate: string,
-  givenThisDate: string,
-  serialNumber: string,
-  courseType: "boshso1" | "boshso2"
-): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return reject("Failed to create canvas context")
-
-    const templateImg = new Image()
-    templateImg.crossOrigin = "anonymous"
-
-    templateImg.onload = async () => {
-      canvas.width = templateImg.width
-      canvas.height = templateImg.height
-      ctx.drawImage(templateImg, 0, 0)
-
-      if (trainee.picture_2x2_url) {
-        const img = new Image()
-        img.crossOrigin = "anonymous"
-        img.src = `/api/image-proxy?url=${encodeURIComponent(trainee.picture_2x2_url)}`
-
-        await new Promise<void>((resolveImg) => {
-          img.onload = () => {
-            const size = canvas.width * 0.097
-            const x = canvas.width * 0.848
-            const y = canvas.height * 0.048
-            ctx.drawImage(img, x, y, size, size)
-            resolveImg()
-          }
-
-          img.onerror = () => {
-            console.warn("⚠️ Failed to load 2x2 image for:", trainee.certificate_number)
-            resolveImg() // continue even if failed
-          }
-        })
-      }
-      
-      function capitalize(word: string | null | undefined): string {
-        if (!word) return "";
-        return word
-          .toLowerCase()
-          .split(" ")
-          .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-          .join(" ");
-      }
-      
-      const baseFontSize = canvas.width / 25.7
-      const smallFontSize = canvas.width / 78
-      const tinyFontSize = canvas.width / 77
-
-      ctx.textAlign = 'center'
-      ctx.fillStyle = '#000'
-
-      ctx.font = `bold ${baseFontSize}px Arial`
-      const first = capitalize(trainee.first_name)
-      const middle = trainee.middle_initial ? capitalize(trainee.middle_initial) + ". " : ""
-      const last = capitalize(trainee.last_name)
-      const fullName = `${first} ${middle}${last}`
-      
-      if (courseType === "boshso1") {
-        // 💡 BOSH SO1 positioning
-        ctx.fillText(fullName, canvas.width / 2, canvas.height * 0.389)
-        ctx.font = `italic ${smallFontSize}px Arial`
-        ctx.fillText(heldOnDate, canvas.width * 0.330, canvas.height * 0.694)
-        ctx.fillText("Via Zoom Meeting", canvas.width * 0.500, canvas.height * 0.694)
-        ctx.fillText(givenThisDate, canvas.width * 0.450, canvas.height * 0.732)
-        ctx.font = `${tinyFontSize}px Arial`
-        ctx.textAlign = 'right'
-        ctx.fillText(`${serialNumber}`, canvas.width * 0.960, canvas.height * 0.200)
-      } else if (courseType === "boshso2") {
-        // 💡 BOSH SO2 positioning (slightly lower)
-        ctx.fillText(fullName, canvas.width / 2, canvas.height * 0.389)
-        ctx.font = `italic ${smallFontSize}px Arial`
-        ctx.fillText(heldOnDate, canvas.width * 0.330, canvas.height * 0.660)
-        ctx.fillText("Via Zoom Meeting", canvas.width * 0.500, canvas.height * 0.660)
-        ctx.fillText(givenThisDate, canvas.width * 0.430, canvas.height * 0.700)
-        ctx.font = `${tinyFontSize}px Arial`
-        ctx.textAlign = 'right'
-        ctx.fillText(`${serialNumber}`, canvas.width * 0.960, canvas.height * 0.200)
-      }
-      
-      canvas.toBlob(blob => {
-        if (blob) {
-          const url = URL.createObjectURL(blob)
-          const a = document.createElement('a')
-          a.href = url
-          a.download = `Certificate_${serialNumber}_${trainee.last_name}_${trainee.first_name}.png`
-          document.body.appendChild(a)
-          a.click()
-          document.body.removeChild(a)
-          URL.revokeObjectURL(url)
-          resolve()
-        } else {
-          reject("Failed to create blob")
-        }
-      }, 'image/png', 1.0)
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = "anonymous"
+    img.onload = () => resolve(img)
+    img.onerror = (error) => {
+      console.error("Failed to load image:", url, error)
+      reject(error)
     }
+    
+    // Handle both base64 data URIs and regular URLs
+    if (url.startsWith('data:')) {
+      img.src = url
+    } else {
+      // IMPORTANT: Always use image-proxy for external URLs to handle CORS
+      img.src = `/api/image-proxy?url=${encodeURIComponent(url)}`
+    }
+  })
+}
 
-    templateImg.onerror = () => reject(new Error("Failed to load certificate template."))
-    templateImg.src = templatePath
+async function generateSingleCertificate(
+  trainee: any,
+  templateImg: HTMLImageElement,
+  fields: any[],
+  courseName: string,
+  scheduleRange: string
+) {
+  const canvas = document.createElement("canvas")
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return
+
+  // Use exact same dimensions as server
+  canvas.width = CANVAS_WIDTH
+  canvas.height = CANVAS_HEIGHT
+
+  // Draw background template at full canvas size
+  ctx.drawImage(templateImg, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+
+  // Calculate scale factors (matching server-side logic)
+  const scaleX = CANVAS_WIDTH / 842
+  const scaleY = CANVAS_HEIGHT / 595
+
+  // Draw trainee photo - MUST MATCH SERVER EXACTLY
+  if (trainee.picture_2x2_url) {
+    try {
+      console.log("Loading trainee photo:", trainee.picture_2x2_url)
+      
+      // CRITICAL FIX: Use image-proxy to handle CORS properly
+      const img = await loadImage(trainee.picture_2x2_url)
+      
+      console.log("Trainee photo loaded successfully")
+      
+      // Use exact same positioning as server (from generate-certificate-pdf/route.ts)
+      const size = canvas.width * 0.097
+      const x = canvas.width * 0.848
+      const y = canvas.height * 0.048
+      
+      console.log(`Drawing trainee photo at: x=${x}, y=${y}, size=${size}`)
+      
+      ctx.drawImage(img, x, y, size, size)
+    } catch (error) {
+      console.warn("Failed to load trainee photo:", trainee.picture_2x2_url, error)
+      // Continue generating certificate without photo
+    }
+  }
+
+  // Helper function to capitalize names (matching server)
+  function capitalize(word: string | null | undefined): string {
+    if (!word) return ""
+    return word
+      .toLowerCase()
+      .split(" ")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ")
+  }
+
+  // Build full name exactly as server does
+  const first = capitalize(trainee.first_name)
+  const middle = trainee.middle_initial ? capitalize(trainee.middle_initial) + ". " : ""
+  const last = capitalize(trainee.last_name)
+  const fullName = `${first} ${middle}${last}`
+
+  const today = new Date().toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  })
+
+  // Build replacements object (matching server)
+  const replacements: Record<string, string> = {
+    "{{trainee_name}}": fullName,
+    "{{course_name}}": courseName,
+    "{{completion_date}}": today,
+    "{{certificate_number}}": trainee.certificate_number || "",
+    "{{batch_number}}": trainee.batch_number?.toString() || "",
+    "{{training_provider}}": "Petrosphere Inc.",
+    "{{schedule_range}}": scheduleRange || "",
+  }
+
+  // Draw text fields - EXACT SAME LOGIC AS SERVER
+  fields.forEach((field) => {
+    let displayText = field.value
+
+    // Replace placeholders
+    Object.entries(replacements).forEach(([key, val]) => {
+      displayText = displayText.replace(key, val)
+    })
+
+    // Apply scaling to position and font size
+    const x = field.x * scaleX
+    const y = field.y * scaleY
+    const fontSize = field.fontSize * scaleY
+
+    // Set font properties
+    ctx.font = `${field.fontWeight === "bold" ? "bold " : ""}${fontSize}px Arial`
+    ctx.fillStyle = field.color
+    ctx.textAlign = field.align
+
+    // Draw text
+    ctx.fillText(displayText, x, y)
+  })
+
+  await downloadCanvas(canvas, trainee)
+}
+
+async function downloadCanvas(canvas: HTMLCanvasElement, trainee: any) {
+  return new Promise<void>((resolve) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        console.error("Failed to create blob from canvas")
+        return resolve()
+      }
+
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+
+      // Use same filename format as server
+      const certNum = trainee.certificate_number || "NO_CERT"
+      const lastName = trainee.last_name || "UNKNOWN"
+      const firstName = trainee.first_name || "UNKNOWN"
+      
+      a.href = url
+      a.download = `Certificate_${certNum}_${lastName}_${firstName}.png`
+
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+
+      URL.revokeObjectURL(url)
+      resolve()
+    }, "image/png")
   })
 }

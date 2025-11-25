@@ -1,13 +1,10 @@
+// app/api/send-certificates/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// ✅ Force Node.js runtime so modules like 'fs', 'canvas', and 'pdf-lib' work properly
 export const runtime = "nodejs";
-
-// ✅ Optional: Disable caching for stability
 export const dynamic = "force-dynamic";
 
-// ✅ Initialize Supabase with required env vars
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -17,8 +14,8 @@ export async function POST(req: NextRequest) {
   console.log("📨 /api/send-certificates endpoint hit");
 
   try {
-    const { scheduleId } = await req.json();
-    console.log("✅ Received scheduleId:", scheduleId);
+    const { scheduleId, templateType = "completion" } = await req.json();
+    console.log("✅ Received scheduleId:", scheduleId, "templateType:", templateType);
 
     if (!scheduleId) {
       return NextResponse.json(
@@ -27,7 +24,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 🧩 1. Fetch schedule and course info
+    // Fetch schedule and course info
     const { data: scheduleData, error: scheduleError } = await supabase
       .from("schedules")
       .select("id, course_id, schedule_type")
@@ -56,7 +53,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 🗓️ 2. Build schedule date range
+    // Build schedule date range
     let scheduleRange = "";
     let givenThisDate = "";
     const today = new Date();
@@ -76,29 +73,12 @@ export async function POST(req: NextRequest) {
       if (rangeData) {
         const start = new Date(rangeData.start_date);
         const end = new Date(rangeData.end_date);
-        const daysDiff =
-          Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+        const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
         if (daysDiff > 1) {
-          scheduleRange = `${(start.getMonth() + 1)
-            .toString()
-            .padStart(2, "0")}/${start
-            .getDate()
-            .toString()
-            .padStart(2, "0")}/${start.getFullYear()} - ${(end.getMonth() + 1)
-            .toString()
-            .padStart(2, "0")}/${end
-            .getDate()
-            .toString()
-            .padStart(2, "0")}/${end.getFullYear()}`;
+          scheduleRange = `${(start.getMonth() + 1).toString().padStart(2, "0")}/${start.getDate().toString().padStart(2, "0")}/${start.getFullYear()} - ${(end.getMonth() + 1).toString().padStart(2, "0")}/${end.getDate().toString().padStart(2, "0")}/${end.getFullYear()}`;
         } else {
-          scheduleRange = `${start.toLocaleDateString("en-US", {
-            month: "long",
-            day: "numeric",
-          })} & ${end.toLocaleDateString("en-US", {
-            day: "numeric",
-            year: "numeric",
-          })}`;
+          scheduleRange = `${start.toLocaleDateString("en-US", { month: "long", day: "numeric" })} & ${end.toLocaleDateString("en-US", { day: "numeric", year: "numeric" })}`;
         }
       }
     } else {
@@ -113,9 +93,7 @@ export async function POST(req: NextRequest) {
         const datesByMonth: Record<string, number[]> = {};
 
         dates.forEach((date) => {
-          const monthYear = `${date.toLocaleDateString("en-US", {
-            month: "short",
-          })} ${date.getFullYear()}`;
+          const monthYear = `${date.toLocaleDateString("en-US", { month: "short" })} ${date.getFullYear()}`;
           if (!datesByMonth[monthYear]) datesByMonth[monthYear] = [];
           datesByMonth[monthYear].push(date.getDate());
         });
@@ -133,12 +111,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 👥 3. Fetch trainees with cert + email
+    // Fetch trainees with cert + email
     const { data: traineesData, error: traineesError } = await supabase
       .from("trainings")
-      .select(
-        "id, first_name, last_name, middle_initial, email, certificate_number, picture_2x2_url"
-      )
+      .select("id, first_name, last_name, middle_initial, email, certificate_number, picture_2x2_url")
       .eq("schedule_id", scheduleId)
       .not("certificate_number", "is", null)
       .not("email", "is", null)
@@ -147,24 +123,20 @@ export async function POST(req: NextRequest) {
     if (traineesError || !traineesData?.length) {
       console.error("❌ No trainees found or query failed:", traineesError);
       return NextResponse.json(
-        {
-          success: false,
-          error: "No trainees with certificate numbers and email addresses found",
-        },
+        { success: false, error: "No trainees with certificate numbers and email addresses found" },
         { status: 404 }
       );
     }
 
     console.log(`👥 Found ${traineesData.length} trainees`);
 
-    // 📧 4. Create SSE stream for real-time progress
+    // Create SSE stream for real-time progress
     const encoder = new TextEncoder();
     let successCount = 0;
     let failCount = 0;
 
     const stream = new ReadableStream({
       async start(controller) {
-        // Send initial progress
         controller.enqueue(
           encoder.encode(
             `data: ${JSON.stringify({
@@ -178,14 +150,13 @@ export async function POST(req: NextRequest) {
           )
         );
 
-        // Process each trainee
         for (let i = 0; i < traineesData.length; i++) {
           const trainee = traineesData[i];
           
           try {
             console.log(`📤 Generating certificate for: ${trainee.first_name} ${trainee.last_name}`);
 
-            // Generate certificate PDF
+            // Generate certificate PDF with template support
             const pdfResponse = await fetch(
               `${req.nextUrl.origin}/api/generate-certificate-pdf`,
               {
@@ -194,8 +165,10 @@ export async function POST(req: NextRequest) {
                 body: JSON.stringify({
                   trainee,
                   courseName: courseData.name,
+                  courseId: courseData.id,
                   scheduleRange,
                   givenThisDate,
+                  templateType, // Pass template type
                 }),
               }
             );
@@ -210,9 +183,7 @@ export async function POST(req: NextRequest) {
             const contentType = pdfResponse.headers.get("content-type");
             if (!contentType?.includes("application/pdf")) {
               const badResp = await pdfResponse.text();
-              throw new Error(
-                `Invalid content-type: ${contentType}. Got: ${badResp.substring(0, 200)}`
-              );
+              throw new Error(`Invalid content-type: ${contentType}. Got: ${badResp.substring(0, 200)}`);
             }
 
             const pdfBlob = await pdfResponse.blob();
@@ -227,11 +198,7 @@ export async function POST(req: NextRequest) {
               body: JSON.stringify({
                 to: trainee.email,
                 subject: `Your ${courseData.name} Certificate - Petrosphere Training Center`,
-                message: generateCertificateEmailHTML(
-                  trainee,
-                  courseData.name,
-                  scheduleRange
-                ),
+                message: generateCertificateEmailHTML(trainee, courseData.name, scheduleRange),
                 attachments: [
                   {
                     filename: `Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`,
@@ -250,7 +217,6 @@ export async function POST(req: NextRequest) {
             successCount++;
             console.log(`✅ Email sent to ${trainee.email}`);
 
-            // Send progress update
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
@@ -268,7 +234,6 @@ export async function POST(req: NextRequest) {
             failCount++;
             console.error(`❌ Failed for ${trainee.first_name} ${trainee.last_name}:`, err);
 
-            // Send error update
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
@@ -285,7 +250,6 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Send completion message
         controller.enqueue(
           encoder.encode(
             `data: ${JSON.stringify({
@@ -312,11 +276,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     console.error("🔥 Send certificates route crashed:", err);
     return NextResponse.json(
-      {
-        success: false,
-        error: err.message || "Unhandled server error in send-certificates",
-        stack: err.stack,
-      },
+      { success: false, error: err.message || "Unhandled server error", stack: err.stack },
       { status: 500 }
     );
   }

@@ -1,3 +1,5 @@
+//components\certificate-template-modal.tsx
+
 "use client"
 
 import { useState, useRef, useEffect } from "react"
@@ -46,6 +48,21 @@ const PLACEHOLDER_OPTIONS: PlaceholderOption[] = [
   { value: "{{certificate_number}}", label: "Certificate Number", description: "Unique certificate ID" },
   { value: "{{batch_number}}", label: "Batch Number", description: "Training batch number" },
   { value: "{{training_provider}}", label: "Training Provider", description: "Provider organization" },
+  {
+    value: "{{trainee_picture}}",
+    label: "Trainee Picture",
+    description: "2x2 picture of the trainee"
+  },
+  {
+    value: "{{held_on}}",
+    label: "Held On",
+    description: "Training date range (from schedules table)"
+  },
+  {
+    value: "{{given_this}}",
+    label: "Given This",
+    description: "Today's date"
+  },
 ]
 
 const TEMPLATE_TYPES: { value: TemplateType; label: string; icon: any; description: string }[] = [
@@ -243,7 +260,7 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
       const filePath = `certificate-templates/${fileName}`
 
       const { data, error } = await supabase.storage
-        .from('Certificates')
+        .from('trainee-photos')
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: true
@@ -252,7 +269,7 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
       if (error) throw error
 
       const { data: urlData } = supabase.storage
-        .from('Certificates')
+        .from('trainee-photos')
         .getPublicUrl(filePath)
 
       return urlData.publicUrl
@@ -305,9 +322,13 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
             .replace("{{trainee_name}}", "Juan Dela Cruz")
             .replace("{{course_name}}", courseName)
             .replace("{{completion_date}}", "November 22, 2025")
-            .replace("{{certificate_number}}", "CERT-2025-001234")
+            .replace("{{certificate_number}}", "PSI-BOSHSO1-001264") // Example serial
             .replace("{{batch_number}}", "Batch 42")
             .replace("{{training_provider}}", "Petrosphere Inc.")
+            .replace("{{trainee_picture}}", "[Picture]")
+            .replace("{{held_on}}", "January 10–12, 2025")
+            .replace("{{given_this}}", "January 15, 2025")
+            .replace("{{schedule_range}}", "January 10–12, 2025")
         }
 
         ctx.fillText(displayText, x, field.y)
@@ -504,8 +525,9 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
     setSaving(true)
     try {
       let imageUrl = templateImage[currentTemplateType]!
-
-      if (templateFile[currentTemplateType]) {
+  
+      // Always upload if it's a base64 data URI OR if there's a new file
+      if (imageUrl.startsWith('data:') || templateFile[currentTemplateType]) {
         const uploadedUrl = await uploadImageToStorage(templateFile[currentTemplateType]!, currentTemplateType)
         if (!uploadedUrl) {
           alert("❌ Failed to upload image")
@@ -514,6 +536,7 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
         }
         imageUrl = uploadedUrl
         setTemplateFile(prev => ({ ...prev, [currentTemplateType]: null }))
+        setTemplateImage(prev => ({ ...prev, [currentTemplateType]: imageUrl }))
       }
 
       const response = await fetch("/api/certificate-template", {
@@ -597,7 +620,7 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
+      <DialogContent className="lg:w-[70vw] sm:w-[70vw] max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Certificate Template Editor - {courseName}</DialogTitle>
           <DialogDescription>

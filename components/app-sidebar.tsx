@@ -56,7 +56,7 @@ const menuItems = [
   {
     title: "Certs & ID Management",
     icon: LucideAward,
-    href: "certificate-id-management",
+    href: "/certificate-id-management",
   },
   // {
   //   title: "Submissions",
