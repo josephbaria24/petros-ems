@@ -14,18 +14,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Render service URL (from environment)
-    const RENDER_SERVICE_URL =
-      process.env.RENDER_SERVICE_URL || "http://localhost:8000"
+    const NEXT_PUBLIC_RENDER_SERVICE_URL =
+      process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
     
     // Full proxy URL (your Next.js domain → image-proxy route)
     const proxyUrl = `${req.nextUrl.origin}/api/image-proxy`
 
-    console.log(`Calling Render service: ${RENDER_SERVICE_URL}`)
+    console.log(`Calling Render service: ${NEXT_PUBLIC_RENDER_SERVICE_URL}`)
     console.log(`Using proxy URL: ${proxyUrl}`)
     console.log(`Processing ${trainees.length} trainees`)
 
     // Call Render Python backend
-    const response = await fetch(`${RENDER_SERVICE_URL}/export-excel`, {
+    const response = await fetch(`${NEXT_PUBLIC_RENDER_SERVICE_URL}/export-excel`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

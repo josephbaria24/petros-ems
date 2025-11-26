@@ -72,122 +72,130 @@ export default function ParticipantDirectoryDialog({
   const [databaseStats, setDatabaseStats] = useState<any>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
 
+  // ADD THIS: New helper to call the API route
+const callDatabaseAPI = async (action: string, method: 'GET' | 'POST' = 'GET') => {
+  const response = await fetch(`/api/database/${action}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  })
+  
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.error || `Failed to ${action}`)
+  }
+  
+  return response.json()
+}
+
+
   // Database Management Functions
-  const fetchDatabaseStats = async () => {
-    setIsLoadingStats(true)
-    try {
-      const renderUrl = process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
-      const response = await fetch(`${renderUrl}/database/stats`)
-      const data = await response.json()
-      setDatabaseStats(data)
-      
-      setAlertTitle("Database Statistics")
+const fetchDatabaseStats = async () => {
+  setIsLoadingStats(true)
+  try {
+    const data = await callDatabaseAPI('stats', 'GET')
+    setDatabaseStats(data)
+    
+    setAlertTitle("Database Statistics")
+    setAlertMessage(
+      `Total Records: ${data.records}\n` +
+      `Database Exists: ${data.exists ? "Yes" : "No"}\n` +
+      `Hostinger Configured: ${data.hostinger_configured ? "Yes" : "No"}`
+    )
+    setAlertOpen(true)
+  } catch (error: any) {
+    console.error("Error fetching stats:", error)
+    setAlertTitle("Error")
+    setAlertMessage(error.message || "Failed to fetch database statistics")
+    setAlertOpen(true)
+  } finally {
+    setIsLoadingStats(false)
+  }
+}
+const handleResetDatabase = async () => {
+  if (!confirm("Are you sure you want to reset the master database? This will create a backup and start fresh.")) {
+    return
+  }
+
+  setAlertTitle("Resetting Database")
+  setAlertMessage("Creating backup and resetting...")
+  setAlertOpen(true)
+
+  try {
+    const data = await callDatabaseAPI('reset', 'POST')
+
+    if (data.status === "success") {
+      setAlertTitle("Success")
       setAlertMessage(
-        `Total Records: ${data.records}\n` +
-        `Database Exists: ${data.exists ? "Yes" : "No"}\n` +
-        `Hostinger Configured: ${data.hostinger_configured ? "Yes" : "No"}`
+        `Database reset successfully!\n\n` +
+        `Backup created: ${data.backup_file}\n` +
+        `Timestamp: ${data.timestamp}` +
+        (data.hostinger_url ? `\n\nHostinger URL: ${data.hostinger_url}` : '')
       )
-      setAlertOpen(true)
-    } catch (error) {
-      console.error("Error fetching stats:", error)
+    } else {
       setAlertTitle("Error")
-      setAlertMessage("Failed to fetch database statistics")
-      setAlertOpen(true)
-    } finally {
-      setIsLoadingStats(false)
+      setAlertMessage(`Reset failed: ${data.error}`)
     }
+  } catch (error: any) {
+    setAlertTitle("Error")
+    setAlertMessage(`Failed to reset database: ${error.message}`)
+  }
+}
+
+const handleBackupDatabase = async () => {
+  setAlertTitle("Creating Backup")
+  setAlertMessage("Backing up master database...")
+  setAlertOpen(true)
+
+  try {
+    const data = await callDatabaseAPI('backup', 'GET')
+
+    if (data.status === "success") {
+      setAlertTitle("Success")
+      setAlertMessage(
+        `Backup created successfully!\n\n` +
+        `File: ${data.backup_file}\n` +
+        `Size: ${(data.file_size / 1024).toFixed(2)} KB\n` +
+        `Timestamp: ${data.timestamp}` +
+        (data.hostinger_url ? `\n\nHostinger URL: ${data.hostinger_url}` : '')
+      )
+    } else {
+      setAlertTitle("Error")
+      setAlertMessage(`Backup failed: ${data.error}`)
+    }
+  } catch (error: any) {
+    setAlertTitle("Error")
+    setAlertMessage(`Failed to create backup: ${error.message}`)
+  }
+}
+const handleDeleteAllRecords = async () => {
+  if (!confirm("⚠️ WARNING: This will delete ALL records from the master database without creating a backup. Are you absolutely sure?")) {
+    return
   }
 
-  const handleResetDatabase = async () => {
-    if (!confirm("Are you sure you want to reset the master database? This will create a backup and start fresh.")) {
-      return
-    }
+  setAlertTitle("Deleting Records")
+  setAlertMessage("Deleting all records from master database...")
+  setAlertOpen(true)
 
-    setAlertTitle("Resetting Database")
-    setAlertMessage("Creating backup and resetting...")
-    setAlertOpen(true)
+  try {
+    const data = await callDatabaseAPI('delete-all-records', 'POST')
 
-    try {
-      const renderUrl = process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
-      const response = await fetch(`${renderUrl}/database/reset`, {
-        method: "POST"
-      })
-      const data = await response.json()
-
-      if (data.status === "success") {
-        setAlertTitle("Success")
-        setAlertMessage(
-          `Database reset successfully!\n\n` +
-          `Backup created: ${data.backup_file}\n` +
-          `Timestamp: ${data.timestamp}`
-        )
-      } else {
-        setAlertTitle("Error")
-        setAlertMessage(`Reset failed: ${data.error}`)
-      }
-    } catch (error: any) {
+    if (data.status === "success") {
+      setAlertTitle("Success")
+      setAlertMessage(
+        `Deleted ${data.records_deleted} records successfully!` +
+        (data.hostinger_url ? `\n\nUpdated Hostinger: ${data.hostinger_url}` : '')
+      )
+    } else {
       setAlertTitle("Error")
-      setAlertMessage(`Failed to reset database: ${error.message}`)
+      setAlertMessage(`Delete failed: ${data.error}`)
     }
+  } catch (error: any) {
+    setAlertTitle("Error")
+    setAlertMessage(`Failed to delete records: ${error.message}`)
   }
-
-  const handleBackupDatabase = async () => {
-    setAlertTitle("Creating Backup")
-    setAlertMessage("Backing up master database...")
-    setAlertOpen(true)
-
-    try {
-      const renderUrl = process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
-      const response = await fetch(`${renderUrl}/database/backup`)
-      const data = await response.json()
-
-      if (data.status === "success") {
-        setAlertTitle("Success")
-        setAlertMessage(
-          `Backup created successfully!\n\n` +
-          `File: ${data.backup_file}\n` +
-          `Size: ${(data.file_size / 1024).toFixed(2)} KB\n` +
-          `Timestamp: ${data.timestamp}`
-        )
-      } else {
-        setAlertTitle("Error")
-        setAlertMessage(`Backup failed: ${data.error}`)
-      }
-    } catch (error: any) {
-      setAlertTitle("Error")
-      setAlertMessage(`Failed to create backup: ${error.message}`)
-    }
-  }
-
-  const handleDeleteAllRecords = async () => {
-    if (!confirm("⚠️ WARNING: This will delete ALL records from the master database without creating a backup. Are you absolutely sure?")) {
-      return
-    }
-
-    setAlertTitle("Deleting Records")
-    setAlertMessage("Deleting all records from master database...")
-    setAlertOpen(true)
-
-    try {
-      const renderUrl = process.env.NEXT_PUBLIC_RENDER_SERVICE_URL || "http://localhost:8000"
-      const response = await fetch(`${renderUrl}/database/delete-all-records`, {
-        method: "POST"
-      })
-      const data = await response.json()
-
-      if (data.status === "success") {
-        setAlertTitle("Success")
-        setAlertMessage(`Deleted ${data.records_deleted} records successfully!`)
-      } else {
-        setAlertTitle("Error")
-        setAlertMessage(`Delete failed: ${data.error}`)
-      }
-    } catch (error: any) {
-      setAlertTitle("Error")
-      setAlertMessage(`Failed to delete records: ${error.message}`)
-    }
-  }
-
+}
   const ensureCertificateNumbers = async () => {
     if (!scheduleId) return
 
