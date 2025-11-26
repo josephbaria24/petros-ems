@@ -31,43 +31,172 @@ export default function GuestTrainingRegistration() {
   const [regions, setRegions] = useState<{ code: string; name: string }[]>([])
   const [cities, setCities] = useState<{ code: string; name: string }[]>([])
   const [paymentMethod, setPaymentMethod] = useState("BPI")
+  const [errors, setErrors] = useState<{ [key: string]: boolean }>({})
 
-  useEffect(() => {
-    const fetchCourseAndSchedule = async () => {
-      const scheduleId = new URLSearchParams(window.location.search).get("schedule_id")
-      if (!scheduleId) return
-  
-      const { data: schedule, error: scheduleError } = await supabase
+  const requiredPersonalFields = [
+    "first_name",
+    "last_name",
+    "phone_number",
+    "email",
+    "gender",
+    "age",
+    "mailing_street",
+    "mailing_city",
+    "mailing_province",
+    "employment_status",
+  ]
+
+  const validateStep3 = () => {
+  if (!form.id_picture_url) {
+    toast.error("Please upload a valid ID.")
+    return false
+  }
+  if (!form.picture_2x2_url) {
+    toast.error("Please upload a 2x2 photo.")
+    return false
+  }
+  return true
+}
+
+
+
+
+const validateStep1 = () => {
+  const newErrors: any = {}
+  let firstErrorField: string | null = null
+
+  requiredPersonalFields.forEach((field) => {
+    if (!form[field] || form[field].toString().trim() === "") {
+      newErrors[field] = true
+      if (!firstErrorField) firstErrorField = field
+    }
+  })
+
+  // Additional validation for email format
+  if (form.email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(form.email)) {
+      newErrors.email = true
+      if (!firstErrorField) firstErrorField = "email"
+      toast.error("Please enter a valid email address.")
+    }
+  }
+
+  // Additional validation for phone number (must have digits after +63)
+  if (form.phone_number) {
+    const phoneDigits = form.phone_number.replace(/\D/g, "")
+    if (phoneDigits.length < 12) { // +63 + 10 digits
+      newErrors.phone_number = true
+      if (!firstErrorField) firstErrorField = "phone_number"
+      toast.error("Please enter a complete mobile number.")
+    }
+  }
+
+  setErrors(newErrors)
+
+  if (firstErrorField) {
+    const element = document.getElementById(firstErrorField)
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" })
+      element.focus()
+    }
+    if (!Object.keys(newErrors).includes("email") && !Object.keys(newErrors).includes("phone_number")) {
+      toast.error("Please complete all required personal details.")
+    }
+    return false
+  }
+
+  return true
+}
+
+
+useEffect(() => {
+  const fetchCourseAndSchedule = async () => {
+    const scheduleId = new URLSearchParams(window.location.search).get("schedule_id")
+    if (!scheduleId) {
+      console.log("No schedule_id found in URL")
+      return
+    }
+
+    console.log("Fetching data for schedule_id:", scheduleId)
+
+    try {
+      // Fetch schedule with related data in one query
+      const { data: scheduleData, error: scheduleError } = await supabase
         .from("schedules")
-        .select("course_id")
+        .select(`
+          course_id,
+          schedule_type,
+          schedule_ranges (start_date, end_date),
+          schedule_dates (date)
+        `)
         .eq("id", scheduleId)
         .single()
-  
-      if (schedule && schedule.course_id) {
-        const { data: courseData } = await supabase
+
+      console.log("Schedule data:", scheduleData)
+
+      if (scheduleError) {
+        console.error("Error fetching schedule:", scheduleError)
+        return
+      }
+
+      if (!scheduleData) {
+        console.log("No schedule data found")
+        return
+      }
+
+      // Fetch course data
+      if (scheduleData.course_id) {
+        const { data: courseData, error: courseError } = await supabase
           .from("courses")
           .select("*")
-          .eq("id", schedule.course_id)
+          .eq("id", scheduleData.course_id)
           .single()
-        setCourse(courseData)
+
+        console.log("Course data:", courseData)
+        
+        if (courseError) {
+          console.error("Error fetching course:", courseError)
+        } else {
+          setCourse(courseData)
+        }
       }
-  
-      const { data: rangeData } = await supabase
-        .from("schedule_ranges")
-        .select("start_date, end_date")
-        .eq("schedule_id", scheduleId)
-        .single()
-  
-      if (rangeData) {
-        setScheduleRange(rangeData)
+
+      // Handle schedule dates based on type
+      if (scheduleData.schedule_type === "regular" && scheduleData.schedule_ranges?.length > 0) {
+        const range = scheduleData.schedule_ranges[0]
+        console.log("Setting regular range:", range)
+        setScheduleRange({
+          start_date: range.start_date,
+          end_date: range.end_date
+        })
+      } else if (scheduleData.schedule_type === "staggered" && scheduleData.schedule_dates?.length > 0) {
+        const dates = scheduleData.schedule_dates
+          .map(d => d.date)
+          .sort()
+        
+        console.log("Setting staggered range:", {
+          start_date: dates[0],
+          end_date: dates[dates.length - 1]
+        })
+        
+        setScheduleRange({
+          start_date: dates[0],
+          end_date: dates[dates.length - 1]
+        })
+      } else {
+        console.log("No valid schedule dates found")
       }
+    } catch (error) {
+      console.error("Unexpected error:", error)
     }
+  }
+
+  fetchCourseAndSchedule()
   
-    fetchCourseAndSchedule()
-    
-    const bookingRef = Math.floor(Math.random() * 9000000 + 1000000).toString()
-    setBookingReference(bookingRef)
-  }, [])
+  const bookingRef = Math.floor(Math.random() * 9000000 + 1000000).toString()
+  setBookingReference(bookingRef)
+}, [])
 
   useEffect(() => {
     fetch("https://psgc.cloud/api/regions")
@@ -142,24 +271,64 @@ export default function GuestTrainingRegistration() {
     }
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target
-     // Fields to auto-capitalize
-    const fieldsToCapitalize = [
-      "first_name",
-      "middle_initial",
-      "last_name",
-      "suffix",
-      "mailing_street",
-      "mailing_city",
-      "mailing_province"
-    ]
+const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const { name, value } = e.target;
 
-    const formattedValue = fieldsToCapitalize.includes(name)
-      ? value.replace(/\b\w/g, (char) => char.toUpperCase()) // Capitalize first letter of each word
-      : value
-      setForm({ ...form, [name]: formattedValue })
-    }
+  // 📌 PHONE AUTO-FORMAT (+63 912 345 6789)
+  if (name === "phone_number") {
+    let digits = value.replace(/\D/g, "");
+    if (!digits.startsWith("63")) digits = "63" + digits;
+    let formatted = "+" + digits.slice(0, 2);
+
+    if (digits.length > 2) formatted += " " + digits.slice(2, 5);
+    if (digits.length > 5) formatted += " " + digits.slice(5, 8);
+    if (digits.length > 8) formatted += " " + digits.slice(8, 12);
+
+    setForm((prev: any) => ({ ...prev, phone_number: formatted }));
+    return;
+  }
+
+  // 📌 BIRTHDAY → AUTO-CALCULATE AGE
+  if (name === "birthday") {
+    const birth = new Date(value);
+    const age = new Date().getFullYear() - birth.getFullYear();
+    setForm((prev: any) => ({
+      ...prev,
+      birthday: value,
+      age
+    }));
+    return;
+  }
+
+  // 📌 SPECIAL RULE — MIDDLE INITIAL (only 1 letter)
+  if (name === "middle_initial") {
+    const sanitized = value.replace(/[^a-zA-Z]/g, "").slice(0, 1).toUpperCase();
+    setForm((prev: any) => ({ ...prev, middle_initial: sanitized }));
+    return;
+  }
+
+  // 📌 AUTO-CAPITALIZE fields
+  const autoCapitalizeFields = [
+    "first_name",
+    "last_name",
+    "suffix"
+  ];
+
+  let formattedValue = value;
+
+  if (autoCapitalizeFields.includes(name)) {
+    formattedValue = value.replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+
+  setForm((prev: any) => ({
+    ...prev,
+    [name]: formattedValue
+  }));
+
+  // Clear any error for this field
+  setErrors((prev) => ({ ...prev, [name]: false }));
+};
+
 
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -275,6 +444,7 @@ export default function GuestTrainingRegistration() {
         payment_status:
           paymentMethod === "COUNTER" ? "pending" : "awaiting receipt",
         amount_paid: 0,                           // ✅ start at 0
+        courtesy_title: form.courtesy_title || null,
       };
   
       const { data: insertedTraining, error: insertError } = await supabase
@@ -450,55 +620,119 @@ export default function GuestTrainingRegistration() {
               </div>
             )}
 
-{step === 1 && (
-  <div className="space-y-2">
-    <div className="flex items-center justify-between mb-2">
-      <h2 className="text-3xl font-bold">Personal Details</h2>
-    </div>
-    <p className="text-gray-500">Tell us a bit about yourself</p>
-                
+          {step === 1 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-3xl font-bold">Personal Details</h2>
+              </div>
+              <p className="text-gray-500">Tell us a bit about yourself</p>
+                          
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
+                      <Label htmlFor="courtesy_title" className="text-sm font-medium">
+                        Courtesy Title
+                      </Label>
+                      <Input
+                        id="courtesy_title"
+                        name="courtesy_title"
+                        onChange={handleChange}
+                        placeholder="e.g., Mr., Ms., Engr., Dr."
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <Label htmlFor="first_name" className="text-sm font-medium">First Name *</Label>
-                      <Input id="first_name" name="first_name" onChange={handleChange} placeholder="Enter first name" required />
+                        <Input
+                          id="first_name"
+                          name="first_name"
+                          value={form.first_name || ""}
+                          onChange={handleChange}
+                          className={errors.first_name ? "border-red-500 focus:ring-red-500" : ""}
+                          placeholder="Enter first name"
+                          required
+                        />
+
+                      {errors.first_name && (
+                        <p className="text-red-500 text-xs">First name is required</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="middle_initial" className="text-sm font-medium">Middle Initial</Label>
-                      <Input id="middle_initial" name="middle_initial" onChange={handleChange} placeholder="M.I." />
+                      <Input id="middle_initial" name="middle_initial" value={form.middle_initial || ""} onChange={handleChange} placeholder="M.I." maxLength={1}  />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="last_name" className="text-sm font-medium">Last Name *</Label>
-                      <Input id="last_name" name="last_name" onChange={handleChange} placeholder="Enter last name" required />
+                      <Input
+                          id="last_name"
+                          name="last_name"
+                          value={form.last_name || ""}
+                          onChange={handleChange}
+                          placeholder="Enter last name"
+                          required
+                        />
+
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="suffix" className="text-sm font-medium">Suffix</Label>
                       <Input id="suffix" name="suffix" onChange={handleChange} placeholder="Jr., Sr., etc." />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="phone_number" className="text-sm font-medium">Mobile Number *</Label>
-                      <Input id="phone_number" name="phone_number" onChange={handleChange} placeholder="+63" required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="email" className="text-sm font-medium">Email Address *</Label>
-                      <Input id="email" name="email" type="email" onChange={handleChange} placeholder="email@example.com" required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="gender" className="text-sm font-medium">Gender *</Label>
-                      <Select
-                        onValueChange={(value) => setForm({ ...form, gender: value })}
-                        defaultValue={form.gender}
-                        required
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select Gender" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Male">Male</SelectItem>
-                          <SelectItem value="Female">Female</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="phone_number" className="text-sm font-medium">Mobile Number *</Label>
+                        <Input 
+                          id="phone_number" 
+                          name="phone_number" 
+                          value={form.phone_number || ""}
+                          onChange={handleChange} 
+                          placeholder="+63 912 345 6789" 
+                          className={errors.phone_number ? "border-red-500 focus:ring-red-500" : ""}
+                          required 
+                        />
+                        {errors.phone_number && (
+                          <p className="text-red-500 text-xs">Complete mobile number is required</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="email" className="text-sm font-medium">Email Address *</Label>
+                        <Input 
+                          id="email" 
+                          name="email" 
+                          type="email" 
+                          value={form.email || ""}
+                          onChange={handleChange} 
+                          placeholder="email@example.com" 
+                          className={errors.email ? "border-red-500 focus:ring-red-500" : ""}
+                          required 
+                        />
+                        {errors.email && (
+                          <p className="text-red-500 text-xs">Valid email address is required</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="gender" className="text-sm font-medium">Gender *</Label>
+
+                        <div className={errors.gender ? "border border-red-500 rounded-md p-1" : ""}>
+                          <Select
+                            onValueChange={(value) => {
+                              setForm({ ...form, gender: value })
+                              setErrors((prev) => ({ ...prev, gender: false }))
+                            }}
+                            defaultValue={form.gender}
+                          >
+                            <SelectTrigger id="gender" className="w-full">
+                              <SelectValue placeholder="Select Gender" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Male">Male</SelectItem>
+                              <SelectItem value="Female">Female</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {errors.gender && (
+                          <p className="text-red-500 text-xs">Gender is required</p>
+                        )}
+                      </div>
                     <div className="space-y-2">
                       <Label htmlFor="age" className="text-sm font-medium">Age *</Label>
                       <Input id="age" name="age" type="number" onChange={handleChange} placeholder="18" required />
@@ -517,36 +751,48 @@ export default function GuestTrainingRegistration() {
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-2">
-                    <Label className="text-sm font-medium">Employment Status *</Label>
-                    <RadioGroup
-                      value={form.employment_status || ""}
-                      onValueChange={(val) => setForm({ ...form, employment_status: val })}
-                      className="flex gap-6"
-                      required
-                    >
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="Unemployed" id="unemployed" />
-                        <Label htmlFor="unemployed" className="font-normal cursor-pointer">Unemployed</Label>
+                    <div className="space-y-3 pt-2">
+                      <Label className="text-sm font-medium">Employment Status *</Label>
+
+                      <div className={errors.employment_status ? "border border-red-500 rounded-md p-2" : ""}>
+                        <RadioGroup
+                          value={form.employment_status || ""}
+                          onValueChange={(val) => {
+                            setForm({ ...form, employment_status: val })
+                            setErrors((prev) => ({ ...prev, employment_status: false }))
+                          }}
+                          className="flex gap-6"
+                        >
+                          <div className="flex items-center gap-2">
+                            <RadioGroupItem value="Unemployed" id="unemployed" />
+                            <Label htmlFor="unemployed" className="font-normal cursor-pointer">Unemployed</Label>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <RadioGroupItem value="Employed" id="employed" />
+                            <Label htmlFor="employed" className="font-normal cursor-pointer">Employed</Label>
+                          </div>
+                        </RadioGroup>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem value="Employed" id="employed" />
-                        <Label htmlFor="employed" className="font-normal cursor-pointer">Employed</Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
+
+                      {errors.employment_status && (
+                        <p className="text-red-500 text-xs">Employment status is required</p>
+                      )}
+                    </div>
+
                 </div>
 
                 <div className="flex justify-end pt-4">
-                  <Button 
+                  <Button
                     onClick={() => {
+                      if (!validateStep1()) return
+
                       if (form.employment_status === "Unemployed") {
                         setStep(3)
                       } else {
                         setStep(2)
                       }
-                    }} 
-                    size="lg" 
+                    }}
+                    size="lg"
                     className="bg-slate-900 hover:bg-slate-700 cursor-pointer"
                   >
                     Continue
@@ -719,13 +965,17 @@ export default function GuestTrainingRegistration() {
 
                 <div className="flex justify-end pt-4">
                   <Button 
-                    onClick={() => setStep(4)} 
-                    size="lg" 
+                    onClick={() => {
+                      if (!validateStep3()) return
+                      setStep(4)
+                    }}
+                    size="lg"
                     className="bg-slate-900 hover:bg-slate-700 cursor-pointer"
                     disabled={uploading}
                   >
                     {uploading ? "Uploading..." : "Continue"}
                   </Button>
+
                 </div>
               </div>
             )}
@@ -758,7 +1008,7 @@ export default function GuestTrainingRegistration() {
                           <p className="text-gray-600 text-sm">
                             {scheduleRange ? formatDateRange(scheduleRange.start_date, scheduleRange.end_date) : "Loading..."}
                           </p>
-                          <p className="text-gray-600 text-sm">08:00 AM – 05:00 PM</p>
+
                         </fieldset>
 
                         <fieldset className="border border-gray-300 rounded-md px-4 pt-4 pb-2 bg-slate-50 relative">

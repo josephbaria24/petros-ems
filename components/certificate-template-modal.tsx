@@ -14,6 +14,23 @@ import { Slider } from "@/components/ui/slider"
 import { supabase } from "@/lib/supabase-client"
 import React from "react"
 
+
+function toPercentX(px: number) {
+  return px / 842
+}
+
+function toPercentY(px: number) {
+  return px / 595
+}
+
+function toPercentFont(size: number) {
+  return size / 595
+}
+
+
+
+
+
 interface TextField {
   id: string
   label: string
@@ -238,12 +255,38 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
         const response = await fetch(`/api/certificate-template?courseId=${courseId}&templateType=${type.value}`)
         if (response.ok) {
           const data = await response.json()
-          if (data.template) {
-            setTemplateImage(prev => ({ ...prev, [type.value]: data.template.image_url }))
-            if (data.template.fields) {
-              setTextFields(prev => ({ ...prev, [type.value]: data.template.fields }))
-            }
-          }
+if (data.template && data.template.fields) {
+  const restoredFields = (data.template.fields as TextField[]).map(
+    (f: TextField): TextField => ({
+      ...f,
+      x: f.x * 842,
+      y: f.y * 595,
+      fontSize: f.fontSize * 595
+    })
+  );
+
+  setTemplateImage(prev => ({
+    ...prev,
+    [type.value]: data.template.image_url
+  }));
+
+  setTextFields(prev => ({
+    ...prev,
+    [type.value]: restoredFields
+  }));
+} else {
+  // No template saved yet → load default
+  setTemplateImage(prev => ({
+    ...prev,
+    [type.value]: null
+  }));
+
+  setTextFields(prev => ({
+    ...prev,
+    [type.value]: DEFAULT_FIELDS[type.value]
+  }));
+}
+
         }
       } catch (error) {
         console.error(`Error loading ${type.value} template:`, error)
@@ -545,7 +588,13 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
         body: JSON.stringify({
           courseId,
           imageUrl: imageUrl,
-          fields: textFields[currentTemplateType],
+          fields: textFields[currentTemplateType].map((f: TextField): TextField => ({
+            ...f,
+            x: toPercentX(f.x),
+            y: toPercentY(f.y),
+            fontSize: toPercentFont(f.fontSize)
+          })),
+
           templateType: currentTemplateType
         })
       })
@@ -589,7 +638,12 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
           body: JSON.stringify({
             courseId,
             imageUrl: imageUrl,
-            fields: textFields[type.value],
+           fields: textFields[type.value].map((f: TextField): TextField => ({
+              ...f,
+              x: toPercentX(f.x),
+              y: toPercentY(f.y),
+              fontSize: toPercentFont(f.fontSize)
+            })),
             templateType: type.value
           })
         })

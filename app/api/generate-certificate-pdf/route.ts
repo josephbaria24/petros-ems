@@ -133,12 +133,10 @@ export async function POST(req: NextRequest) {
 
 
     
-    const CANVAS_WIDTH = 842
-    const CANVAS_HEIGHT = 595
-
-
-    // Create canvas
+const CANVAS_WIDTH = templateImage.width
+const CANVAS_HEIGHT = templateImage.height
 const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT)
+
 const ctx = canvas.getContext("2d")
 
     // Draw template
@@ -157,11 +155,12 @@ const ctx = canvas.getContext("2d")
           const img = await loadImage(Buffer.from(imageBuffer));
 
           // Position photo in top-right corner (adjust as needed)
-          const size = canvas.width * 0.097;
-          const x = canvas.width * 0.848;
-          const y = canvas.height * 0.048;
+          const PHOTO_SIZE = 0.12 * CANVAS_HEIGHT;   // adjust to what your UI uses
+          const PHOTO_X = 0.85 * CANVAS_WIDTH;
+          const PHOTO_Y = 0.05 * CANVAS_HEIGHT;
 
-          ctx.drawImage(img, x, y, size, size);
+          ctx.drawImage(img, PHOTO_X, PHOTO_Y, PHOTO_SIZE, PHOTO_SIZE)
+
         }
       } catch (error) {
         console.warn("Failed to load trainee photo:", error);
@@ -199,26 +198,32 @@ const ctx = canvas.getContext("2d")
       "{{batch_number}}": trainee.batch_number || "",
       "{{training_provider}}": "Petrosphere Inc.",
       "{{schedule_range}}": scheduleRange || "",
+      "{{held_on}}": scheduleRange || "",
+      "{{trainee_picture}}": "",  // picture is drawn separately
+      "{{given_this}}": finalGivenDate,
+      
     };
-const scaleX = CANVAS_WIDTH / 842
-const scaleY = CANVAS_HEIGHT / 595
-    // Draw each text field from template
-    template.fields.forEach((field) => {
-      let displayText = field.value
-    
-      Object.entries(replacements).forEach(([key, val]) => {
-        displayText = displayText.replace(key, val)
-      })
-    
-      const x = field.x * scaleX
-      const y = field.y * scaleY
-      const fontSize = field.fontSize * scaleY
-    
-      ctx.font = `${field.fontWeight === "bold" ? "bold " : ""}${fontSize}px Arial`
-      ctx.fillStyle = field.color
-      ctx.textAlign = field.align
-      ctx.fillText(displayText, x, y)
-    })
+
+
+template.fields.forEach((field) => {
+  let displayText = field.value
+
+  Object.entries(replacements).forEach(([key, val]) => {
+    displayText = displayText.replace(key, val)
+  })
+
+  // Convert percent → actual pixels
+  const x = field.x * CANVAS_WIDTH
+  const y = field.y * CANVAS_HEIGHT
+  const fontSize = field.fontSize * CANVAS_HEIGHT
+
+  ctx.font = `${field.fontWeight === "bold" ? "bold " : ""}${fontSize}px Arial`
+  ctx.fillStyle = field.color
+  ctx.textAlign = field.align
+
+  ctx.fillText(displayText, x, y)
+})
+
     // Convert canvas to PNG buffer
     const pngBuffer = canvas.toBuffer("image/png");
     console.log("✅ Canvas converted to PNG, size:", pngBuffer.length, "bytes");

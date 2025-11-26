@@ -19,12 +19,32 @@ import { exportTraineeExcel } from "@/lib/exports/export-excel"
 import { exportCertificatesNew } from "@/lib/exports/export-certificate"
 import { batchAssignCertificateSerials } from "@/lib/certificate-serial"
 
+
+
+
+
+
+
+
 interface ParticipantDirectoryDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   scheduleId: string | null
   courseName: string
   scheduleRange: string
+}
+interface DownloadTrainee {
+  id: string
+  first_name: string
+  last_name: string
+  middle_initial?: string
+  picture_2x2_url?: string
+  schedule_id: string
+  status?: string
+  email?: string
+  certificate_number?: string
+  course_id: string
+  batch_number?: number
 }
 
 interface Trainee {
@@ -49,6 +69,42 @@ const TEMPLATE_OPTIONS = [
   { value: "excellence" as TemplateType, label: "Excellence", icon: Trophy },
 ]
 
+
+
+async function downloadFromServer(
+  trainee: DownloadTrainee,
+  templateType: TemplateType,
+  courseName: string,
+  scheduleRange: string
+) {
+  const res = await fetch("/api/generate-certificate-pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      trainee,
+      courseName,
+      scheduleRange,
+      courseId: trainee.course_id,
+      templateType,
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.error || "Failed to download certificate.")
+  }
+
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`
+  a.click()
+
+  URL.revokeObjectURL(url)
+}
+
 export default function ParticipantDirectoryDialog({
   open,
   onOpenChange,
@@ -71,6 +127,7 @@ export default function ParticipantDirectoryDialog({
   const [loading, setLoading] = useState(false)
   const [databaseStats, setDatabaseStats] = useState<any>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
+  const [isDownloadingDirectory, setIsDownloadingDirectory] = useState(false)
 
   // ADD THIS: New helper to call the API route
 const callDatabaseAPI = async (action: string, method: 'GET' | 'POST' = 'GET') => {
@@ -114,13 +171,9 @@ const fetchDatabaseStats = async () => {
   }
 }
 const handleResetDatabase = async () => {
-  if (!confirm("Are you sure you want to reset the master database? This will create a backup and start fresh.")) {
-    return
-  }
+  if (!confirm("Are you sure you want to reset the master database?")) return
 
-  setAlertTitle("Resetting Database")
-  setAlertMessage("Creating backup and resetting...")
-  setAlertOpen(true)
+  startLongOperation("Resetting Database", "Creating backup and resetting... This may take up to a minute due to server cold start.")
 
   try {
     const data = await callDatabaseAPI('reset', 'POST')
@@ -128,10 +181,7 @@ const handleResetDatabase = async () => {
     if (data.status === "success") {
       setAlertTitle("Success")
       setAlertMessage(
-        `Database reset successfully!\n\n` +
-        `Backup created: ${data.backup_file}\n` +
-        `Timestamp: ${data.timestamp}` +
-        (data.hostinger_url ? `\n\nHostinger URL: ${data.hostinger_url}` : '')
+        `Database reset successfully!\nBackup: ${data.backup_file}\nTimestamp: ${data.timestamp}`
       )
     } else {
       setAlertTitle("Error")
@@ -139,14 +189,12 @@ const handleResetDatabase = async () => {
     }
   } catch (error: any) {
     setAlertTitle("Error")
-    setAlertMessage(`Failed to reset database: ${error.message}`)
+    setAlertMessage(`Failed to reset: ${error.message}`)
   }
 }
 
 const handleBackupDatabase = async () => {
-  setAlertTitle("Creating Backup")
-  setAlertMessage("Backing up master database...")
-  setAlertOpen(true)
+  startLongOperation("Creating Backup", "Backing up master database... This may take up to a minute due to server cold start.")
 
   try {
     const data = await callDatabaseAPI('backup', 'GET')
@@ -154,11 +202,7 @@ const handleBackupDatabase = async () => {
     if (data.status === "success") {
       setAlertTitle("Success")
       setAlertMessage(
-        `Backup created successfully!\n\n` +
-        `File: ${data.backup_file}\n` +
-        `Size: ${(data.file_size / 1024).toFixed(2)} KB\n` +
-        `Timestamp: ${data.timestamp}` +
-        (data.hostinger_url ? `\n\nHostinger URL: ${data.hostinger_url}` : '')
+        `Backup created!\n\nFile: ${data.backup_file}\nSize: ${(data.file_size / 1024).toFixed(2)} KB\nTimestamp: ${data.timestamp}`
       )
     } else {
       setAlertTitle("Error")
@@ -166,36 +210,32 @@ const handleBackupDatabase = async () => {
     }
   } catch (error: any) {
     setAlertTitle("Error")
-    setAlertMessage(`Failed to create backup: ${error.message}`)
+    setAlertMessage(`Failed: ${error.message}`)
   }
 }
-const handleDeleteAllRecords = async () => {
-  if (!confirm("⚠️ WARNING: This will delete ALL records from the master database without creating a backup. Are you absolutely sure?")) {
-    return
-  }
 
-  setAlertTitle("Deleting Records")
-  setAlertMessage("Deleting all records from master database...")
-  setAlertOpen(true)
+
+const handleDeleteAllRecords = async () => {
+  if (!confirm("⚠️ WARNING: Delete ALL records?")) return
+
+  startLongOperation("Deleting Records", "Deleting all records... This may take up to a minute due to server cold start.")
 
   try {
     const data = await callDatabaseAPI('delete-all-records', 'POST')
 
     if (data.status === "success") {
       setAlertTitle("Success")
-      setAlertMessage(
-        `Deleted ${data.records_deleted} records successfully!` +
-        (data.hostinger_url ? `\n\nUpdated Hostinger: ${data.hostinger_url}` : '')
-      )
+      setAlertMessage(`Deleted ${data.records_deleted} records.`)
     } else {
       setAlertTitle("Error")
       setAlertMessage(`Delete failed: ${data.error}`)
     }
   } catch (error: any) {
     setAlertTitle("Error")
-    setAlertMessage(`Failed to delete records: ${error.message}`)
+    setAlertMessage(`Failed to delete: ${error.message}`)
   }
 }
+
   const ensureCertificateNumbers = async () => {
     if (!scheduleId) return
 
@@ -252,40 +292,37 @@ const handleDeleteAllRecords = async () => {
       fetchScheduleStatus()
     }
   }, [open, scheduleId])
+const handleDownloadCertificates = async () => {
+  if (!scheduleId) return
 
-  const handleDownloadCertificates = async () => {
-    if (!scheduleId) return
+  await ensureCertificateNumbers()
 
-    await ensureCertificateNumbers()
+  setIsGenerating(true)
+  startLongOperation(
+    "Generating Certificates",
+    "Preparing downloads... This may take up to a minute due to server cold start."
+  )
 
-    setIsGenerating(true)
-    setAlertTitle("Generating Certificates")
-    setAlertMessage("Preparing downloads...")
-    setAlertOpen(true)
+  try {
+for (const trainee of trainees) {
+  await downloadFromServer(
+    trainee,
+    selectedTemplateType,
+    courseName,
+    scheduleRange
+  )
+}
 
-    try {
-      await exportCertificatesNew(
-        scheduleId,
-        selectedTemplateType,
-        courseName,
-        scheduleRange,
-        trainees,
-        trainees[0]?.course_id,
-        (current, total) => {
-          const percent = Math.floor((current / total) * 100)
-          setProgress(percent)
-          setAlertMessage(`Generating ${current} of ${total} certificates...`)
-        }
-      )
 
-      setAlertMessage("Download completed!")
-    } catch (err: any) {
-      setAlertTitle("Error")
-      setAlertMessage(err.message)
-    } finally {
-      setIsGenerating(false)
-    }
+    setAlertMessage("Download completed!")
+  } catch (err: any) {
+    setAlertTitle("Error")
+    setAlertMessage(err.message)
+  } finally {
+    setIsGenerating(false)
   }
+}
+
 
   const fetchTrainees = async () => {
     if (!scheduleId) return
@@ -402,90 +439,105 @@ const handleDeleteAllRecords = async () => {
     }
   }
 
-  const handleDownloadExcel = () => {
-    if (!scheduleId) return
-    exportTraineeExcel(scheduleId, scheduleRange)
+const handleDownloadExcel = async () => {
+  if (!scheduleId) return
+
+  setIsDownloadingDirectory(true)
+  setAlertTitle("Downloading Participant Directory")
+  setAlertMessage("Preparing Excel file... This may take up to a minute due to server cold start.")
+  setAlertOpen(true)
+
+  try {
+    await exportTraineeExcel(scheduleId, scheduleRange)
+    setAlertMessage("Download complete!")
+  } catch (error) {
+    setAlertTitle("Error")
+    setAlertMessage("Failed to download directory.")
+  } finally {
+    setIsDownloadingDirectory(false)
   }
+}
 
-  const handleSendCertificates = async () => {
-    if (!scheduleId) return
+const handleSendCertificates = async () => {
+  if (!scheduleId) return
 
-    await ensureCertificateNumbers()
+  await ensureCertificateNumbers()
 
-    setAlertTitle("Sending Certificates")
-    setAlertMessage(`Preparing to send ${selectedTemplateType} certificates...`)
-    setAlertOpen(true)
-    setIsSendingEmails(true)
-    setProgress(0)
+  setIsSendingEmails(true)
+  setProgress(0)
 
-    try {
-      const response = await fetch("/api/send-certificates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          scheduleId,
-          templateType: selectedTemplateType
-        }),
-      })
+  startLongOperation(
+    "Sending Certificates",
+    `Preparing to send ${selectedTemplateType} certificates... This may take up to a minute due to server cold start.`
+  )
 
-      if (!response.ok) {
-        const result = await response.json()
-        setAlertTitle("Error")
-        setAlertMessage(result.error || "Failed to send certificates.")
-        setIsSendingEmails(false)
-        return
-      }
+  try {
+    const response = await fetch("/api/send-certificates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        scheduleId,
+        templateType: selectedTemplateType
+      }),
+    })
 
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
+    if (!response.ok) {
+      const result = await response.json()
+      setAlertTitle("Error")
+      setAlertMessage(result.error || "Failed to send certificates.")
+      setIsSendingEmails(false)
+      return
+    }
 
-      if (!reader) {
-        throw new Error("Failed to get response reader")
-      }
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+    if (!reader) throw new Error("Failed to get response reader")
 
-        const chunk = decoder.decode(value)
-        const lines = chunk.split("\n")
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
 
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.substring(6))
+      const chunk = decoder.decode(value)
+      const lines = chunk.split("\n")
 
-              if (data.type === "progress") {
-                const progressPercent = Math.floor((data.current / data.total) * 100)
-                setProgress(progressPercent)
-                setAlertMessage(
-                  `${data.message}${data.lastSent ? `\nLast sent: ${data.lastSent}` : ""}${
-                    data.lastError ? `\nError: ${data.lastError}` : ""
-                  }`
-                )
-              } else if (data.type === "complete") {
-                setProgress(100)
-                setAlertTitle("Done")
-                setAlertMessage(
-                  `Successfully sent ${data.successCount} certificate(s). ${
-                    data.failCount > 0 ? `${data.failCount} failed.` : ""
-                  }`
-                )
-                setIsSendingEmails(false)
-              }
-            } catch (parseError) {
-              console.error("Failed to parse SSE data:", parseError)
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(line.substring(6))
+
+            if (data.type === "progress") {
+              const progressPercent = Math.floor((data.current / data.total) * 100)
+              setProgress(progressPercent)
+              setAlertMessage(
+                `${data.message}${data.lastSent ? `\nLast sent: ${data.lastSent}` : ""}${
+                  data.lastError ? `\nError: ${data.lastError}` : ""
+                }`
+              )
+            } else if (data.type === "complete") {
+              setProgress(100)
+              setAlertTitle("Done")
+              setAlertMessage(
+                `Successfully sent ${data.successCount} certificate(s). ${
+                  data.failCount > 0 ? `${data.failCount} failed.` : ""
+                }`
+              )
+              setIsSendingEmails(false)
             }
+          } catch (parseError) {
+            console.error("Failed to parse SSE data:", parseError)
           }
         }
       }
-    } catch (error) {
-      console.error("Error sending certificates:", error)
-      setAlertTitle("Error")
-      setAlertMessage("An error occurred while sending certificates.")
-      setIsSendingEmails(false)
     }
+  } catch (error) {
+    console.error("Error sending certificates:", error)
+    setAlertTitle("Error")
+    setAlertMessage("An error occurred while sending certificates.")
+    setIsSendingEmails(false)
   }
+}
+
 
   const handleSaveTrainee = async () => {
     if (!selectedTrainee) return
@@ -516,6 +568,18 @@ const handleDeleteAllRecords = async () => {
       alert("Changes saved successfully!")
     }
   }
+
+
+
+  const startLongOperation = (title: string, message: string = "") => {
+  setAlertTitle(title)
+  setAlertMessage(
+    message || "Please wait... This may take up to a minute due to server cold start."
+  )
+  setAlertOpen(true)
+}
+
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -555,10 +619,23 @@ const handleDeleteAllRecords = async () => {
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleDownloadExcel}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Download Excel
-                </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={handleDownloadExcel}
+                      disabled={isDownloadingDirectory}
+                    >
+                      {isDownloadingDirectory ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Preparing...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="mr-2 h-4 w-4" />
+                          Download Excel
+                        </>
+                      )}
+                    </DropdownMenuItem>
+
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel>Database Management</DropdownMenuLabel>
                 <DropdownMenuItem onClick={fetchDatabaseStats} disabled={isLoadingStats}>
