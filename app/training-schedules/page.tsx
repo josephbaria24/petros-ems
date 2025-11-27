@@ -89,14 +89,18 @@ export default function TrainingSchedulesPage() {
       </div>
 
       <Tabs defaultValue="all" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="all">All Events</TabsTrigger>
-          <TabsTrigger value="planned">Planned</TabsTrigger>
-          <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
-          {/* <TabsTrigger value="confirmed">Confirmed</TabsTrigger> */}
-          <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
-          <TabsTrigger value="finished">Finished</TabsTrigger>
-        </TabsList>
+      <TabsList className="bg-transparent">
+        {["all", "planned", "ongoing", "confirmed", "cancelled", "finished"].map(key => (
+          <TabsTrigger
+            key={key}
+            value={key}
+            className="data-[state=active]:bg-card data-[state=active]:shadow-sm"
+          >
+            {key.charAt(0).toUpperCase() + key.slice(1)}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+
 
         <TabsContent value="all" className="space-y-4">
           <ParticipantsTable status="all" refreshTrigger={refreshTrigger} />
@@ -109,10 +113,6 @@ export default function TrainingSchedulesPage() {
         <TabsContent value="ongoing" className="space-y-4">
           <ParticipantsTable status="ongoing" refreshTrigger={refreshTrigger} />
         </TabsContent>
-
-        {/* <TabsContent value="confirmed" className="space-y-4">
-          <ParticipantsTable status="confirmed" refreshTrigger={refreshTrigger} />
-        </TabsContent> */}
 
         <TabsContent value="cancelled" className="space-y-4">
           <ParticipantsTable status="cancelled" refreshTrigger={refreshTrigger} />

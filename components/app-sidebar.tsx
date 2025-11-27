@@ -5,13 +5,9 @@ import {
   LayoutDashboard,
   Calendar,
   BookOpen,
-  FileText,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
-  CalendarCheck,
   CalendarCheckIcon,
-  IdCardIcon,
   LucideAward,
 } from "lucide-react"
 import Link from "next/link"
@@ -49,20 +45,22 @@ const menuItems = [
     href: "/courses",
   },
   {
-    title: "Event Management",
-    icon: CalendarCheckIcon,
-    href: "https://ems.petros-global.com/",
-  },
-  {
     title: "Certs & ID Management",
     icon: LucideAward,
     href: "/certificate-id-management",
   },
-  // {
-  //   title: "Submissions",
-  //   icon: FileText,
-  //   href: "/submissions",
-  // },
+
+  // 🌟 Separator
+  {
+    type: "separator",
+    title: "External",
+  },
+
+  {
+    title: "Event Management",
+    icon: CalendarCheckIcon,
+    href: "https://ems.petros-global.com/",
+  },
 ]
 
 export function AppSidebar() {
@@ -77,32 +75,31 @@ export function AppSidebar() {
   return (
     <div
       className={cn(
-        "relative flex h-screen flex-col border-0 shadow-lg border-sidebar-border bg-sidebar transition-all duration-300 ease-in-out",
+        "relative flex h-screen flex-col border-0 shadow-lg bg-sidebar transition-all duration-300 ease-in-out",
         collapsed ? "w-16" : "w-64"
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center border-0 border-sidebar-border px-4 transition-all duration-300 ease-in-out">
-        {!collapsed && (
+      <div className="flex h-16 items-center px-4">
+        {!collapsed ? (
           <>
             {/* Light mode logo */}
             <img
               src="/trans-logo-dark.png"
               alt="Petrosphere Training Manager"
-              className="h-8 w-auto dark:hidden transition-opacity duration-300"
+              className="h-8 w-auto dark:hidden"
             />
+
             {/* Dark mode logo */}
             <img
               src="/trans-logo.png"
               alt="Petrosphere Training Manager"
-              className="h-8 w-auto hidden dark:block transition-opacity duration-300"
+              className="h-8 w-auto hidden dark:block"
             />
           </>
-        )}
-
-        {collapsed && (
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-950 text-primary-foreground font-bold transition-all duration-300">
-            <img src="/logo.png" alt="" className="" />
+        ) : (
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-950">
+            <img src="/logo.png" alt="P" className="h-6" />
           </div>
         )}
       </div>
@@ -111,9 +108,27 @@ export function AppSidebar() {
       <nav className="flex-1 space-y-1 p-2 overflow-y-auto">
         {menuItems.map((item) => {
           const Icon = item.icon
+
+          // 🌟 Render separator
+          if (item.type === "separator") {
+            return (
+              <div
+                key={item.title}
+                className={cn(
+                  "px-3 mt-4 mb-2 text-xs font-semibold text-muted-foreground",
+                  collapsed && "hidden"
+                )}
+              >
+                {item.title}
+                <div className="mt-2 h-px bg-muted"></div>
+              </div>
+            )
+          }
+
           const isActive =
             item.href === pathname ||
             item.children?.some((child) => child.href === pathname)
+
           const isDropdownOpen = openDropdown === item.title
 
           // Item with submenu
@@ -131,24 +146,24 @@ export function AppSidebar() {
                   )}
                 >
                   <span className="flex items-center gap-3">
-                    <Icon className="h-5 w-5 shrink-0" />
-                    {!collapsed && <span>{item.title}</span>}
+                  {Icon && <Icon className="h-5 w-5" />}
+                    {!collapsed && item.title}
                   </span>
 
                   {!collapsed && (
                     <ChevronRight
                       className={cn(
-                        "h-4 w-4 ml-auto transform transition-transform duration-300",
+                        "h-4 w-4 ml-auto transition-transform",
                         isDropdownOpen ? "rotate-90" : "rotate-0"
                       )}
                     />
                   )}
                 </button>
 
-                {/* Dropdown submenu with animation */}
+                {/* Dropdown */}
                 <div
                   className={cn(
-                    "overflow-hidden transition-all duration-300 ease-in-out ml-6",
+                    "overflow-hidden transition-all ml-6",
                     collapsed ? "max-h-0" : isDropdownOpen ? "max-h-40" : "max-h-0"
                   )}
                 >
@@ -176,8 +191,10 @@ export function AppSidebar() {
             )
           }
 
-          // Regular menu item
-          return (
+          // Regular link
+          if (!item.href) return null
+
+return (
             <Link
               key={item.href}
               href={item.href}
@@ -192,26 +209,26 @@ export function AppSidebar() {
                 collapsed && "justify-center"
               )}
             >
-              <Icon className={cn("h-5 w-5 shrink-0")} />
-              {!collapsed && <span>{item.title}</span>}
+             {Icon && <Icon className="h-5 w-5" />}
+              {!collapsed && item.title}
             </Link>
           )
         })}
       </nav>
 
       {/* Collapse Toggle */}
-      <div className="border-0 border-sidebar-border p-2">
+      <div className="p-2">
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setCollapsed(!collapsed)}
-          className={cn("w-full flex items-center justify-center transition-all duration-300 cursor-pointer")}
+          className="w-full flex items-center justify-center cursor-pointer"
         >
           {collapsed ? (
-            <ChevronRight className="h-4 w-4 transition-transform duration-300" />
+            <ChevronRight className="h-4 w-4" />
           ) : (
             <>
-              <ChevronLeft className="h-4 w-4 mr-2 transition-transform duration-300" />
+              <ChevronLeft className="h-4 w-4 mr-2" />
               <span>Collapse</span>
             </>
           )}

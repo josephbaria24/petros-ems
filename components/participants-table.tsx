@@ -439,7 +439,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
 
   return (
     <>
-      <Card className="p-6">
+      <Card className="p-6 border-0 shadow-md">
         <div className="flex items-center justify-between mb-4">
           <Input
             placeholder="Filter courses..."
