@@ -1,3 +1,4 @@
+//app\guest-training-calendar\page.tsx
 "use client"
 
 import { useState, useEffect } from 'react'
@@ -10,6 +11,12 @@ import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { useTheme } from 'next-themes'
 import { CheckCircle, Clock, RefreshCcw } from 'lucide-react'
+
+type NewsItem = {
+  title: string
+  image: string
+  date: string
+}
 
 type ScheduleEvent = {
   id: string
@@ -25,44 +32,47 @@ type ScheduleEvent = {
 // News Carousel Component
 function NewsCarousel() {
   const [currentSlide, setCurrentSlide] = useState(0)
-  
-  const news = [
-    {
-      title: "New HSE Training Program Launched",
-      image: "/news/hse-training.jpg",
-      date: "Nov 20, 2025"
-    },
-    {
-      title: "Industry Safety Standards Update",
-      image: "/news/safety-update.jpg",
-      date: "Nov 15, 2025"
-    },
-    {
-      title: "Certification Workshop Success",
-      image: "/news/workshop.jpg",
-      date: "Nov 10, 2025"
-    }
-  ]
+  const [news, setNews] = useState<NewsItem[]>([])
 
+  // Load news from Supabase
   useEffect(() => {
+    const loadNews = async () => {
+      const { data, error } = await supabase
+        .from("news_items")
+        .select("*")
+        .order("created_at", { ascending: false })
+
+      if (!error && data) {
+        setNews(data)
+      }
+    }
+
+    loadNews()
+  }, [])
+
+  // Auto-slide effect
+  useEffect(() => {
+    if (news.length === 0) return
+
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % news.length)
     }, 4000)
+
     return () => clearInterval(timer)
-  }, [news.length])
+  }, [news])
 
   return (
     <div className="relative">
       <div className="p-4 bg-primary text-primary-foreground">
         <h3 className="font-bold text-sm">Latest News</h3>
       </div>
-      
+
       <div className="relative h-48 overflow-hidden">
         {news.map((item, idx) => (
           <div
             key={idx}
             className={`absolute inset-0 transition-opacity duration-500 ${
-              idx === currentSlide ? 'opacity-100' : 'opacity-0'
+              idx === currentSlide ? "opacity-100" : "opacity-0"
             }`}
           >
             <div className="relative h-32 bg-muted">
@@ -72,26 +82,29 @@ function NewsCarousel() {
                 fill
                 className="object-cover"
                 onError={(e) => {
-                  e.currentTarget.src = '/course-covers/default.png'
+                  e.currentTarget.src = "/course-covers/default.png"
                 }}
               />
             </div>
             <div className="p-4">
               <p className="text-xs text-muted-foreground mb-1">{item.date}</p>
-              <h4 className="text-sm font-semibold line-clamp-2">{item.title}</h4>
+              <h4 className="text-sm font-semibold line-clamp-2">
+                {item.title}
+              </h4>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Dots indicator */}
       <div className="flex justify-center gap-2 pb-4">
         {news.map((_, idx) => (
           <button
             key={idx}
             onClick={() => setCurrentSlide(idx)}
             className={`w-2 h-2 rounded-full transition-all ${
-              idx === currentSlide ? 'bg-primary w-4' : 'bg-muted-foreground/30'
+              idx === currentSlide
+                ? "bg-primary w-4"
+                : "bg-muted-foreground/30"
             }`}
           />
         ))}

@@ -503,7 +503,7 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
     <div className="fixed inset-0 bg-gradient-to-br from-orange-50 via-white to-emerald-50 flex items-center justify-center p-8">
       <div className="w-full max-w-7xl h-full flex gap-8">
       <div className="hidden lg:flex lg:w-[45%] rounded-3xl bg-banded text-black p-8 flex-col backdrop-blur-sm shadow-[0_20px_60px_rgba(0,0,0,0.3)] border-0">
-        <div className="mb-10">
+        <div className="mb-25">
           <h1 className="text-2xl font-bold text-white">Training Registration</h1>
         </div>
 
@@ -591,7 +591,7 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
                 </div>
 
                 <div className="space-y-3">
-                <h2 className="text-5xl font-bold mb-3 bg-gradient-to-r from-blue-700 via-slate-800 to-yellow-600 text-transparent bg-clip-text animate-wave">
+                <h2 className="text-5xl font-bold mb-3 bg-gradient-to-r from-blue-700 via-slate-800 to-yellow-600 text-transparent bg-clip-text">
                     Welcome!
                   </h2>
                   <p className="text-lg text-gray-600 max-w-md mx-auto">

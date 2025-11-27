@@ -45,6 +45,7 @@
     "@types/ssh2-sftp-client": "^9.0.5",
     "@types/xlsx": "^0.0.35",
     "@vercel/analytics": "latest",
+    "adm-zip": "^0.5.16",
     "autoprefixer": "^10.4.20",
     "basic-ftp": "^5.0.5",
     "canvas": "^3.2.0",
@@ -80,6 +81,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.9",
+    "@types/adm-zip": "^0.5.7",
     "@types/node": "^22",
     "@types/nodemailer": "^7.0.3",
     "@types/react": "^18.3.26",

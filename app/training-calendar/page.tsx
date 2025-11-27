@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, Calendar, List, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar, List, X, Edit2, Save, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabase-client'
 import Image from "next/image"
 
@@ -19,6 +20,219 @@ type ScheduleEvent = {
   scheduleType: 'regular' | 'staggered'
 }
 
+type NewsItem = {
+  title: string
+  image: string
+  date: string
+}
+
+// News Carousel Component
+function NewsCarousel({ 
+  news, 
+  onEdit 
+}: { 
+  news: NewsItem[]
+  onEdit: () => void 
+}) {
+  const [currentSlide, setCurrentSlide] = useState(0)
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % news.length)
+    }, 4000)
+    return () => clearInterval(timer)
+  }, [news.length])
+
+  return (
+    <div className="relative">
+      <div className="p-4 bg-primary text-primary-foreground flex justify-between items-center">
+        <h3 className="font-bold text-sm">Latest News</h3>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onEdit}
+          className="h-8 gap-2 text-primary-foreground hover:bg-primary-foreground/20"
+        >
+          <Edit2 className="w-4 h-4" />
+          Edit News
+        </Button>
+      </div>
+      
+      <div className="relative h-48 overflow-hidden">
+        {news.map((item, idx) => (
+          <div
+            key={idx}
+            className={`absolute inset-0 transition-opacity duration-500 ${
+              idx === currentSlide ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            <div className="relative h-32 bg-muted">
+              <Image
+                src={item.image}
+                alt={item.title}
+                fill
+                className="object-cover"
+                onError={(e) => {
+                  e.currentTarget.src = '/course-covers/default.png'
+                }}
+              />
+            </div>
+            <div className="p-4">
+              <p className="text-xs text-muted-foreground mb-1">{item.date}</p>
+              <h4 className="text-sm font-semibold line-clamp-2">{item.title}</h4>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Dots indicator */}
+      <div className="flex justify-center gap-2 pb-4">
+        {news.map((_, idx) => (
+          <button
+            key={idx}
+            onClick={() => setCurrentSlide(idx)}
+            className={`w-2 h-2 rounded-full transition-all ${
+              idx === currentSlide ? 'bg-primary w-4' : 'bg-muted-foreground/30'
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// News Editor Component
+function NewsEditor({ 
+  news, 
+  onSave, 
+  onCancel 
+}: { 
+  news: NewsItem[]
+  onSave: (items: NewsItem[]) => void
+  onCancel: () => void
+}) {
+  const [items, setItems] = useState<NewsItem[]>(news)
+
+  const handleImageUpload = (index: number, file: File) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const newItems = [...items]
+      newItems[index].image = reader.result as string
+      setItems(newItems)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const updateItem = (index: number, field: keyof NewsItem, value: string) => {
+    const newItems = [...items]
+    newItems[index][field] = value
+    setItems(newItems)
+  }
+
+  const addItem = () => {
+    setItems([
+      ...items,
+      {
+        title: "New News Item",
+        image: "/course-covers/default.png",
+        date: new Date().toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric"
+        })
+      }
+    ])
+  }
+
+  const removeItem = (index: number) => {
+    if (items.length > 1) {
+      setItems(items.filter((_, i) => i !== index))
+    }
+  }
+
+
+  return (
+    <div className="space-y-4 p-4">
+      <div className="flex justify-between items-center">
+        <h3 className="font-bold">Edit News Items</h3>
+        <Button variant="outline" size="sm" onClick={addItem} className="gap-2">
+          <Plus className="w-4 h-4" />
+          Add Item
+        </Button>
+      </div>
+
+      {items.map((item, idx) => (
+        <Card key={idx} className="p-4 space-y-3">
+          <div className="flex justify-between items-start">
+            <span className="text-sm font-semibold">Item {idx + 1}</span>
+            {items.length > 1 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => removeItem(idx)}
+                className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium">Title</label>
+            <Input
+              value={item.title}
+              onChange={(e) => updateItem(idx, 'title', e.target.value)}
+              placeholder="News title"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium">Date</label>
+            <Input
+              value={item.date}
+              onChange={(e) => updateItem(idx, 'date', e.target.value)}
+              placeholder="Date"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium">Image</label>
+            <div className="relative h-32 bg-muted rounded overflow-hidden">
+              <Image
+                src={item.image}
+                alt={item.title}
+                fill
+                className="object-cover"
+                onError={(e) => {
+                  e.currentTarget.src = '/course-covers/default.png'
+                }}
+              />
+            </div>
+            <Input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleImageUpload(idx, file)
+              }}
+              className="text-xs"
+            />
+          </div>
+        </Card>
+      ))}
+      <div className="flex gap-2 pt-4">
+              <Button onClick={() => onSave(items)} className="flex-1 gap-2">
+                <Save className="w-4 h-4" />
+                Save Changes
+              </Button>
+              <Button variant="outline" onClick={onCancel} className="flex-1">
+                Cancel
+              </Button>
+            </div>
+          </div>
+  )
+}
+
 export default function TrainingCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewType, setViewType] = useState<'calendar' | 'list'>('calendar')
@@ -27,11 +241,44 @@ export default function TrainingCalendar() {
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [hoveredEventId, setHoveredEventId] = useState<string | null>(null)
+  const [isEditingNews, setIsEditingNews] = useState(false)
+  const [newsItems, setNewsItems] = useState<NewsItem[]>([
+    {
+      title: "New HSE Training Program Launched",
+      image: "/news/hse-training.jpg",
+      date: "Nov 20, 2025"
+    },
+    {
+      title: "Industry Safety Standards Update",
+      image: "/news/safety-update.jpg",
+      date: "Nov 15, 2025"
+    },
+    {
+      title: "Certification Workshop Success",
+      image: "/news/workshop.jpg",
+      date: "Nov 10, 2025"
+    }
+  ])
 
   useEffect(() => {
+      fetchNews()
     fetchSchedules()
+    // Load news from localStorage
+    const savedNews = localStorage.getItem('admin-news-items')
+    if (savedNews) {
+      setNewsItems(JSON.parse(savedNews))
+    }
   }, [])
+const fetchNews = async () => {
+  const { data, error } = await supabase
+    .from("news_items")
+    .select("*")
+    .order("created_at", { ascending: false })
 
+  if (!error && data) {
+    setNewsItems(data)
+  }
+}
   const fetchSchedules = async () => {
     setLoading(true)
     const { data, error } = await supabase
@@ -86,6 +333,22 @@ export default function TrainingCalendar() {
     }
     setLoading(false)
   }
+
+const handleSaveNews = async (items: NewsItem[]) => {
+  await supabase.from("news_items").delete().neq("id", "000");
+
+  const { error } = await supabase.from("news_items").insert(items);
+
+  if (error) {
+    console.error("Failed to save news:", error)
+    return
+  }
+
+  setNewsItems(items)
+  setIsEditingNews(false)
+}
+
+
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December']
@@ -155,10 +418,6 @@ export default function TrainingCalendar() {
     }).sort((a, b) => a.startDate.getTime() - b.startDate.getTime())
   }
   
-
-  const getEventRowIndex = (event: ScheduleEvent, allEvents: ScheduleEvent[]) => {
-    return allEvents.findIndex(e => e.id === event.id)
-  }
 
   const getStatusColor = (event: ScheduleEvent) => {
     const now = new Date()
@@ -253,30 +512,29 @@ export default function TrainingCalendar() {
               const color = getStatusColor(event)
               
               return (
-<div
-  key={`${event.id}-${idx}`}
-  className={`text-xs px-2 py-1.5 text-white cursor-pointer 
-    transition-all duration-200 ease-in-out 
-    ${isStart ? 'rounded-l ml-1' : '-ml-1'} 
-    ${isEnd ? 'rounded-r mr-1' : '-mr-1'} 
-    ${hoveredEventId === event.id ? 'ring-3 ring-black dark:ring-white ring-offset-0 scale-[1.02]' : 'scale-100'}
-  `}
-  style={{ 
-    backgroundColor: color, 
-    height: '28px', 
-    lineHeight: '16px',
-    marginBottom: '4px'
-  }}
-  onClick={() => openModal(event)}
-  onMouseEnter={() => setHoveredEventId(event.id)}
-  onMouseLeave={() => setHoveredEventId(null)}
-  title={`${event.course} - ${event.branch}`}
->
-  <div className="truncate">
-    {isStart && `${event.branch} ${event.course} - ${event.status}`}
-  </div>
-</div>
-
+                <div
+                  key={`${event.id}-${idx}`}
+                  className={`text-xs px-2 py-1.5 text-white cursor-pointer 
+                    transition-all duration-200 ease-in-out 
+                    ${isStart ? 'rounded-l ml-1' : '-ml-1'} 
+                    ${isEnd ? 'rounded-r mr-1' : '-mr-1'} 
+                    ${hoveredEventId === event.id ? 'ring-3 ring-black dark:ring-white ring-offset-0 scale-[1.02]' : 'scale-100'}
+                  `}
+                  style={{ 
+                    backgroundColor: color, 
+                    height: '28px', 
+                    lineHeight: '16px',
+                    marginBottom: '4px'
+                  }}
+                  onClick={() => openModal(event)}
+                  onMouseEnter={() => setHoveredEventId(event.id)}
+                  onMouseLeave={() => setHoveredEventId(null)}
+                  title={`${event.course} - ${event.branch}`}
+                >
+                  <div className="truncate">
+                    {isStart && `${event.branch} ${event.course} - ${event.status}`}
+                  </div>
+                </div>
               )
             })}
           </div>
@@ -377,101 +635,145 @@ export default function TrainingCalendar() {
 
   return (
     <div className="w-full bg-background p-6">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-      <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center bg-white">
+      <div className="flex gap-6">
+        {/* Main Calendar Section */}
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center bg-white">
                 <Image
-                src="/logo.png"
-                alt="Logo"
-                width={48}
-                height={48}
-                className="object-contain"
+                  src="/logo.png"
+                  alt="Logo"
+                  width={48}
+                  height={48}
+                  className="object-contain"
                 />
-            </div>
-            <h1 className="text-3xl font-bold">Training Calendar</h1>
-            </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex gap-2 bg-muted rounded-lg p-1">
-            <Button
-              variant={viewType === 'calendar' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setViewType('calendar')}
-              className="gap-2"
-            >
-              <Calendar className="w-4 h-4" />
-              Calendar
-            </Button>
-            <Button
-              variant={viewType === 'list' ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setViewType('list')}
-              className="gap-2"
-            >
-              <List className="w-4 h-4" />
-              List
-            </Button>
-          </div>
-
-          <div className="flex gap-2">
-            <Badge variant="outline" className="bg-emerald-500 text-white border-emerald-500 gap-2">
-              <span className="w-2 h-2 rounded-full bg-white"></span>
-              Upcoming
-            </Badge>
-            <Badge variant="outline" className="bg-orange-500 text-white border-orange-500 gap-2">
-              <span className="w-2 h-2 rounded-full bg-white"></span>
-              Ongoing
-            </Badge>
-            <Badge variant="outline" className="bg-slate-400 text-white border-slate-400 gap-2">
-              <span className="w-2 h-2 rounded-full bg-white"></span>
-              Finished
-            </Badge>
-          </div>
-        </div>
-      </div>
-
-      {viewType === 'calendar' && (
-        <>
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="icon" onClick={previousMonth}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <Button variant="outline" size="icon" onClick={nextMonth}>
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-              <Button variant="outline" onClick={goToToday}>
-                today
-              </Button>
+              </div>
+              <h1 className="text-3xl font-bold">Training Calendar</h1>
             </div>
 
-            <h2 className="text-2xl font-bold">
-              {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
-            </h2>
+            <div className="flex items-center gap-4">
+              <div className="flex gap-2 bg-muted rounded-lg p-1">
+                <Button
+                  variant={viewType === 'calendar' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewType('calendar')}
+                  className="gap-2"
+                >
+                  <Calendar className="w-4 h-4" />
+                  Calendar
+                </Button>
+                <Button
+                  variant={viewType === 'list' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewType('list')}
+                  className="gap-2"
+                >
+                  <List className="w-4 h-4" />
+                  List
+                </Button>
+              </div>
 
-            <div className="w-32"></div>
+              <div className="flex gap-2">
+                <Badge variant="outline" className="bg-emerald-500 text-white border-emerald-500 gap-2">
+                  <span className="w-2 h-2 rounded-full bg-white"></span>
+                  Upcoming
+                </Badge>
+                <Badge variant="outline" className="bg-orange-500 text-white border-orange-500 gap-2">
+                  <span className="w-2 h-2 rounded-full bg-white"></span>
+                  Ongoing
+                </Badge>
+                <Badge variant="outline" className="bg-slate-400 text-white border-slate-400 gap-2">
+                  <span className="w-2 h-2 rounded-full bg-white"></span>
+                  Finished
+                </Badge>
+              </div>
+            </div>
           </div>
 
-          <Card className="overflow-hidden">
-            <div className="grid grid-cols-7 border-b bg-muted/50">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
-                <div key={day} className={`p-3 text-center font-semibold text-sm border-r last:border-r-0 ${idx === 0 || idx === 6 ? 'text-red-500' : ''}`}>
-                  {day}
+          {viewType === 'calendar' && (
+            <>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="icon" onClick={previousMonth}>
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <Button variant="outline" size="icon" onClick={nextMonth}>
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                  <Button variant="outline" onClick={goToToday}>
+                    today
+                  </Button>
                 </div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7">
-              {renderCalendar()}
+
+                <h2 className="text-2xl font-bold">
+                  {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+                </h2>
+
+                <div className="w-32"></div>
+              </div>
+
+              <Card className="overflow-hidden">
+                <div className="grid grid-cols-7 border-b bg-muted/50">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
+                    <div key={day} className={`p-3 text-center font-semibold text-sm border-r last:border-r-0 ${idx === 0 || idx === 6 ? 'text-red-500' : ''}`}>
+                      {day}
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-7">
+                  {renderCalendar()}
+                </div>
+              </Card>
+            </>
+          )}
+
+          {viewType === 'list' && (
+            <Card className="p-6">
+              {renderListView()}
+            </Card>
+          )}
+        </div>
+
+        {/* Right Sidebar */}
+        <div className="w-80 space-y-6">
+          {/* News Section */}
+          <Card className="overflow-hidden">
+            {isEditingNews ? (
+              <NewsEditor
+                news={newsItems}
+                onSave={handleSaveNews}
+                onCancel={() => setIsEditingNews(false)}
+              />
+            ) : (
+              <NewsCarousel 
+                news={newsItems}
+                onEdit={() => setIsEditingNews(true)}
+              />
+            )}
+          </Card>
+
+          {/* Admin Info Section */}
+          <Card className="p-4 space-y-3">
+            <h3 className="text-lg font-bold">Admin Tools</h3>
+            
+            <div className="space-y-2 text-sm">
+              <p className="text-muted-foreground">
+                Manage training schedules, courses, and calendar settings.
+              </p>
+              
+              <div className="pt-2 border-t space-y-2">
+                <p className="font-medium">Quick Actions:</p>
+                <ul className="list-disc list-inside text-muted-foreground space-y-1">
+                  <li>Edit news carousel above</li>
+                  <li>Click events to view details</li>
+                  <li>Switch between calendar/list views</li>
+                </ul>
+              </div>
             </div>
           </Card>
-        </>
-      )}
-
-      {viewType === 'list' && (
-        <Card className="p-6">
-          {renderListView()}
-        </Card>
-      )}
+        </div>
+      </div>
 
       {showModal && selectedEvent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeModal}>
@@ -508,19 +810,18 @@ export default function TrainingCalendar() {
                   style={{ backgroundColor: getStatusColor(selectedEvent) }}
                 >
                   {getStatusLabel(selectedEvent)}
-                </Badge>
+                    </Badge>
+                </div>
               </div>
-            </div>
-            
             <div className="p-6 border-t flex gap-3 justify-end">
               <Button variant="secondary" onClick={closeModal}>Close</Button>
-              {selectedEvent.status !== 'finished' && (
+                {selectedEvent.status !== 'finished' && (
                 <Button>Enroll Now</Button>
               )}
-            </div>
-          </div>
         </div>
-      )}
+      </div>
     </div>
-  )
+  )}
+</div>
+)
 }

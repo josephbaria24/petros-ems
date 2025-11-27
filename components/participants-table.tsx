@@ -1,3 +1,5 @@
+//components\participants-table.tsx
+
 "use client"
 
 import { supabase } from "@/lib/supabase-client"
@@ -53,7 +55,7 @@ type Participant = {
 }
 
 interface ParticipantsTableProps {
-  status: "planned" | "confirmed" | "cancelled" | "finished"
+  status: "all" | "planned" | "ongoing" | "confirmed" | "cancelled" | "finished"
   refreshTrigger?: number
 }
 
@@ -74,7 +76,6 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const [directoryScheduleId, setDirectoryScheduleId] = React.useState<string | null>(null)
   const [directoryCourseName, setDirectoryCourseName] = React.useState("")
   const [directoryRange, setDirectoryRange] = React.useState("")
-
 
   const handleView = (participant: Participant) => {
     setSelectedParticipant(participant)
@@ -184,7 +185,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const fetchTrainings = React.useCallback(async () => {
     setLoading(true)
 
-    const { data, error }: PostgrestSingleResponse<any[]> = await supabase
+    let query = supabase
       .from("schedules")
       .select(`
         id,
@@ -207,10 +208,14 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           training_type
         )
       `)
-      .in("status", ["planned", "confirmed", "cancelled", "finished"])
-
-
       .order("created_at", { ascending: false })
+
+    // Only filter by status if not "all"
+    if (status !== "all") {
+      query = query.eq("status", status)
+    }
+
+    const { data, error }: PostgrestSingleResponse<any[]> = await query
 
     if (error) {
       console.error("Supabase fetch error:", error)
@@ -219,58 +224,36 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     } else {
       console.log("Fetched schedules data:", data)
       const mapped: Participant[] = (data ?? [])
-  .map((schedule) => {
-    // Get the end date
-    let endDate: Date | null = null
-    if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length) {
-      endDate = new Date(schedule.schedule_ranges[0].end_date)
-    } else if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length) {
-      const lastDate = schedule.schedule_dates
-        .map((d: { date: string }) => new Date(d.date))
-        .sort((a: Date, b: Date) => b.getTime() - a.getTime())[0]
-      endDate = lastDate
-    }
+        .map((schedule) => {
+          const courseName = schedule.courses?.name ?? "Unknown Course"
+          const branch = schedule.branch ?? "N/A"
+          const firstTraining = schedule.trainings?.[0]
+          const type = firstTraining?.training_type ?? schedule.event_type ?? "Public"
+          const scheduleStatus = schedule.status ?? "planned"
 
-    const now = new Date()
-    const isFinished = endDate && endDate < now
+          let scheduleDisplay = ""
+          if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length) {
+            const range = schedule.schedule_ranges[0]
+            scheduleDisplay = `${new Date(range.start_date).toLocaleDateString()} – ${new Date(range.end_date).toLocaleDateString()}`
+          } else if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length) {
+            scheduleDisplay = schedule.schedule_dates
+              .map((d: { date: string }) => new Date(d.date).toLocaleDateString())
+              .join(", ")
+          }
 
-    if (status === "finished") {
-      if (!isFinished && schedule.status !== "finished") return null
-    } else {
-      if (isFinished || schedule.status !== status) return null
-    }
-    
+          return {
+            id: schedule.id,
+            course: courseName,
+            branch,
+            schedule: scheduleDisplay,
+            status: scheduleStatus,
+            type,
+            submissionCount: schedule.trainings?.length ?? 0,
+          }
+        })
+        .filter((item): item is Participant => item !== null)
 
-    const courseName = schedule.courses?.name ?? "Unknown Course"
-    const branch = schedule.branch ?? "N/A"
-    const firstTraining = schedule.trainings?.[0]
-    const type = firstTraining?.training_type ?? schedule.event_type ?? "Public"
-    const scheduleStatus = isFinished ? "finished" : schedule.status ?? "planned"
-
-    let scheduleDisplay = ""
-    if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length) {
-      const range = schedule.schedule_ranges[0]
-      scheduleDisplay = `${new Date(range.start_date).toLocaleDateString()} – ${new Date(range.end_date).toLocaleDateString()}`
-    } else if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length) {
-      scheduleDisplay = schedule.schedule_dates
-        .map((d: { date: string }) => new Date(d.date).toLocaleDateString())
-        .join(", ")
-    }
-
-    return {
-      id: schedule.id,
-      course: courseName,
-      branch,
-      schedule: scheduleDisplay,
-      status: scheduleStatus,
-      type,
-      submissionCount: schedule.trainings?.length ?? 0,
-    }
-  })
-  .filter((item): item is Participant => item !== null) // ✅ Ensures valid array type
-
-
-      setData(mapped.filter(Boolean))
+      setData(mapped)
     }
 
     setLoading(false)
@@ -299,34 +282,33 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           <div className="space-y-2">
             <div className="font-medium text-card-foreground">{row.getValue("course")}</div>
             <div className="flex gap-2">
-            <Link
-              href={`/submissions?scheduleId=${row.original.id}`}
-              className="flex items-center gap-1 text-xs hover:bg-muted rounded-md px-2 py-1.5 cursor-pointer"
-            >
-              <FileText className="h-3 w-3" />
-              Submission
-              {submissionCount > 0 && (
-                <Badge variant="destructive" className="ml-1 h-4 px-1 text-xs">
-                  {submissionCount}
-                </Badge>
-              )}
-            </Link>
+              <Link
+                href={`/submissions?scheduleId=${row.original.id}`}
+                className="flex items-center gap-1 text-xs hover:bg-muted rounded-md px-2 py-1.5 cursor-pointer"
+              >
+                <FileText className="h-3 w-3" />
+                Submission
+                {submissionCount > 0 && (
+                  <Badge variant="destructive" className="ml-1 h-4 px-1 text-xs">
+                    {submissionCount}
+                  </Badge>
+                )}
+              </Link>
 
-
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
-              onClick={() => {
-                setDirectoryScheduleId(row.original.id)
-                setDirectoryCourseName(row.original.course)
-                setDirectoryRange(row.original.schedule)
-                setDirectoryOpen(true)
-              }}
-            >
-              <FolderOpen className="h-3 w-3" />
-              Directory
-            </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
+                onClick={() => {
+                  setDirectoryScheduleId(row.original.id)
+                  setDirectoryCourseName(row.original.course)
+                  setDirectoryRange(row.original.schedule)
+                  setDirectoryOpen(true)
+                }}
+              >
+                <FolderOpen className="h-3 w-3" />
+                Directory
+              </Button>
 
               <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer">
                 <ClipboardCheck className="h-3 w-3" />
@@ -369,16 +351,24 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => {
-        const status = row.getValue("status") as string
-        const variant =
-          status === "confirmed"
-            ? "default"
-            : status === "cancelled"
-              ? "destructive"
-              : status === "finished"
-                ? "secondary"
-                : "outline"
-        return <Badge variant={variant}>{status}</Badge>
+        const statusValue = row.getValue("status") as string
+        
+        // Color-coded badges based on status
+        const statusStyles = {
+          planned: "bg-yellow-100 text-yellow-800 border-yellow-300",
+          ongoing: "bg-orange-100 text-orange-800 border-orange-300",
+          confirmed: "bg-blue-100 text-blue-800 border-blue-300",
+          cancelled: "bg-red-100 text-red-800 border-red-300",
+          finished: "bg-gray-100 text-gray-800 border-gray-300"
+        }
+        
+        const style = statusStyles[statusValue as keyof typeof statusStyles] || "bg-gray-100 text-gray-800 border-gray-300"
+        
+        return (
+          <Badge className={`${style} border`}>
+            {statusValue.charAt(0).toUpperCase() + statusValue.slice(1)}
+          </Badge>
+        )
       },
     },
     {
@@ -444,7 +434,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   })
 
   if (loading) {
-    return <Card className="p-6">Loading {status} schedules...</Card>
+    return <Card className="p-6">Loading {status === "all" ? "all" : status} schedules...</Card>
   }
 
   return (

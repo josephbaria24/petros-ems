@@ -17,11 +17,10 @@ export default function TrainingSchedulesPage() {
     // Increment to trigger refresh in all tables
     setRefreshTrigger(prev => prev + 1)
   }
+  
   React.useEffect(() => {
     autoFinishSchedules()
   }, [])
-  
-
 
   const autoFinishSchedules = async () => {
     const today = new Date()
@@ -35,7 +34,7 @@ export default function TrainingSchedulesPage() {
         schedule_ranges (end_date),
         schedule_dates (date)
       `)
-      .in("status", ["planned", "confirmed"])
+      .in("status", ["planned", "confirmed", "ongoing"])
   
     if (error) {
       console.error("Error fetching schedules:", error)
@@ -76,9 +75,6 @@ export default function TrainingSchedulesPage() {
     }
   }
 
-  
-
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -92,21 +88,31 @@ export default function TrainingSchedulesPage() {
         </Button>
       </div>
 
-      <Tabs defaultValue="planned" className="space-y-4">
+      <Tabs defaultValue="all" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="planned">Planned Events</TabsTrigger>
-          <TabsTrigger value="confirmed">Confirmed Events</TabsTrigger>
-          <TabsTrigger value="cancelled">Cancelled Events</TabsTrigger>
-          <TabsTrigger value="finished">Finished Events</TabsTrigger>
+          <TabsTrigger value="all">All Events</TabsTrigger>
+          <TabsTrigger value="planned">Planned</TabsTrigger>
+          <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
+          {/* <TabsTrigger value="confirmed">Confirmed</TabsTrigger> */}
+          <TabsTrigger value="cancelled">Cancelled</TabsTrigger>
+          <TabsTrigger value="finished">Finished</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="all" className="space-y-4">
+          <ParticipantsTable status="all" refreshTrigger={refreshTrigger} />
+        </TabsContent>
 
         <TabsContent value="planned" className="space-y-4">
           <ParticipantsTable status="planned" refreshTrigger={refreshTrigger} />
         </TabsContent>
 
-        <TabsContent value="confirmed" className="space-y-4">
-          <ParticipantsTable status="confirmed" refreshTrigger={refreshTrigger} />
+        <TabsContent value="ongoing" className="space-y-4">
+          <ParticipantsTable status="ongoing" refreshTrigger={refreshTrigger} />
         </TabsContent>
+
+        {/* <TabsContent value="confirmed" className="space-y-4">
+          <ParticipantsTable status="confirmed" refreshTrigger={refreshTrigger} />
+        </TabsContent> */}
 
         <TabsContent value="cancelled" className="space-y-4">
           <ParticipantsTable status="cancelled" refreshTrigger={refreshTrigger} />
