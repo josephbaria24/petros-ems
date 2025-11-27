@@ -37,13 +37,13 @@ export default function LoginPage() {
   
 return (
   <div className="min-h-screen flex items-center justify-center px-4">
-    <div className="w-full max-w-6xl bg-white shadow-xl rounded-3xl overflow-hidden grid grid-cols-1 lg:grid-cols-2">
+    <div className="w-full max-w-6xl bg-card shadow-xl rounded-3xl overflow-hidden grid grid-cols-1 lg:grid-cols-2">
 
       {/* LEFT: LOGIN FORM */}
       <div className="px-10 py-12 flex flex-col justify-center">
 
         {/* Welcome Header */}
-        <h1 className="text-4xl font-bold text-gray-900 mb-3">Welcome back!</h1>
+        <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100 mb-3">Welcome back!</h1>
         <p className="text-gray-500 mb-10">
           Simplify your workflow and boost your productivity with <span className="font-medium">TMS</span>.
         </p>
@@ -59,7 +59,7 @@ return (
       </div>
 
       {/* RIGHT: Illustration */}
-      <div className="hidden lg:flex bg-[#F7FBF5] items-center justify-center p-10 relative">
+      <div className="hidden lg:flex bg-blue-50 items-center justify-center p-10 relative">
 
   <img
     src="/login.svg"
@@ -72,9 +72,9 @@ return (
         <div className="absolute bottom-14 bg-white shadow-md rounded-2xl px-5 py-4 flex items-center gap-4">
           <div>
             <p className="font-medium text-gray-700">Training Managemnet System</p>
-            <p className="text-sm text-gray-500">10 Tasks</p>
+            <p className="text-sm text-gray-500">Petrosphere Incorporated</p>
           </div>
-          <div className="ml-auto text-green-600 font-semibold text-sm">84%</div>
+         
         </div>
 
       </div>
