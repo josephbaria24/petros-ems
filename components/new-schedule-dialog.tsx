@@ -12,19 +12,6 @@ import { Button } from "@/components/ui/button"
 
 import { type DateRange } from "react-day-picker"
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import {
-  Command,
-  CommandInput,
-  CommandItem,
-  CommandGroup,
-  CommandEmpty,
-} from "@/components/ui/command"
-
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -57,6 +44,20 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const isBranchRequired = eventType !== "online"
   const [batchNumber, setBatchNumber] = React.useState<number | null>(null)
+  const [courseSearch, setCourseSearch] = React.useState("")
+  const [courseOpen, setCourseOpen] = React.useState(false)
+
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (courseOpen && !target.closest('.relative')) {
+        setCourseOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [courseOpen])
 
 
   React.useEffect(() => {
@@ -248,13 +249,13 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
               {/* Course - Searchable */}
               <div className="grid gap-2">
                 <Label htmlFor="course">Course *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
+                <div className="relative max-w-sm">
                   <Button
+                    type="button"
                     variant="outline"
-                    role="combobox"
-                    disabled={isSubmitting}
-                    className="w-full max-w-[15vw] justify-between truncate text-left"
+                    disabled={isSubmitting || loadingCourses}
+                    onClick={() => setCourseOpen(!courseOpen)}
+                    className="w-full justify-between text-left"
                   >
                     <span className="truncate block">
                       {course
@@ -263,37 +264,57 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                         ? "Loading..."
                         : "Select course"}
                     </span>
+                    <CalendarIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
-
-                  </PopoverTrigger>
-
-                  <PopoverContent
-                    className="w-full max-w-sm p-0" // ⬅️ Add max width here too
-                    side="bottom"
-                    align="start"
-                    style={{
-                      maxHeight: "40vh",
-                      overflowY: "auto",
-                      overscrollBehavior: "contain",
-                    }}
-                  >
-                    <Command>
-                      <CommandInput placeholder="Search course..." />
-                      <CommandEmpty>No course found.</CommandEmpty>
-                      <CommandGroup>
-                        {courseOptions.map((c) => (
-                          <CommandItem
-                            key={c.id}
-                            value={c.name}
-                            onSelect={() => setCourse(c.id)}
-                          >
-                            {c.name}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+                  
+                  {courseOpen && (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+                      <div className="p-2 border-b">
+                        <Input
+                          placeholder="Search course..."
+                          value={courseSearch}
+                          onChange={(e) => setCourseSearch(e.target.value)}
+                          className="h-9"
+                          autoFocus
+                        />
+                      </div>
+                      <div 
+                        className="max-h-[300px] overflow-y-auto overscroll-contain"
+                        onWheel={(e) => {
+                          e.stopPropagation()
+                        }}
+                      >
+                        {courseOptions
+                          .filter((c) =>
+                            c.name.toLowerCase().includes(courseSearch.toLowerCase())
+                          )
+                          .map((c) => (
+                            <div
+                              key={c.id}
+                              className={cn(
+                                "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
+                                course === c.id && "bg-accent"
+                              )}
+                              onClick={() => {
+                                setCourse(c.id)
+                                setCourseOpen(false)
+                                setCourseSearch("")
+                              }}
+                            >
+                              {c.name}
+                            </div>
+                          ))}
+                        {courseOptions.filter((c) =>
+                          c.name.toLowerCase().includes(courseSearch.toLowerCase())
+                        ).length === 0 && (
+                          <div className="py-6 text-center text-sm text-muted-foreground">
+                            No courses found
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid gap-2">

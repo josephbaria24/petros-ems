@@ -218,39 +218,135 @@ useEffect(() => {
     }
   }
 
-  function SearchableSelectItems({
-    items,
-  }: {
-    items: { code: string; name: string }[]
-  }) {
-    const [search, setSearch] = useState("")
-  
-    const filteredItems = items.filter((item) =>
-      item.name.toLowerCase().includes(search.toLowerCase())
-    )
-  
-    return (
-      <>
-        <div className="px-3 py-2">
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search..."
-            className="h-8 text-sm"
-          />
+// Custom Searchable Dropdown Component
+function SearchableDropdown({
+  items,
+  value,
+  onChange,
+  placeholder,
+  disabled = false,
+  className = ""
+}: {
+  items: { code: string; name: string }[]
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+  disabled?: boolean
+  className?: string
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [search, setSearch] = useState("")
+
+  const filteredItems = items.filter((item) =>
+    item.name.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const selectedItem = items.find(item => item.code === value || item.name === value)
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (isOpen && !target.closest('.custom-dropdown-container')) {
+        setIsOpen(false)
+        setSearch("")
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isOpen])
+
+  return (
+    <div className={`relative custom-dropdown-container ${className}`}>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={disabled}
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full justify-between text-left font-normal"
+      >
+        <span className="truncate block">
+          {selectedItem ? selectedItem.name : placeholder}
+        </span>
+        <svg className="ml-2 h-4 w-4 shrink-0 opacity-50" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </Button>
+      
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+          <div className="p-2 border-b">
+            <Input
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => {
+                e.stopPropagation()
+                setSearch(e.target.value)
+              }}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              className="h-8 text-sm"
+              autoFocus
+            />
+          </div>
+          <div 
+            className="max-h-[200px] overflow-y-auto overscroll-contain"
+            onWheel={(e) => e.stopPropagation()}
+          >
+            {filteredItems.length > 0 ? (
+              filteredItems.map((item) => (
+                <div
+                  key={item.code}
+                  className={`relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground ${
+                    (value === item.code || value === item.name) ? "bg-accent" : ""
+                  }`}
+                  onClick={() => {
+                    onChange(item.code)
+                    setIsOpen(false)
+                    setSearch("")
+                  }}
+                >
+                  {item.name}
+                </div>
+              ))
+            ) : (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                No results found
+              </div>
+            )}
+          </div>
         </div>
-        {filteredItems.length > 0 ? (
-          filteredItems.map((item) => (
-            <SelectItem key={item.code} value={item.code}>
-              {item.name}
-            </SelectItem>
-          ))
-        ) : (
-          <div className="px-3 py-2 text-sm text-gray-500">No results found.</div>
-        )}
-      </>
-    )
+      )}
+    </div>
+  )
+}
+
+
+
+const handleDownloadSummary = async () => {
+  const element = document.getElementById("summary-download");
+  if (!element) {
+    toast.error("Summary not found.");
+    return;
   }
+
+  const html2canvas = (await import("html2canvas")).default;
+  const { jsPDF } = await import("jspdf");
+
+  const canvas = await html2canvas(element, { scale: 2 });
+  const imgData = canvas.toDataURL("image/png");
+
+  const pdf = new jsPDF("p", "mm", "a4");
+
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+
+  pdf.addImage(imgData, "PNG", 0, 10, pdfWidth, imgHeight);
+  pdf.save(`Booking-Summary-${bookingReference}.pdf`);
+};
+
+
+
 
   const handleRegionChange = async (regionCode: string) => {
     const selectedRegion = regions.find(r => r.code === regionCode)
@@ -423,11 +519,11 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
 
   
       // 2️⃣ Fetch training fee
-      const { data: courseData, error: feeError } = await supabase
-        .from("courses")
-        .select("training_fee")
-        .eq("id", courseId)
-        .single();
+const { data: courseData, error: feeError } = await supabase
+  .from("courses")
+  .select("training_fee, name")
+  .eq("id", courseId)
+  .single();
   
       if (feeError) console.error("Error fetching course fee:", feeError);
   
@@ -484,6 +580,51 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
       });
   
       setIsSubmitted(true);
+      // 6️⃣ Send registration email to admin
+try {
+  await fetch("/api/send-registration-email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      bookingReference,
+      courseName: courseData?.name || course?.name || "N/A",
+      scheduleRange: scheduleRange
+        ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
+        : "N/A",
+      traineeInfo: {
+        name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
+        email: form.email,
+        phone: form.phone_number,
+        gender: form.gender,
+        age: form.age,
+        address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
+        employmentStatus: form.employment_status,
+      },
+      employmentInfo:
+        form.employment_status === "Employed"
+          ? {
+              companyName: form.company_name,
+              position: form.company_position,
+              industry: form.company_industry,
+              companyEmail: form.company_email,
+              city: form.company_city,
+              region: form.company_region,
+            }
+          : null,
+      paymentInfo: {
+        trainingFee: trainingFee,
+        discount,
+        totalAmount: trainingFee - discount,
+        paymentMethod,
+        paymentStatus:
+          paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+      },
+    }),
+  })
+} catch (emailErr) {
+  console.error("Email sending failed:", emailErr)
+}
+
     } catch (err) {
       console.error("Unexpected error:", err);
       toast.error("Something went wrong.");
@@ -830,38 +971,30 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
                       <Label htmlFor="company_landline" className="text-sm font-medium">Company Landline</Label>
                       <Input id="company_landline" name="company_landline" onChange={handleChange} placeholder="(02) 1234-5678" />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="city">City / Municipality</Label>
-                      <Select
-                         onValueChange={(val) => {
-                          const selectedCity = cities.find((c) => c.code === val)
-                          setForm({ ...form, company_city: selectedCity?.name || val })
-                        }}
-                        defaultValue={form.company_city}
-                        disabled={cities.length === 0}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select City or Municipality" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SearchableSelectItems items={cities} />
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="region">Region</Label>
-                      <Select
-                        onValueChange={(val) => handleRegionChange(val)}
-                        defaultValue={form.company_region}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select Region" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SearchableSelectItems items={regions} />
-                        </SelectContent>
-                      </Select>
-                    </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="city">City / Municipality</Label>
+                        <SearchableDropdown
+                          items={cities}
+                          value={form.company_city || ""}
+                          onChange={(cityCode) => {
+                            const selectedCity = cities.find((c) => c.code === cityCode)
+                            setForm({ ...form, company_city: selectedCity?.name || cityCode })
+                          }}
+                          placeholder="Select City or Municipality"
+                          disabled={cities.length === 0}
+                          className="w-full"
+                        />
+                      </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="region">Region</Label>
+                          <SearchableDropdown
+                            items={regions}
+                            value={form.company_region || ""}
+                            onChange={(regionCode) => handleRegionChange(regionCode)}
+                            placeholder="Select Region"
+                            className="w-full"
+                          />
+                        </div>
                     <div className="space-y-2">
                       <Label htmlFor="total_workers" className="text-sm font-medium">Total Number of Workers</Label>
                       <Input id="total_workers" name="total_workers" type="number" onChange={handleChange} placeholder="e.g., 50" />
@@ -1040,7 +1173,7 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
                             Total Payable: ₱{((course?.training_fee || 0) - discount).toLocaleString()}
                           </p>
 
-                          <div className="mt-3 space-y-1">
+                          {/* <div className="mt-3 space-y-1">
                             <Label htmlFor="coupon_code" className="text-sm font-medium">Coupon Code</Label>
                             <div className="flex gap-2">
                               <Input
@@ -1065,7 +1198,7 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
                                 Apply
                               </Button>
                             </div>
-                          </div>
+                          </div> */}
                         </fieldset>
                         <fieldset className="border border-gray-300 rounded-md px-4 pt-4 pb-2 bg-slate-50 relative">
                           <legend className="text-sm font-medium px-2 text-gray-700 flex items-center gap-1">
@@ -1281,9 +1414,7 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
                     <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                       <Button
                         style={{ backgroundColor: '#059669', color: 'white' }}
-                        onClick={() => {
-                          alert('Download feature - would save as image in production')
-                        }}
+                        onClick={handleDownloadSummary}
                       >
                         Download Summary
                       </Button>
