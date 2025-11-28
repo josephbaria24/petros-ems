@@ -98,30 +98,53 @@ export function SubmissionDialog({
   };
 
   // Check and update payment status
-  const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
-    if (!trainee?.id || !trainee?.training_fee) return;
+const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
+  if (!trainee?.id || !trainee?.training_fee) return;
 
-    let newStatus = "";
-    
-    // Determine status based on payment
-    if (totalPaid >= trainee.training_fee) {
+  const originalFee = Number(trainee.training_fee);
+  const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
+
+  let newStatus = "";
+  let newPaymentStatus: string | null = null;
+
+  // If discount applied
+  if (discountedFee !== null) {
+    if (totalPaid >= discountedFee) {
+      newStatus = "Payment Completed";
+      newPaymentStatus = "Payment Completed (Discounted)";
+    } else if (totalPaid > 0) {
+      newStatus = "Partially Paid";
+      newPaymentStatus = "Partially Paid (Discounted)";
+    } else {
+      newStatus = "Pending Payment";
+      newPaymentStatus = null;
+    }
+  }
+
+  // No discount applied
+  else {
+    if (totalPaid >= originalFee) {
       newStatus = "Payment Completed";
     } else if (totalPaid > 0) {
       newStatus = "Partially Paid";
+    } else {
+      newStatus = "Pending Payment";
     }
+  }
 
-    // Update status if there's a change needed
-    if (newStatus) {
-      const { error } = await supabase
-        .from("trainings")
-        .update({ status: newStatus })
-        .eq("id", trainee.id);
+  const { error } = await supabase
+    .from("trainings")
+    .update({
+      status: newStatus,
+      payment_status: newPaymentStatus,
+    })
+    .eq("id", trainee.id);
 
-      if (error) {
-        console.error(`Failed to update status to ${newStatus}:`, error);
-      }
-    }
-  };
+  if (error) {
+    console.error("Failed updating status:", error);
+  }
+};
+
 
   useEffect(() => {
   if (!isDiscounted || !trainee?.training_fee) {
@@ -320,9 +343,8 @@ const handleApplyDiscount = async () => {
     const { error } = await supabase
       .from("trainings")
       .update({
-        payment_status: "Discounted",
-        amount_paid: discounted,
         status: "Payment Completed",
+        payment_status: "Payment Completed (Discounted)",
       })
       .eq("id", trainee.id);
 
@@ -330,10 +352,9 @@ const handleApplyDiscount = async () => {
 
     alert("Discount applied successfully!");
 
-    // 💾 Store discount for UI
+    // Save in UI
     setDiscountApplied(discounted);
 
-    // Refresh payment data
     fetchPayments();
 
   } catch (err) {
@@ -341,6 +362,7 @@ const handleApplyDiscount = async () => {
     alert("Failed to apply discount.");
   }
 };
+
 
 
   const handleMarkAsPaid = async () => {
@@ -379,26 +401,45 @@ const handleApplyDiscount = async () => {
     }
   };
 
-  const handleDeletePayment = async () => {
-    if (!deleteId) return;
+const handleDeletePayment = async () => {
+  if (!deleteId) return;
 
-    try {
-      const { error } = await supabase
-        .from("payments")
-        .delete()
-        .eq("id", deleteId);
+  try {
+    const { error } = await supabase
+      .from("payments")
+      .delete()
+      .eq("id", deleteId);
 
-      if (error) throw error;
+    if (error) throw error;
 
-      alert("Payment deleted successfully!");
-      setShowDeleteConfirm(false);
-      setDeleteId(null);
-      fetchPayments();
-    } catch (error) {
-      console.error("Error deleting payment:", error);
-      alert("Failed to delete payment. Please try again.");
+    // Check remaining payments
+    const { data: newPayments } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("training_id", trainee.id);
+
+    if (!newPayments || newPayments.length === 0) {
+      await supabase
+        .from("trainings")
+        .update({
+          status: "Pending Payment",
+          payment_status: null,
+          amount_paid: 0
+        })
+        .eq("id", trainee.id);
     }
-  };
+
+    alert("Payment deleted successfully!");
+    setShowDeleteConfirm(false);
+    setDeleteId(null);
+    fetchPayments();
+
+  } catch (error) {
+    console.error("Error deleting payment:", error);
+    alert("Failed to delete payment. Please try again.");
+  }
+};
+
 
   const generateCounterReceipt = (payment: Payment) => {
     const receiptHtml = `

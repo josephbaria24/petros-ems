@@ -94,6 +94,21 @@ export default function SubmissionPage() {
               Discounted
             </Badge>
           );
+          case "payment completed (discounted)":
+        return (
+          <Badge className="bg-green-100 text-green-800 border border-green-300">
+            <Wallet className="w-4 h-4 mr-1" />
+            Payment Completed (Discounted)
+          </Badge>
+        );
+        case "partially paid (discounted)":
+        return (
+          <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
+            <PieChart className="w-4 h-4 mr-1" />
+            Partially Paid (Discounted)
+          </Badge>
+        );
+
 
       case "pending payment":
         return (
@@ -542,7 +557,13 @@ export default function SubmissionPage() {
                   <TableCell>{index + 1}</TableCell>
                   <TableCell>{trainee.first_name} {trainee.last_name}</TableCell>
                   <TableCell>{trainee.phone_number || "N/A"}</TableCell>
-                  <TableCell>{getStatusBadge(trainee.status || "Active")}</TableCell>
+<TableCell>
+  {getStatusBadge(
+    trainee.payment_status || trainee.status || "Pending Payment"
+  )}
+</TableCell>
+
+
                   <TableCell>
                     <Avatar>
                       <AvatarImage src={trainee.picture_2x2_url} alt="2x2" />
