@@ -103,6 +103,8 @@ const TEMPLATE_TYPES: { value: TemplateType; label: string; icon: any; descripti
   }
 ]
 
+
+
 const DEFAULT_FIELDS: Record<TemplateType, TextField[]> = {
   participation: [
     {
@@ -241,6 +243,34 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
   const [showPlaceholderMenu, setShowPlaceholderMenu] = useState(false)
   const [editingField, setEditingField] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState("")
+
+
+  const handleDeleteTemplate = async () => {
+  if (!confirm("Are you sure you want to delete this template?")) return;
+
+  try {
+    const response = await fetch(
+      `/api/certificate-template?courseId=${courseId}&templateType=${currentTemplateType}`,
+      { method: "DELETE" }
+    );
+
+    if (response.ok) {
+      alert("🗑️ Template deleted successfully!");
+
+      // Remove from UI state
+      setTemplateImage(prev => ({ ...prev, [currentTemplateType]: null }));
+      setTextFields(prev => ({ ...prev, [currentTemplateType]: DEFAULT_FIELDS[currentTemplateType] }));
+      setSelectedField(null);
+    } else {
+      alert("❌ Failed to delete template");
+    }
+  } catch (error) {
+    console.error("Delete error:", error);
+    alert("❌ Error deleting template.");
+  }
+};
+
+
 
   // Load all templates from database
   useEffect(() => {
@@ -1033,12 +1063,21 @@ if (data.template && data.template.fields) {
             </Tabs>
           </div>
         </div>
+        
 
         <div className="flex justify-between gap-2 pt-4 border-t">
+ 
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <div className="flex gap-2">
+                     <Button
+  variant="destructive"
+  onClick={handleDeleteTemplate}
+>
+  <Trash2 className="h-4 w-4 mr-2" />
+  Delete Template
+</Button>
             <Button onClick={handleSave} disabled={saving || uploading} variant="outline">
               <Save className="h-4 w-4 mr-2" />
               Save This Template

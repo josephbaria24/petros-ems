@@ -87,6 +87,14 @@ export default function SubmissionPage() {
             Payment Completed
           </Badge>
         );
+        case "discounted":
+          return (
+            <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
+              <Wallet className="w-4 h-4 mr-1" />
+              Discounted
+            </Badge>
+          );
+
       case "pending payment":
         return (
           <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-300">

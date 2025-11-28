@@ -69,6 +69,10 @@ export function SubmissionDialog({
   const [amountPaid, setAmountPaid] = useState<string>("");
   const [onlineClassroomUrl, setOnlineClassroomUrl] = useState<string>("");
   const supabase = createClient();
+  const [isDiscounted, setIsDiscounted] = useState(false);
+  const [discountPrice, setDiscountPrice] = useState("");
+  const [discountPercent, setDiscountPercent] = useState<number | null>(null);
+  const [discountApplied, setDiscountApplied] = useState<number | null>(null);
 
   const fetchPayments = async () => {
     if (!trainee?.id) return;
@@ -118,6 +122,25 @@ export function SubmissionDialog({
       }
     }
   };
+
+  useEffect(() => {
+  if (!isDiscounted || !trainee?.training_fee) {
+    setDiscountPercent(null);
+    return;
+  }
+
+  const original = Number(trainee.training_fee);
+  const discounted = Number(discountPrice);
+
+  if (!discounted || discounted <= 0 || discounted > original) {
+    setDiscountPercent(null);
+    return;
+  }
+
+  const percent = ((original - discounted) / original) * 100;
+  setDiscountPercent(Math.round(percent));
+}, [isDiscounted, discountPrice, trainee?.training_fee]);
+
 
   useEffect(() => {
     if (open && trainee?.id) {
@@ -185,16 +208,25 @@ export function SubmissionDialog({
   
     setSaving(true);
     try {
-      const payload = {
-        training_id: trainee.id,
-        payment_method: trainee.payment_method,
-        payment_status: "completed",
-        amount_paid: parseFloat(amountPaid),
-        receipt_link: uploadedReceiptUrl || null,
-        online_classroom_url: sendClassroom ? onlineClassroomUrl : null,
-        confirmation_email_sent: sendEmail,
-        classroom_url_sent: sendClassroom,
-      };
+
+      const finalAmount = isDiscounted
+      ? Number(discountPrice)
+      : Number(amountPaid);
+
+    const finalStatus = isDiscounted
+      ? "Discounted"
+      : "completed";
+
+const payload = {
+  training_id: trainee.id,
+  payment_method: trainee.payment_method,
+  payment_status: finalStatus,
+  amount_paid: finalAmount,
+  receipt_link: uploadedReceiptUrl || null,
+  online_classroom_url: sendClassroom ? onlineClassroomUrl : null,
+  confirmation_email_sent: sendEmail,
+  classroom_url_sent: sendClassroom,
+};
   
       console.log("🧾 Inserting payment payload:", payload);
   
@@ -209,7 +241,19 @@ export function SubmissionDialog({
 
       // Calculate new total and check if payment is complete
       const newTotalPaid = totalPaid + parseFloat(amountPaid);
-      await checkAndUpdatePaymentStatus(newTotalPaid);
+        if (isDiscounted) {
+        await supabase
+          .from("trainings")
+          .update({
+            payment_status: "Discounted",
+            amount_paid: finalAmount,
+            status: "Payment Completed"
+          })
+          .eq("id", trainee.id);
+      } else {
+        await checkAndUpdatePaymentStatus(newTotalPaid);
+      }
+
 
       // ✅ Trigger email notifications after successful save
       if (sendEmail || sendClassroom) {
@@ -258,6 +302,46 @@ export function SubmissionDialog({
     }
   };
   
+const handleApplyDiscount = async () => {
+  if (!discountPrice || Number(discountPrice) <= 0) {
+    alert("Please enter a valid discounted price.");
+    return;
+  }
+
+  const originalFee = Number(trainee.training_fee);
+  const discounted = Number(discountPrice);
+
+  if (discounted > originalFee) {
+    alert("Discounted price cannot be higher than original fee.");
+    return;
+  }
+
+  try {
+    const { error } = await supabase
+      .from("trainings")
+      .update({
+        payment_status: "Discounted",
+        amount_paid: discounted,
+        status: "Payment Completed",
+      })
+      .eq("id", trainee.id);
+
+    if (error) throw error;
+
+    alert("Discount applied successfully!");
+
+    // 💾 Store discount for UI
+    setDiscountApplied(discounted);
+
+    // Refresh payment data
+    fetchPayments();
+
+  } catch (err) {
+    console.error("Error applying discount:", err);
+    alert("Failed to apply discount.");
+  }
+};
+
 
   const handleMarkAsPaid = async () => {
     if (!amountPaid || parseFloat(amountPaid) <= 0) {
@@ -471,15 +555,67 @@ export function SubmissionDialog({
                         <span>Payment Method</span>
                         <span>{trainee?.payment_method || "N/A"}</span>
                       </div>
+                      {/* DISCOUNT SWITCH */}
+  {/* DISCOUNT SWITCH */}
+  <div className="flex items-center gap-2 pt-2">
+    <Label>Discounted?</Label>
+    <input 
+      type="checkbox" 
+      checked={isDiscounted}
+      onChange={(e) => setIsDiscounted(e.target.checked)}
+    />
+  </div>
+
+  {/* DISCOUNT PRICE INPUT */}
+  {isDiscounted && (
+    <div className="space-y-2 p-3 border rounded bg-background">
+      <Label>Discounted Price</Label>
+      <Input
+        type="number"
+        placeholder="Enter discounted price"
+        value={discountPrice}
+        onChange={(e) => setDiscountPrice(e.target.value)}
+      />
+      {discountPercent !== null && (
+        <p className="text-sm text-green-700 font-semibold">
+          Discount Applied: {discountPercent}% off
+        </p>
+      )}
+    </div>
+  )}
+  {discountApplied !== null && (
+  <div className="p-2 rounded bg-green-50 border border-green-300 text-green-800 text-sm">
+    <strong>Discount Applied:</strong> {formatCurrency(discountApplied)}
+    {discountPercent !== null && (
+      <> ({discountPercent}% off)</>
+    )}
+  </div>
+)}
+
+  {isDiscounted && (
+  <Button
+    className="w-full mt-2"
+    onClick={handleApplyDiscount}
+    disabled={!discountPrice || Number(discountPrice) <= 0}
+  >
+    Apply Discount
+  </Button>
+)}
+
+
                       <div className="flex justify-between font-semibold text-green-700">
                         <span>Total Amount Paid</span>
                         <span>{formatCurrency(totalPaid)}</span>
                       </div>
                       <div className="flex justify-between font-semibold text-red-700">
                         <span>Remaining Balance</span>
-                        <span>
-                          {formatCurrency((trainee?.training_fee || 0) - totalPaid)}
-                        </span>
+                          <span>
+                            {discountApplied !== null
+                              ? formatCurrency(discountApplied - totalPaid)
+                              : formatCurrency((trainee?.training_fee || 0) - totalPaid)
+                            }
+                          </span>
+
                       </div>
                     </div>
                   </section>

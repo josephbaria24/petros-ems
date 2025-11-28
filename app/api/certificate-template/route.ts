@@ -43,6 +43,75 @@ export async function GET(req: Request) {
   }
 }
 
+
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const courseId = searchParams.get("courseId")
+    const templateType = searchParams.get("templateType")
+
+    if (!courseId || !templateType) {
+      return NextResponse.json(
+        { error: "Missing courseId or templateType" },
+        { status: 400 }
+      )
+    }
+
+    // Fetch existing template to get image_url
+    const { data: template, error: getError } = await supabaseServer
+      .from("certificate_templates")
+      .select("id, image_url")
+      .eq("course_id", courseId)
+      .eq("template_type", templateType)
+      .maybeSingle()
+
+    if (getError) {
+      return NextResponse.json(
+        { error: "Failed to fetch template", details: getError.message },
+        { status: 500 }
+      )
+    }
+
+    if (!template) {
+      return NextResponse.json({ success: true }) // Nothing to delete
+    }
+
+    // Extract storage path from public URL
+    const imageUrl = template.image_url
+    const storagePath = imageUrl.split("/trainee-photos/")[1]
+
+    // Delete image from storage
+    if (storagePath) {
+      await supabaseServer.storage
+        .from("trainee-photos")
+        .remove([storagePath])
+    }
+
+    // Delete database row
+    const { error: deleteError } = await supabaseServer
+      .from("certificate_templates")
+      .delete()
+      .eq("id", template.id)
+
+    if (deleteError) {
+      return NextResponse.json(
+        { error: "Failed to delete template", details: deleteError.message },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: "Unexpected error", details: error.message },
+      { status: 500 }
+    )
+  }
+}
+
+
+
+
 export async function POST(req: Request) {
   try {
     const { courseId, imageUrl, fields, templateType = "participation" } = await req.json()
