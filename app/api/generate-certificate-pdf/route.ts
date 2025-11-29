@@ -1,11 +1,8 @@
 // app/api/generate-certificate-pdf/route.ts
-export const runtime = "edge"; // Changed from nodejs to edge
-
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { PDFDocument, rgb } from "pdf-lib";
 
-// Initialize Supabase client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -18,9 +15,12 @@ interface TextField {
   x: number;
   y: number;
   fontSize: number;
-  fontWeight: "normal" | "bold";
+  fontWeight: "normal" | "bold" | "extrabold";
+  fontStyle: "normal" | "italic";
+  fontFamily: "Helvetica" | "Montserrat" | "Poppins";
   color: string;
   align: "left" | "center" | "right";
+  lineHeight?: number;
 }
 
 interface CertificateTemplate {
@@ -31,7 +31,6 @@ interface CertificateTemplate {
   fields: TextField[];
 }
 
-// Helper to convert hex color to RGB
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
@@ -43,7 +42,6 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } {
     : { r: 0, g: 0, b: 0 };
 }
 
-// Helper function to capitalize names
 function capitalize(word: string | null | undefined): string {
   if (!word) return "";
   return word
@@ -55,20 +53,34 @@ function capitalize(word: string | null | undefined): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { trainee, courseName, scheduleRange, givenThisDate, courseId, templateType = "completion" } = await req.json();
+    const body = await req.json();
+    const { 
+      trainee, 
+      courseName, 
+      courseTitle, 
+      scheduleRange, 
+      givenThisDate, 
+      courseId, 
+      templateType = "completion"
+    } = body;
 
-    console.log("📝 Generating PDF for:", trainee.first_name, trainee.last_name);
-    console.log("📚 Course:", courseName);
-    console.log("🎓 Template Type:", templateType);
+    console.log("📝 PDF Generation Request:");
+    console.log("  - Trainee:", trainee?.first_name, trainee?.last_name);
+    console.log("  - Course Name:", courseName);
+    console.log("  - Course Title:", courseTitle);
+    console.log("  - Template Type:", templateType);
+    console.log("  - Course ID:", courseId);
+    console.log("  - Schedule ID:", trainee?.schedule_id);
 
     if (!trainee || !courseName) {
+      console.error("❌ Missing required parameters");
       return NextResponse.json(
-        { success: false, error: "Missing required parameters" },
+        { success: false, error: "Missing required parameters (trainee or courseName)" },
         { status: 400 }
       );
     }
 
-    // Fetch certificate template from database
+    // Fetch certificate template
     let template: CertificateTemplate | null = null;
     
     if (courseId) {
@@ -81,6 +93,10 @@ export async function POST(req: NextRequest) {
 
       if (error) {
         console.error("❌ Error fetching template:", error);
+        return NextResponse.json(
+          { success: false, error: `Template fetch error: ${error.message}` },
+          { status: 500 }
+        );
       } else if (data) {
         template = data as CertificateTemplate;
         console.log("✅ Found custom template:", template.template_type);
@@ -88,20 +104,88 @@ export async function POST(req: NextRequest) {
     }
 
     if (!template) {
+      console.error("❌ No template found for courseId:", courseId, "templateType:", templateType);
       return NextResponse.json(
-        { success: false, error: "No certificate template found for this course and type" },
+        { success: false, error: `No certificate template found for this course (${courseId}) and type (${templateType})` },
         { status: 404 }
       );
     }
 
-    console.log("📂 Using template image:", template.image_url.substring(0, 100) + "...");
+    // Determine if this is an ID template
+    const isIDTemplate = templateType === "excellence";
+
+    // ✅ NEW: Fetch completion date from schedule
+    let completionDate = givenThisDate;
+    
+    if (trainee.schedule_id) {
+      try {
+        // Fetch schedule details
+        const { data: schedule, error: scheduleError } = await supabase
+          .from("schedules")
+          .select("schedule_type")
+          .eq("id", trainee.schedule_id)
+          .single();
+
+        if (schedule && !scheduleError) {
+          if (schedule.schedule_type === "regular") {
+            // For regular schedules, get the last date from schedule_ranges
+            const { data: ranges, error: rangesError } = await supabase
+              .from("schedule_ranges")
+              .select("end_date")
+              .eq("schedule_id", trainee.schedule_id)
+              .order("end_date", { ascending: false })
+              .limit(1)
+              .single();
+
+            if (ranges && !rangesError) {
+              const endDate = new Date(ranges.end_date);
+              completionDate = endDate.toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              });
+              console.log("✅ Using end date from schedule_ranges:", completionDate);
+            }
+          } else if (schedule.schedule_type === "staggered") {
+            // For staggered schedules, get the last date from schedule_dates
+            const { data: dates, error: datesError } = await supabase
+              .from("schedule_dates")
+              .select("date")
+              .eq("schedule_id", trainee.schedule_id)
+              .order("date", { ascending: false })
+              .limit(1)
+              .single();
+
+            if (dates && !datesError) {
+              const lastDate = new Date(dates.date);
+              completionDate = lastDate.toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              });
+              console.log("✅ Using last date from schedule_dates:", completionDate);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn("⚠️ Could not fetch schedule dates:", error);
+      }
+    }
+
+    // If no completion date found, use today's date
+    if (!completionDate) {
+      completionDate = new Date().toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+      console.log("⚠️ Using today's date as fallback:", completionDate);
+    }
 
     // Fetch template image
     let imageBytes: ArrayBuffer;
     try {
       if (template.image_url.startsWith('data:')) {
-        // Handle base64 data URI
-        console.log("📷 Loading base64 data URI image");
         const base64Data = template.image_url.split(',')[1];
         const binaryString = atob(base64Data);
         const bytes = new Uint8Array(binaryString.length);
@@ -110,14 +194,10 @@ export async function POST(req: NextRequest) {
         }
         imageBytes = bytes.buffer;
       } else {
-        // Handle regular URL - fetch directly without proxy
-        console.log("📷 Fetching image from URL");
         const imageResponse = await fetch(template.image_url);
-
         if (!imageResponse.ok) {
           throw new Error(`Failed to fetch template image: ${imageResponse.statusText}`);
         }
-
         imageBytes = await imageResponse.arrayBuffer();
       }
       console.log("✅ Template image loaded, size:", imageBytes.byteLength, "bytes");
@@ -141,7 +221,6 @@ export async function POST(req: NextRequest) {
     } else if (imageType.includes('jpg') || imageType.includes('jpeg') || imageType.includes('data:image/jpeg')) {
       templateImage = await pdfDoc.embedJpg(imageBytes);
     } else {
-      // Default to PNG
       try {
         templateImage = await pdfDoc.embedPng(imageBytes);
       } catch {
@@ -149,8 +228,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const CANVAS_WIDTH = templateImage.width;
-    const CANVAS_HEIGHT = templateImage.height;
+    // Set canvas dimensions based on template type
+    const CANVAS_WIDTH = isIDTemplate ? 1350 : templateImage.width;
+    const CANVAS_HEIGHT = isIDTemplate ? 850 : templateImage.height;
+
+    console.log("📐 Canvas dimensions:", CANVAS_WIDTH, "x", CANVAS_HEIGHT);
 
     // Add page with template dimensions
     const page = pdfDoc.addPage([CANVAS_WIDTH, CANVAS_HEIGHT]);
@@ -163,7 +245,7 @@ export async function POST(req: NextRequest) {
       height: CANVAS_HEIGHT,
     });
 
-    // Load trainee photo if available
+    // Load trainee photo
     if (trainee.picture_2x2_url) {
       try {
         const photoResponse = await fetch(trainee.picture_2x2_url);
@@ -177,19 +259,37 @@ export async function POST(req: NextRequest) {
             traineeImage = await pdfDoc.embedJpg(photoBytes);
           }
 
-          const PHOTO_SIZE = 0.12 * CANVAS_HEIGHT;
-          const PHOTO_X = 0.85 * CANVAS_WIDTH;
-          const PHOTO_Y = 0.05 * CANVAS_HEIGHT;
+          // Different photo positioning for ID vs certificate
+          if (isIDTemplate) {
+            // ID card: photo on left side, larger
+            const PHOTO_SIZE = 240;
+            const PHOTO_X = 228;
+            const PHOTO_Y = 351;
 
-          page.drawImage(traineeImage, {
-            x: PHOTO_X,
-            y: CANVAS_HEIGHT - PHOTO_Y - PHOTO_SIZE, // PDF coordinates are bottom-up
-            width: PHOTO_SIZE,
-            height: PHOTO_SIZE,
-          });
+            page.drawImage(traineeImage, {
+              x: PHOTO_X,
+              y: CANVAS_HEIGHT - PHOTO_Y - PHOTO_SIZE,
+              width: PHOTO_SIZE,
+              height: PHOTO_SIZE,
+            });
+            console.log("📷 ID photo placed at:", PHOTO_X, CANVAS_HEIGHT - PHOTO_Y - PHOTO_SIZE);
+          } else {
+            // Certificate: photo on top right, smaller
+            const PHOTO_SIZE = 0.12 * CANVAS_HEIGHT;
+            const PHOTO_X = 0.85 * CANVAS_WIDTH;
+            const PHOTO_Y = 0.05 * CANVAS_HEIGHT;
+
+            page.drawImage(traineeImage, {
+              x: PHOTO_X,
+              y: CANVAS_HEIGHT - PHOTO_Y - PHOTO_SIZE,
+              width: PHOTO_SIZE,
+              height: PHOTO_SIZE,
+            });
+            console.log("📷 Certificate photo placed");
+          }
         }
       } catch (error) {
-        console.warn("Failed to load trainee photo:", error);
+        console.warn("⚠️ Failed to load trainee photo:", error);
       }
     }
 
@@ -199,18 +299,26 @@ export async function POST(req: NextRequest) {
     const last = capitalize(trainee.last_name);
     const fullName = `${first} ${middle}${last}`;
 
-    const finalGivenDate = givenThisDate || new Date().toLocaleDateString("en-US", {
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
+    // ✅ Use the fetched completion date (formatted as "November 22, 2025")
+    const finalGivenDate = completionDate;
+
+    // ✅ FIX: Use courseTitle if provided, otherwise fall back to courseName
+    const finalCourseTitle = courseTitle || courseName;
+
+    console.log("🔄 Placeholder replacements:");
+    console.log("  - {{trainee_name}}:", fullName);
+    console.log("  - {{course_name}}:", courseName);
+    console.log("  - {{course_title}}:", finalCourseTitle);
+    console.log("  - {{completion_date}}:", finalGivenDate);
+    console.log("  - {{certificate_number}}:", trainee.certificate_number);
 
     const replacements: Record<string, string> = {
       "{{trainee_name}}": fullName,
       "{{course_name}}": courseName,
-      "{{completion_date}}": finalGivenDate,
+      "{{course_title}}": finalCourseTitle,
+      "{{completion_date}}": finalGivenDate,  // ✅ Now properly formatted from schedule
       "{{certificate_number}}": trainee.certificate_number || "",
-      "{{batch_number}}": trainee.batch_number || "",
+      "{{batch_number}}": trainee.batch_number?.toString() || "",
       "{{training_provider}}": "Petrosphere Inc.",
       "{{schedule_range}}": scheduleRange || "",
       "{{held_on}}": scheduleRange || "",
@@ -218,62 +326,93 @@ export async function POST(req: NextRequest) {
       "{{given_this}}": finalGivenDate,
     };
 
-    // Embed standard font
-    const font = await pdfDoc.embedFont('Helvetica');
-    const boldFont = await pdfDoc.embedFont('Helvetica-Bold');
+    // Embed fonts
+    const helveticaFont = await pdfDoc.embedFont('Helvetica');
+    const helveticaBold = await pdfDoc.embedFont('Helvetica-Bold');
+    const helveticaOblique = await pdfDoc.embedFont('Helvetica-Oblique');
+    const helveticaBoldOblique = await pdfDoc.embedFont('Helvetica-BoldOblique');
 
     // Draw text fields
-    template.fields.forEach((field) => {
+    console.log("✍️ Drawing", template.fields.length, "text fields");
+    template.fields.forEach((field, index) => {
       let displayText = field.value;
 
+      // Replace all placeholders
       Object.entries(replacements).forEach(([key, val]) => {
-        displayText = displayText.replace(key, val);
+        displayText = displayText.replace(new RegExp(key, 'g'), val);
       });
 
       const x = field.x * CANVAS_WIDTH;
       const y = field.y * CANVAS_HEIGHT;
       const fontSize = field.fontSize * CANVAS_HEIGHT;
+      const lineHeight = (field.lineHeight || 1.2) * fontSize;
 
       const color = hexToRgb(field.color);
-      const selectedFont = field.fontWeight === "bold" ? boldFont : font;
-
-      // Calculate text width for alignment
-      const textWidth = selectedFont.widthOfTextAtSize(displayText, fontSize);
       
-      let finalX = x;
-      if (field.align === "center") {
-        finalX = x - textWidth / 2;
-      } else if (field.align === "right") {
-        finalX = x - textWidth;
+      let selectedFont = helveticaFont;
+      
+      if (field.fontFamily === "Helvetica") {
+        if (field.fontWeight === "bold" || field.fontWeight === "extrabold") {
+          selectedFont = field.fontStyle === "italic" ? helveticaBoldOblique : helveticaBold;
+        } else {
+          selectedFont = field.fontStyle === "italic" ? helveticaOblique : helveticaFont;
+        }
       }
 
-      page.drawText(displayText, {
-        x: finalX,
-        y: CANVAS_HEIGHT - y, // PDF coordinates are bottom-up
-        size: fontSize,
-        font: selectedFont,
-        color: rgb(color.r, color.g, color.b),
+      // ✅ FIXED: Split text by newlines and respect alignment
+      const lines = displayText.split('\n');
+      let currentY = CANVAS_HEIGHT - y;
+
+      lines.forEach((line) => {
+        const textWidth = selectedFont.widthOfTextAtSize(line, fontSize);
+        
+        let finalX = x;
+        
+        // ✅ KEY FIX: Left-aligned text stays anchored to x position
+        // Only center and right alignments adjust based on text width
+        if (field.align === "center") {
+          finalX = x - textWidth / 2;
+        } else if (field.align === "right") {
+          finalX = x - textWidth;
+        }
+        // For "left" alignment: finalX = x (no adjustment needed)
+
+        page.drawText(line, {
+          x: finalX,
+          y: currentY,
+          size: fontSize,
+          font: selectedFont,
+          color: rgb(color.r, color.g, color.b),
+        });
+
+        // Move to next line
+        currentY -= lineHeight;
       });
+
+      console.log(`  Field ${index + 1}: "${field.label}" (${lines.length} line${lines.length > 1 ? 's' : ''})`);
     });
 
     // Add metadata
-    pdfDoc.setTitle(`Certificate - ${trainee.first_name} ${trainee.last_name}`);
+    pdfDoc.setTitle(`${isIDTemplate ? 'ID Card' : 'Certificate'} - ${trainee.first_name} ${trainee.last_name}`);
     pdfDoc.setAuthor("Petrosphere Training Center");
-    pdfDoc.setSubject(`${courseName} Certificate of ${template.template_type}`);
+    pdfDoc.setSubject(`${courseName} ${isIDTemplate ? 'ID Card' : 'Certificate of ' + template.template_type}`);
     pdfDoc.setCreator("Petrosphere Training Management System");
     pdfDoc.setProducer("Petrosphere Training Management System");
     pdfDoc.setCreationDate(new Date());
 
     // Save PDF
     const pdfBytes = await pdfDoc.save();
-    console.log("✅ PDF saved, size:", pdfBytes.length, "bytes");
+    console.log("✅ PDF generated successfully, size:", pdfBytes.length, "bytes");
 
-    // Return PDF as response - Convert Uint8Array to Buffer for NextResponse
+    const fileName = isIDTemplate 
+      ? `ID_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`
+      : `Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`;
+
     return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf"`,
+        "Content-Disposition": `attachment; filename="${fileName}"`,
       },
     });
   } catch (error: any) {
@@ -282,7 +421,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error.message || "Failed to generate PDF certificate",
+        error: error.message || "Failed to generate PDF",
         details: error.stack,
       },
       { status: 500 }

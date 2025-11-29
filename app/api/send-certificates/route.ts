@@ -14,8 +14,16 @@ export async function POST(req: NextRequest) {
   console.log("📨 /api/send-certificates endpoint hit");
 
   try {
-    const { scheduleId, templateType = "completion" } = await req.json();
-    console.log("✅ Received scheduleId:", scheduleId, "templateType:", templateType);
+    // ✅ Accept courseTitle AND selectedTraineeIds from request
+    const { 
+      scheduleId, 
+      templateType = "completion", 
+      courseTitle: providedCourseTitle,
+      selectedTraineeIds  // ✅ NEW: Array of selected trainee IDs
+    } = await req.json();
+    
+    console.log("✅ Received scheduleId:", scheduleId, "templateType:", templateType, "courseTitle:", providedCourseTitle);
+    console.log("✅ Selected trainees:", selectedTraineeIds?.length || "all");
 
     if (!scheduleId) {
       return NextResponse.json(
@@ -39,9 +47,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ✅ Fetch both name AND title from courses table
     const { data: courseData, error: courseError } = await supabase
       .from("courses")
-      .select("id, name")
+      .select("id, name, title")
       .eq("id", scheduleData.course_id)
       .single();
 
@@ -52,6 +61,11 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
+
+    // ✅ Determine which courseTitle to use
+    const courseTitle = providedCourseTitle || courseData.title || courseData.name;
+    console.log("📚 Using course name:", courseData.name);
+    console.log("📚 Using course title:", courseTitle);
 
     // Build schedule date range
     let scheduleRange = "";
@@ -111,14 +125,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fetch trainees with cert + email
-    const { data: traineesData, error: traineesError } = await supabase
+    // ✅ NEW: Fetch trainees with cert + email, with optional filtering
+    let query = supabase
       .from("trainings")
-      .select("id, first_name, last_name, middle_initial, email, certificate_number, picture_2x2_url")
+      .select("id, first_name, last_name, middle_initial, email, certificate_number, picture_2x2_url, course_id")
       .eq("schedule_id", scheduleId)
       .not("certificate_number", "is", null)
       .not("email", "is", null)
       .order("last_name", { ascending: true });
+
+    // ✅ NEW: Filter by selected IDs if provided
+    if (selectedTraineeIds && selectedTraineeIds.length > 0) {
+      query = query.in("id", selectedTraineeIds);
+      console.log(`🎯 Filtering to ${selectedTraineeIds.length} selected trainees`);
+    }
+
+    const { data: traineesData, error: traineesError } = await query;
 
     if (traineesError || !traineesData?.length) {
       console.error("❌ No trainees found or query failed:", traineesError);
@@ -128,7 +150,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.log(`👥 Found ${traineesData.length} trainees`);
+    console.log(`👥 Found ${traineesData.length} trainees to send certificates`);
 
     // Create SSE stream for real-time progress
     const encoder = new TextEncoder();
@@ -156,7 +178,7 @@ export async function POST(req: NextRequest) {
           try {
             console.log(`📤 Generating certificate for: ${trainee.first_name} ${trainee.last_name}`);
 
-            // Generate certificate PDF with template support
+            // ✅ Generate certificate PDF with courseTitle support
             const pdfResponse = await fetch(
               `${req.nextUrl.origin}/api/generate-certificate-pdf`,
               {
@@ -165,10 +187,11 @@ export async function POST(req: NextRequest) {
                 body: JSON.stringify({
                   trainee,
                   courseName: courseData.name,
+                  courseTitle: courseTitle,
                   courseId: courseData.id,
                   scheduleRange,
                   givenThisDate,
-                  templateType, // Pass template type
+                  templateType,
                 }),
               }
             );
@@ -198,7 +221,7 @@ export async function POST(req: NextRequest) {
               body: JSON.stringify({
                 to: trainee.email,
                 subject: `Your ${courseData.name} Certificate - Petrosphere Training Center`,
-                message: generateCertificateEmailHTML(trainee, courseData.name, scheduleRange),
+                message: generateCertificateEmailHTML(trainee, courseData.name, courseTitle, scheduleRange),
                 attachments: [
                   {
                     filename: `Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`,
@@ -285,6 +308,7 @@ export async function POST(req: NextRequest) {
 function generateCertificateEmailHTML(
   trainee: any,
   courseName: string,
+  courseTitle: string,
   scheduleRange: string
 ): string {
   return `
@@ -308,7 +332,7 @@ function generateCertificateEmailHTML(
           <p>Dear ${trainee.first_name} ${trainee.last_name},</p>
           <p>Congratulations on successfully completing your training!</p>
           <div class="certificate-info">
-            <strong>Course:</strong> ${courseName}<br>
+            <strong>Course:</strong> ${courseTitle}<br>
             <strong>Training Dates:</strong> ${scheduleRange}<br>
             <strong>Certificate Number:</strong> ${trainee.certificate_number}
           </div>
