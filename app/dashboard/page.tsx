@@ -45,7 +45,7 @@ export default function DashboardPage() {
         { title: "Total Participants", value: participants.toString(), change: "+12.5%", icon: Users, color: "text-primary" },
         { title: "Active Courses", value: courses.toString(), change: "+3", icon: BookOpen, color: "text-secondary" },
         { title: "Scheduled Events", value: events.length.toString(), change: "+8.2%", icon: Calendar, color: "text-chart-2" },
-        { title: "Completion Rate", value: "87.5%", change: "+2.3%", icon: TrendingUp, color: "text-chart-4" },
+        { title: "Completion Rate", value: "0%", change: "+2.3%", icon: TrendingUp, color: "text-chart-4" },
       ])
 
       const formattedEvents = events.map((event: any) => ({

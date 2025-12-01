@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider"
 import { supabase } from "@/lib/supabase-client"
 import React from "react"
+import { toast } from "sonner"
 
 function toPercentX(px: number, isID: boolean) {
   return isID ? px / 1350 : px / 842
@@ -664,58 +665,62 @@ const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     setShowPlaceholderMenu(false)
   }
 
-  const handleSave = async () => {
-    if (!templateImage[currentTemplateType]) {
-      alert("Please upload a template image first")
-      return
-    }
-
-    setSaving(true)
-    try {
-      let imageUrl = templateImage[currentTemplateType]!
-  
-      if (imageUrl.startsWith('data:') || templateFile[currentTemplateType]) {
-        const uploadedUrl = await uploadImageToStorage(templateFile[currentTemplateType]!, currentTemplateType)
-        if (!uploadedUrl) {
-          alert("❌ Failed to upload image")
-          setSaving(false)
-          return
-        }
-        imageUrl = uploadedUrl
-        setTemplateFile(prev => ({ ...prev, [currentTemplateType]: null }))
-        setTemplateImage(prev => ({ ...prev, [currentTemplateType]: imageUrl }))
-      }
-
-      const isID = currentTemplateType === "excellence"
-
-      const response = await fetch("/api/certificate-template", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          courseId,
-          imageUrl: imageUrl,
-          fields: textFields[currentTemplateType].map((f: TextField): TextField => ({
-            ...f,
-            x: toPercentX(f.x, isID),
-            y: toPercentY(f.y, isID),
-            fontSize: toPercentFont(f.fontSize, isID)
-          })),
-          templateType: currentTemplateType
-        })
-      })
-
-      if (response.ok) {
-        alert(`✅ ${TEMPLATE_TYPES.find(t => t.value === currentTemplateType)?.label} template saved successfully!`)
-      } else {
-        alert("❌ Failed to save template")
-      }
-    } catch (error) {
-      console.error("Error saving template:", error)
-      alert("❌ Failed to save template")
-    } finally {
-      setSaving(false)
-    }
+const handleSave = async () => {
+  if (!templateImage[currentTemplateType]) {
+    toast.error("Please upload a template image first.");
+    return;
   }
+
+  setSaving(true);
+
+  try {
+    let imageUrl = templateImage[currentTemplateType]!;
+
+    if (imageUrl.startsWith("data:") || templateFile[currentTemplateType]) {
+      const uploadedUrl = await uploadImageToStorage(templateFile[currentTemplateType]!, currentTemplateType);
+
+      if (!uploadedUrl) {
+        toast.error("❌ Failed to upload image.");
+        setSaving(false);
+        return;
+      }
+
+      imageUrl = uploadedUrl;
+      setTemplateFile(prev => ({ ...prev, [currentTemplateType]: null }));
+      setTemplateImage(prev => ({ ...prev, [currentTemplateType]: imageUrl }));
+    }
+
+    const isID = currentTemplateType === "excellence";
+
+    const response = await fetch("/api/certificate-template", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        courseId,
+        imageUrl: imageUrl,
+        fields: textFields[currentTemplateType].map((f: TextField): TextField => ({
+          ...f,
+          x: toPercentX(f.x, isID),
+          y: toPercentY(f.y, isID),
+          fontSize: toPercentFont(f.fontSize, isID),
+        })),
+        templateType: currentTemplateType,
+      }),
+    });
+
+    if (response.ok) {
+      toast.success(`${TEMPLATE_TYPES.find(t => t.value === currentTemplateType)?.label} template saved successfully!`);
+    } else {
+      toast.error("Failed to save template.");
+    }
+  } catch (error) {
+    console.error("Error saving template:", error);
+    toast.error("Failed to save template.");
+  } finally {
+    setSaving(false);
+  }
+};
+
 
   const handleSaveAll = async () => {
     setSaving(true)
@@ -908,7 +913,7 @@ const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
           )}
         </>
       ) : (
-        <div className="flex items-center justify-center h-64 text-muted-foreground">
+        <div className="flex items-center bg-card justify-center h-64 text-muted-foreground">
           <div className="text-center">
             <Upload className="h-12 w-12 mx-auto mb-2 opacity-50" />
             <p>Upload a {currentTemplateInfo.label.toLowerCase()} template</p>

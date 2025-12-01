@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CalendarCheckIcon,
   LucideAward,
+  MapPin,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -45,9 +46,19 @@ const menuItems = [
     href: "/courses",
   },
   {
+    type: "separator",
+    title: "Certificates & IDs",
+  },
+
+  {
     title: "Certs & ID Management",
     icon: LucideAward,
     href: "/certificate-id-management",
+  },
+  {
+    title: "Certificate Tracker",
+    icon: MapPin,
+    href: "/cert-tracker",
   },
 
   // 🌟 Separator

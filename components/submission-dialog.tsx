@@ -1,3 +1,4 @@
+//components\submission-dialog.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -29,7 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Loader2, Download, Trash2, ChevronDown } from "lucide-react";
+import { Plus, Loader2, Download, Trash2, ChevronDown, Pen, Edit } from "lucide-react";
 import { createClient } from "@/lib/supabase-client";
 
 interface Payment {
@@ -73,6 +74,23 @@ export function SubmissionDialog({
   const [discountPrice, setDiscountPrice] = useState("");
   const [discountPercent, setDiscountPercent] = useState<number | null>(null);
   const [discountApplied, setDiscountApplied] = useState<number | null>(null);
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [newDetails, setNewDetails] = useState({
+    company_name: trainee?.company_name || "",
+    gender: trainee?.gender || "",
+    age: trainee?.age || "",
+    phone_number: trainee?.phone_number || "",
+    food_restriction: trainee?.food_restriction || "",
+  });
+  const [show2x2ViewModal, setShow2x2ViewModal] = useState(false);
+
+
+  const [newAddress, setNewAddress] = useState({
+    mailing_street: trainee?.mailing_street || "",
+    mailing_city: trainee?.mailing_city || "",
+    mailing_province: trainee?.mailing_province || "",
+  });
 
   const fetchPayments = async () => {
     if (!trainee?.id) return;
@@ -94,6 +112,7 @@ export function SubmissionDialog({
         .from("trainings")
         .update({ amount_paid: total })
         .eq("id", trainee.id);
+      await checkAndUpdatePaymentStatus(total);
     }
   };
 
@@ -121,29 +140,38 @@ const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
     }
   }
 
-  // No discount applied
+  // No discount
   else {
     if (totalPaid >= originalFee) {
       newStatus = "Payment Completed";
+      newPaymentStatus = "Payment Completed";
     } else if (totalPaid > 0) {
       newStatus = "Partially Paid";
+      newPaymentStatus = "Partially Paid";
     } else {
       newStatus = "Pending Payment";
+      newPaymentStatus = null;
     }
   }
 
-  const { error } = await supabase
+  await supabase
     .from("trainings")
     .update({
       status: newStatus,
       payment_status: newPaymentStatus,
     })
     .eq("id", trainee.id);
-
-  if (error) {
-    console.error("Failed updating status:", error);
-  }
 };
+
+useEffect(() => {
+  if (open && trainee) {
+    // 👇 initialize discount UI state from database field
+    setIsDiscounted(trainee.has_discount ?? false);
+    setDiscountPrice("");
+    setDiscountPercent(null);
+    setDiscountApplied(trainee.discounted_fee ?? null);
+  }
+}, [open, trainee?.id]);
 
 
   useEffect(() => {
@@ -232,13 +260,17 @@ const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
     setSaving(true);
     try {
 
-      const finalAmount = isDiscounted
-      ? Number(discountPrice)
-      : Number(amountPaid);
+     const finalAmount = Number(amountPaid);
 
-    const finalStatus = isDiscounted
-      ? "Discounted"
-      : "completed";
+      const discountedFee = discountApplied ?? Number(trainee.training_fee);
+      let finalStatus = "pending";
+
+      if (finalAmount >= discountedFee) {
+        finalStatus = isDiscounted ? "Payment Completed (Discounted)" : "Payment Completed";
+      } else if (finalAmount > 0) {
+        finalStatus = isDiscounted ? "Partially Paid (Discounted)" : "Partially Paid";
+      }
+
 
 const payload = {
   training_id: trainee.id,
@@ -252,7 +284,11 @@ const payload = {
 };
   
       console.log("🧾 Inserting payment payload:", payload);
-  
+
+        if (isNaN(finalAmount) || finalAmount <= 0) {
+        alert("Invalid amount. Please enter a valid number.");
+        return;
+      }
       const { data, error } = await supabase
         .from("payments")
         .insert(payload)
@@ -264,18 +300,9 @@ const payload = {
 
       // Calculate new total and check if payment is complete
       const newTotalPaid = totalPaid + parseFloat(amountPaid);
-        if (isDiscounted) {
-        await supabase
-          .from("trainings")
-          .update({
-            payment_status: "Discounted",
-            amount_paid: finalAmount,
-            status: "Payment Completed"
-          })
-          .eq("id", trainee.id);
-      } else {
         await checkAndUpdatePaymentStatus(newTotalPaid);
-      }
+
+
 
 
       // ✅ Trigger email notifications after successful save
@@ -340,23 +367,50 @@ const handleApplyDiscount = async () => {
   }
 
   try {
-    const { error } = await supabase
-      .from("trainings")
-      .update({
-        status: "Payment Completed",
-        payment_status: "Payment Completed (Discounted)",
-      })
-      .eq("id", trainee.id);
+    const totalPaidNow = payments.reduce(
+      (sum, p) => sum + (p.amount_paid || 0),
+      0
+    );
 
-    if (error) throw error;
+    if (totalPaidNow >= discounted) {
+      await supabase
+        .from("trainings")
+        .update({
+          status: "Payment Completed",
+          payment_status: "Payment Completed (Discounted)",
+          amount_paid: totalPaidNow,
+          discounted_fee: discounted,
+          has_discount: true, // ✅ flag it as discounted
+        })
+        .eq("id", trainee.id);
+    } else if (totalPaidNow > 0) {
+      await supabase
+        .from("trainings")
+        .update({
+          status: "Partially Paid",
+          payment_status: "Partially Paid (Discounted)",
+          amount_paid: totalPaidNow,
+          discounted_fee: discounted,
+          has_discount: true, // ✅
+        })
+        .eq("id", trainee.id);
+    } else {
+      await supabase
+        .from("trainings")
+        .update({
+          status: "Pending Payment",
+          payment_status: null,
+          amount_paid: 0,
+          discounted_fee: discounted,
+          has_discount: true, // ✅ still store discount even if not paid
+        })
+        .eq("id", trainee.id);
+    }
 
     alert("Discount applied successfully!");
 
-    // Save in UI
     setDiscountApplied(discounted);
-
     fetchPayments();
-
   } catch (err) {
     console.error("Error applying discount:", err);
     alert("Failed to apply discount.");
@@ -387,6 +441,7 @@ const handleApplyDiscount = async () => {
 
       // Calculate new total and check if payment is complete
       const newTotalPaid = totalPaid + parseFloat(amountPaid);
+      
       await checkAndUpdatePaymentStatus(newTotalPaid);
 
       alert("Payment marked as paid successfully!");
@@ -427,7 +482,16 @@ const handleDeletePayment = async () => {
           amount_paid: 0
         })
         .eq("id", trainee.id);
+    } else {
+      const newTotal = newPayments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+      await supabase
+        .from("trainings")
+        .update({ amount_paid: newTotal })
+        .eq("id", trainee.id);
+      await checkAndUpdatePaymentStatus(newTotal);
     }
+    
+
 
     alert("Payment deleted successfully!");
     setShowDeleteConfirm(false);
@@ -479,6 +543,59 @@ const handleDeletePayment = async () => {
     URL.revokeObjectURL(url);
   };
 
+
+const handleSavePersonalDetails = async () => {
+  const { error } = await supabase
+    .from("trainings")
+    .update(newDetails)
+    .eq("id", trainee.id);
+  if (error) return alert("Failed to update personal details.");
+  setIsEditingDetails(false);
+  alert("Personal details updated.");
+};
+
+const handleSaveAddress = async () => {
+  const { error } = await supabase
+    .from("trainings")
+    .update(newAddress)
+    .eq("id", trainee.id);
+  if (error) return alert("Failed to update address.");
+  setIsEditingAddress(false);
+  alert("Address updated.");
+};
+
+
+const handleUpdate2x2Photo = async () => {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.onchange = async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    const res = await fetch("/api/upload", { method: "POST", body: formData });
+    const data = await res.json();
+
+    if (res.ok) {
+      await supabase
+        .from("trainings")
+        .update({ picture_2x2_url: data.url })
+        .eq("id", trainee.id);
+      alert("2x2 photo updated!");
+      window.location.reload(); // or re-fetch trainee info
+    } else {
+      alert("Upload failed.");
+    }
+  };
+  input.click();
+};
+
+ 
+
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -497,14 +614,37 @@ const handleDeletePayment = async () => {
                   className="w-full rounded border"
                 />
               </div>
-              <div>
+              <div className="relative">
                 <h4 className="text-sm font-semibold mb-2">2x2 Photo</h4>
-                <img
-                  src={trainee.picture_2x2_url}
-                  alt="2x2 Photo"
-                  className="w-full rounded border"
-                />
+                <div className="relative cursor-pointer" onClick={() => setShow2x2ViewModal(true)}>
+                  <img
+                    src={trainee.picture_2x2_url}
+                    alt="2x2 Photo"
+                    className="w-full rounded border hover:opacity-80 transition"
+                  />
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="absolute top-2 right-2 text-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUpdate2x2Photo();
+                    }}
+                  >
+                    <Edit />
+                  </Button>
+                </div>
+
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute top-2 right-2 text-sm"
+                  onClick={handleUpdate2x2Photo}
+                >
+                  <Edit/>
+                </Button>
               </div>
+
             </div>
 
             <DialogFooter className="pt-4">
@@ -518,8 +658,8 @@ const handleDeletePayment = async () => {
           <DialogContent className="w-[70vw] p-0">
             <ScrollArea className="h-[90vh] p-6">
               <DialogHeader>
-                <DialogTitle className="text-indigo-900">
-                  Submission {trainee?.id}
+                <DialogTitle className="text-indigo-900 text-sm">
+                  Submission ID: {trainee?.id}
                 </DialogTitle>
               </DialogHeader>
 
@@ -528,9 +668,25 @@ const handleDeletePayment = async () => {
               </div>
 
               <div className="flex flex-col items-center gap-2 py-4">
-                <Avatar className="h-24 w-24">
-                  <AvatarImage src={trainee?.picture_2x2_url} />
-                </Avatar>
+                <div className="relative">
+                <div className="relative cursor-pointer" onClick={() => setShow2x2ViewModal(true)}>
+                  <Avatar className="h-24 w-24">
+                    <AvatarImage src={trainee?.picture_2x2_url} />
+                  </Avatar>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="absolute top-0 left-20 text-sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUpdate2x2Photo();
+                    }}
+                  >
+                    <Edit />
+                  </Button>
+                </div>
+                
+                </div>
                 <span className="font-bold text-indigo-900 text-lg">
                   {trainee?.first_name} {trainee?.last_name}
                 </span>
@@ -541,44 +697,77 @@ const handleDeletePayment = async () => {
 
               <div className="space-y-4">
                 <section className="border rounded overflow-hidden">
-                  <div className="font-bold px-4 py-2">Personal Details</div>
+                  <div className="flex justify-between items-center font-bold px-4 py-2">
+                    Personal Details
+                    <Button size="sm" variant="ghost" onClick={() => setIsEditingDetails(!isEditingDetails)}>
+                      <Edit/>
+                    </Button>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 p-4 text-sm">
-                    <div>
-                      <strong>Company</strong>
-                      <div>{trainee?.company_name || "N/A"}</div>
-                    </div>
-                    <div>
-                      <strong>Gender</strong>
-                      <div>{trainee?.gender}</div>
-                    </div>
-                    <div>
-                      <strong>Age</strong>
-                      <div>{trainee?.age}</div>
-                    </div>
-                    <div>
-                      <strong>Phone Number</strong>
-                      <div>{trainee?.phone_number || "N/A"}</div>
-                    </div>
-                    <div>
-                      <strong>Food Restriction</strong>
-                      <div>{trainee?.food_restriction || "N/A"}</div>
-                    </div>
+                    {isEditingDetails ? (
+                      <>
+                        <div>
+                          <Label>Company</Label>
+                          <Input value={newDetails.company_name} onChange={e => setNewDetails(prev => ({ ...prev, company_name: e.target.value }))} />
+                        </div>
+                        <div>
+                          <Label>Gender</Label>
+                          <Input value={newDetails.gender} onChange={e => setNewDetails(prev => ({ ...prev, gender: e.target.value }))} />
+                        </div>
+                        <div>
+                          <Label>Age</Label>
+                          <Input type="number" value={newDetails.age} onChange={e => setNewDetails(prev => ({ ...prev, age: e.target.value }))} />
+                        </div>
+                        <div>
+                          <Label>Phone</Label>
+                          <Input value={newDetails.phone_number} onChange={e => setNewDetails(prev => ({ ...prev, phone_number: e.target.value }))} />
+                        </div>
+                        <div>
+                          <Label>Food Restriction</Label>
+                          <Input value={newDetails.food_restriction} onChange={e => setNewDetails(prev => ({ ...prev, food_restriction: e.target.value }))} />
+                        </div>
+                        <Button onClick={handleSavePersonalDetails} className="col-span-6">💾 Save</Button>
+                      </>
+                    ) : (
+                      <>
+                        <div><strong>Company</strong><div>{trainee?.company_name || "N/A"}</div></div>
+                        <div><strong>Gender</strong><div>{trainee?.gender}</div></div>
+                        <div><strong>Age</strong><div>{trainee?.age}</div></div>
+                        <div><strong>Phone Number</strong><div>{trainee?.phone_number || "N/A"}</div></div>
+                        <div><strong>Food Restriction</strong><div>{trainee?.food_restriction || "N/A"}</div></div>
+                      </>
+                    )}
                   </div>
                 </section>
 
                 <section className="border rounded overflow-hidden">
-                  <div className="font-bold px-4 py-2">Mailing Address Details</div>
+                  <div className="flex justify-between items-center font-bold px-4 py-2">
+                    Mailing Address Details
+                    <Button size="sm" variant="ghost" onClick={() => setIsEditingAddress(!isEditingAddress)}>
+                      <Edit/>
+                    </Button>
+                  </div>
+
                   <div className="p-4 text-sm">
-                    <strong>Address</strong>
-                    <div>
-                      {[
-                        trainee?.mailing_street,
-                        trainee?.mailing_city,
-                        trainee?.mailing_province,
-                      ]
-                        .filter(Boolean)
-                        .join(", ") || "N/A"}
-                    </div>
+                    {isEditingAddress ? (
+                      <>
+                        <Label>Street</Label>
+                        <Input value={newAddress.mailing_street} onChange={e => setNewAddress(prev => ({ ...prev, mailing_street: e.target.value }))} />
+
+                        <Label className="mt-2">City</Label>
+                        <Input value={newAddress.mailing_city} onChange={e => setNewAddress(prev => ({ ...prev, mailing_city: e.target.value }))} />
+
+                        <Label className="mt-2">Province</Label>
+                        <Input value={newAddress.mailing_province} onChange={e => setNewAddress(prev => ({ ...prev, mailing_province: e.target.value }))} />
+
+                        <Button onClick={handleSaveAddress} className="mt-2">💾 Save</Button>
+                      </>
+                    ) : (
+                      <>
+                        <strong>Address</strong>
+                        <div>{[trainee?.mailing_street, trainee?.mailing_city, trainee?.mailing_province].filter(Boolean).join(", ") || "N/A"}</div>
+                      </>
+                    )}
                   </div>
                 </section>
 
@@ -600,11 +789,26 @@ const handleDeletePayment = async () => {
   {/* DISCOUNT SWITCH */}
   <div className="flex items-center gap-2 pt-2">
     <Label>Discounted?</Label>
-    <input 
-      type="checkbox" 
-      checked={isDiscounted}
-      onChange={(e) => setIsDiscounted(e.target.checked)}
-    />
+   <input 
+  type="checkbox" 
+  checked={isDiscounted}
+  onChange={async (e) => {
+    const checked = e.target.checked;
+    setIsDiscounted(checked);
+
+    // ✅ update Supabase on toggle
+    const { error } = await supabase
+      .from("trainings")
+      .update({ has_discount: checked })
+      .eq("id", trainee.id);
+
+    if (error) {
+      alert("Failed to update discount status.");
+      console.error("Update discount toggle error:", error);
+    }
+  }}
+/>
+
   </div>
 
   {/* DISCOUNT PRICE INPUT */}
@@ -771,6 +975,23 @@ const handleDeletePayment = async () => {
           </DialogContent>
         )}
       </Dialog>
+
+
+<Dialog open={show2x2ViewModal} onOpenChange={setShow2x2ViewModal}>
+  <DialogContent className="w-[50vw] max-w-3xl">
+    <DialogHeader>
+      <DialogTitle>2x2 Photo Viewer</DialogTitle>
+    </DialogHeader>
+    <div className="w-full h-full text-center">
+      <img
+        src={trainee.picture_2x2_url}
+        alt="2x2 Full View"
+        className="max-w-full max-h-[80vh] mx-auto rounded border shadow"
+      />
+    </div>
+  </DialogContent>
+</Dialog>
+
 
       {/* Preview Dialog for Receipt Upload */}
       <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>

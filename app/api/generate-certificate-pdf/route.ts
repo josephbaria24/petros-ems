@@ -8,6 +8,30 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+
+function formatScheduleRange(dates: Date[]): string {
+  if (!dates.length) return "";
+
+  const start = dates[0];
+  const end = dates[dates.length - 1];
+
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+  const sameYear = start.getFullYear() === end.getFullYear();
+
+  const fullMonth = start.toLocaleString("en-US", { month: "long" });
+  const shortStartMonth = start.toLocaleString("en-US", { month: "short" });
+  const shortEndMonth = end.toLocaleString("en-US", { month: "short" });
+
+  if (sameMonth) {
+    return `${fullMonth} ${start.getDate()} – ${end.getDate()}, ${start.getFullYear()}`;
+  } else if (sameYear) {
+    return `${shortStartMonth}. ${start.getDate()} – ${shortEndMonth}. ${end.getDate()}, ${start.getFullYear()}`;
+  } else {
+    return `${shortStartMonth}. ${start.getDate()}, ${start.getFullYear()} – ${shortEndMonth}. ${end.getDate()}, ${end.getFullYear()}`;
+  }
+}
+
+
 interface TextField {
   id: string;
   label: string;

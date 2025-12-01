@@ -1,3 +1,4 @@
+//app\submissions\page.tsx
 "use client"
 
 import { useEffect, useState } from "react"
@@ -178,9 +179,10 @@ export default function SubmissionPage() {
       console.error(error);
       toast.error("Failed to fetch trainees");
     } else {
-      const formattedData = (data || []).map((trainee: any) => ({
+      const formattedData = (data || []).map((trainee: any, index: number) => ({
         ...trainee,
         training_fee: trainee.courses?.training_fee || 0,
+         rowIndex: index,
       }));
       setTrainees(formattedData);
     }
@@ -196,11 +198,34 @@ export default function SubmissionPage() {
     setDialogOpen(true)
   }
 
-  const handleDialogClose = (open: boolean) => {
+  const handleDialogClose = async (open: boolean) => {
     setDialogOpen(open);
-    if (!open) {
-      fetchTrainees();
+    if (!open && selectedTrainee) {
+      const updatedTrainee = await supabase
+        .from("trainings")
+        .select(`*, courses:course_id(training_fee)`)
+        .eq("id", selectedTrainee.id)
+        .single();
+
+      if (updatedTrainee.data) {
+        const updated = {
+          ...updatedTrainee.data,
+          training_fee: updatedTrainee.data.courses?.training_fee || 0,
+        };
+
+        setTrainees((prev) => {
+          const updatedList = prev.map((t) =>
+            t.id === updated.id ? { ...updated, rowIndex: t.rowIndex } : t
+          );
+
+          // 👇 re-sort based on original order
+          updatedList.sort((a, b) => a.rowIndex - b.rowIndex);
+
+          return updatedList;
+        });
+      }
     }
+
   };
 
   const updateStatus = async (status: string) => {
@@ -493,7 +518,7 @@ export default function SubmissionPage() {
         ) : (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline" className="cursor-pointer">
+              <Button size="sm" variant="outline" className="cursor-pointer bg-primary hover:bg-primary/20 text-primary-foreground">
                 <Zap className="h-4 w-4 mr-2" />
                 Quick Actions
               </Button>

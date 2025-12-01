@@ -10,6 +10,30 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+
+function formatScheduleRange(dates: Date[]): string {
+  if (!dates.length) return "";
+
+  const start = dates[0];
+  const end = dates[dates.length - 1];
+
+  const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
+  const sameYear = start.getFullYear() === end.getFullYear();
+
+  const fullMonth = start.toLocaleString("en-US", { month: "long" });
+  const shortStartMonth = start.toLocaleString("en-US", { month: "short" });
+  const shortEndMonth = end.toLocaleString("en-US", { month: "short" });
+
+  if (sameMonth) {
+    return `${fullMonth} ${start.getDate()} – ${end.getDate()}, ${start.getFullYear()}`;
+  } else if (sameYear) {
+    return `${shortStartMonth}. ${start.getDate()} – ${shortEndMonth}. ${end.getDate()}, ${start.getFullYear()}`;
+  } else {
+    return `${shortStartMonth}. ${start.getDate()}, ${start.getFullYear()} – ${shortEndMonth}. ${end.getDate()}, ${end.getFullYear()}`;
+  }
+}
+
+
 export async function POST(req: NextRequest) {
   console.log("📨 /api/send-certificates endpoint hit");
 
@@ -90,7 +114,8 @@ export async function POST(req: NextRequest) {
         const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
         if (daysDiff > 1) {
-          scheduleRange = `${(start.getMonth() + 1).toString().padStart(2, "0")}/${start.getDate().toString().padStart(2, "0")}/${start.getFullYear()} - ${(end.getMonth() + 1).toString().padStart(2, "0")}/${end.getDate().toString().padStart(2, "0")}/${end.getFullYear()}`;
+         scheduleRange = formatScheduleRange([start, end]);
+
         } else {
           scheduleRange = `${start.toLocaleDateString("en-US", { month: "long", day: "numeric" })} & ${end.toLocaleDateString("en-US", { day: "numeric", year: "numeric" })}`;
         }
@@ -112,16 +137,9 @@ export async function POST(req: NextRequest) {
           datesByMonth[monthYear].push(date.getDate());
         });
 
-        const formattedParts = Object.entries(datesByMonth).map(
-          ([monthYear, days], idx, arr) => {
-            const [month, year] = monthYear.split(" ");
-            return idx === arr.length - 1
-              ? `${month}. ${days.join(",")}, ${year}`
-              : `${month}. ${days.join(",")}`;
-          }
-        );
+        const sortedDates = dates.sort((a, b) => a.getTime() - b.getTime());
+        scheduleRange = formatScheduleRange(sortedDates);
 
-        scheduleRange = formattedParts.join(" & ");
       }
     }
 
