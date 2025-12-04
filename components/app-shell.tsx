@@ -15,7 +15,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   // Define which routes are public (don't require auth)
-  const publicRoutes = ["/login", "/auth/callback", "/guest"]
+  const publicRoutes = ["/login", "/auth/callback", "/guest", "/reupload"]
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
   
   // Define which routes should hide sidebar and header

@@ -84,6 +84,7 @@ export function SubmissionDialog({
     food_restriction: trainee?.food_restriction || "",
   });
   const [show2x2ViewModal, setShow2x2ViewModal] = useState(false);
+  const [showIdViewModal, setShowIdViewModal] = useState(false);
 
 
   const [newAddress, setNewAddress] = useState({
@@ -594,7 +595,33 @@ const handleUpdate2x2Photo = async () => {
 };
 
  
+  const handleUpdateIdPhoto = async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
 
+      const formData = new FormData();
+      formData.append("image", file);
+
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json();
+
+      if (res.ok) {
+        await supabase
+          .from("trainings")
+          .update({ id_picture_url: data.url })
+          .eq("id", trainee.id);
+        alert("ID photo updated!");
+        window.location.reload();
+      } else {
+        alert("Upload failed.");
+      }
+    };
+    input.click();
+  };
 
   return (
     <>
@@ -667,26 +694,59 @@ const handleUpdate2x2Photo = async () => {
                 {new Date().toLocaleDateString()}
               </div>
 
+               {/* Updated photo section with both 2x2 and ID */}
               <div className="flex flex-col items-center gap-2 py-4">
-                <div className="relative">
-                <div className="relative cursor-pointer" onClick={() => setShow2x2ViewModal(true)}>
-                  <Avatar className="h-24 w-24">
-                    <AvatarImage src={trainee?.picture_2x2_url} />
-                  </Avatar>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="absolute top-0 left-20 text-sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleUpdate2x2Photo();
-                    }}
-                  >
-                    <Edit />
-                  </Button>
+                <div className="flex gap-4 items-start">
+                  {/* 2x2 Photo */}
+                  <div className="flex flex-col items-center gap-2">
+                    <Label className="text-xs text-muted-foreground">2x2 Photo</Label>
+                    <div className="relative cursor-pointer" onClick={() => setShow2x2ViewModal(true)}>
+                      <div className="border-2 border-primary rounded-lg p-1">
+                        <Avatar className="h-24 w-24">
+                          <AvatarImage src={trainee?.picture_2x2_url} />
+                        </Avatar>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white shadow"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUpdate2x2Photo();
+                        }}
+                      >
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* ID Picture */}
+                  <div className="flex flex-col items-center gap-2">
+                    <Label className="text-xs text-muted-foreground">ID Picture</Label>
+                    <div className="relative cursor-pointer" onClick={() => setShowIdViewModal(true)}>
+                      <div className="border-2 border-primary rounded-lg p-1 w-32 h-24 overflow-hidden">
+                        <img 
+                          src={trainee?.id_picture_url} 
+                          alt="ID" 
+                          className="w-full h-full object-cover rounded"
+                        />
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white shadow"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUpdateIdPhoto();
+                        }}
+                      >
+                        <Edit className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
                 
-                </div>
+                
                 <span className="font-bold text-indigo-900 text-lg">
                   {trainee?.first_name} {trainee?.last_name}
                 </span>
@@ -992,6 +1052,21 @@ const handleUpdate2x2Photo = async () => {
   </DialogContent>
 </Dialog>
 
+{/* ID Photo Viewer Dialog */}
+      <Dialog open={showIdViewModal} onOpenChange={setShowIdViewModal}>
+        <DialogContent className="w-[50vw] max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>ID Picture Viewer</DialogTitle>
+          </DialogHeader>
+          <div className="w-full h-full text-center">
+            <img
+              src={trainee.id_picture_url}
+              alt="ID Full View"
+              className="max-w-full max-h-[80vh] mx-auto rounded border shadow"
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Preview Dialog for Receipt Upload */}
       <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>

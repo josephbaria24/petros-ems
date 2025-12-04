@@ -1,4 +1,3 @@
-//app\submissions\page.tsx
 "use client"
 
 import { useEffect, useState } from "react"
@@ -6,6 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import { SubmissionDialog } from "@/components/submission-dialog"
+import { DeclinePhotoDialog } from "@/components/decline-photo"
 import {
   Table,
   TableBody,
@@ -23,6 +23,7 @@ import {
   Zap,
   Loader2,
   PieChart,
+  ImageOff,
 } from "lucide-react";
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -31,7 +32,8 @@ import {
   DropdownMenu, 
   DropdownMenuTrigger, 
   DropdownMenuContent, 
-  DropdownMenuItem 
+  DropdownMenuItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -54,6 +56,7 @@ export default function SubmissionPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedTrainee, setSelectedTrainee] = useState<any | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [declineDialogOpen, setDeclineDialogOpen] = useState(false)
   
   // Bulk action states
   const [bulkMode, setBulkMode] = useState<"paid" | "room" | null>(null)
@@ -89,29 +92,27 @@ export default function SubmissionPage() {
             Payment Completed
           </Badge>
         );
-        case "discounted":
-          return (
-            <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
-              <Wallet className="w-4 h-4 mr-1" />
-              Discounted
-            </Badge>
-          );
-          case "payment completed (discounted)":
+      case "discounted":
+        return (
+          <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
+            <Wallet className="w-4 h-4 mr-1" />
+            Discounted
+          </Badge>
+        );
+      case "payment completed (discounted)":
         return (
           <Badge className="bg-green-100 text-green-800 border border-green-300">
             <Wallet className="w-4 h-4 mr-1" />
             Payment Completed (Discounted)
           </Badge>
         );
-        case "partially paid (discounted)":
+      case "partially paid (discounted)":
         return (
           <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
             <PieChart className="w-4 h-4 mr-1" />
             Partially Paid (Discounted)
           </Badge>
         );
-
-
       case "pending payment":
         return (
           <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-300">
@@ -170,6 +171,7 @@ export default function SubmissionPage() {
         amount_paid,
         food_restriction,
         course_id,
+        declined_photos,
         courses:course_id (
           training_fee
         )
@@ -183,7 +185,7 @@ export default function SubmissionPage() {
       const formattedData = (data || []).map((trainee: any, index: number) => ({
         ...trainee,
         training_fee: trainee.courses?.training_fee || 0,
-         rowIndex: index,
+        rowIndex: index,
       }));
       setTrainees(formattedData);
     }
@@ -194,9 +196,14 @@ export default function SubmissionPage() {
   }, [scheduleId]);
 
   const handleView = (trainee: any) => {
-    if (bulkMode) return; // Prevent opening dialog in bulk mode
+    if (bulkMode) return;
     setSelectedTrainee(trainee)
     setDialogOpen(true)
+  }
+
+  const handleDeclinePhoto = (trainee: any) => {
+    setSelectedTrainee(trainee)
+    setDeclineDialogOpen(true)
   }
 
   const handleDialogClose = async (open: boolean) => {
@@ -218,15 +225,11 @@ export default function SubmissionPage() {
           const updatedList = prev.map((t) =>
             t.id === updated.id ? { ...updated, rowIndex: t.rowIndex } : t
           );
-
-          // 👇 re-sort based on original order
           updatedList.sort((a, b) => a.rowIndex - b.rowIndex);
-
           return updatedList;
         });
       }
     }
-
   };
 
   const updateStatus = async (status: string) => {
@@ -302,7 +305,6 @@ export default function SubmissionPage() {
       console.error("Status update failed:", err);
       toast.error(`Failed to update status: ${err.message || "Unknown error"}`);
     }
-    
   };
 
   // Bulk action handlers
@@ -357,7 +359,6 @@ export default function SubmissionPage() {
           continue;
         }
 
-        // Insert payment record
         const { error: paymentError } = await supabase
           .from("payments")
           .insert({
@@ -374,7 +375,6 @@ export default function SubmissionPage() {
           continue;
         }
 
-        // Update trainee status to "Payment Completed"
         const { error: statusError } = await supabase
           .from("trainings")
           .update({ status: "Payment Completed" })
@@ -482,7 +482,7 @@ export default function SubmissionPage() {
   return (
     <div className="p-6 space-y-2">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-indigo-900">Trainee Submissions</h1>
+        <h1 className="text-2xl font-bold">Trainee Submissions</h1>
         
         {bulkMode ? (
           <div className="flex gap-2">
@@ -584,13 +584,11 @@ export default function SubmissionPage() {
                   <TableCell>{index + 1}</TableCell>
                   <TableCell>{trainee.first_name} {trainee.last_name}</TableCell>
                   <TableCell>{trainee.phone_number || "N/A"}</TableCell>
-<TableCell>
-  {getStatusBadge(
-    trainee.payment_status || trainee.status || "Pending Payment"
-  )}
-</TableCell>
-
-
+                  <TableCell>
+                    {getStatusBadge(
+                      trainee.payment_status || trainee.status || "Pending Payment"
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Avatar>
                       <AvatarImage src={trainee.picture_2x2_url} alt="2x2" />
@@ -612,6 +610,11 @@ export default function SubmissionPage() {
                           <DropdownMenuItem onClick={() => handleView(trainee)}>
                             View Details
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDeclinePhoto(trainee)}>
+                            <ImageOff className="h-4 w-4 mr-2" />
+                            Decline Photos
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-destructive">
                             Delete
                           </DropdownMenuItem>
@@ -626,7 +629,6 @@ export default function SubmissionPage() {
         </div>
       </Card>
 
-      {/* Room Link Dialog */}
       <Dialog open={roomLinkDialog} onOpenChange={setRoomLinkDialog}>
         <DialogContent className="lg:w-[40vw] sm:w-[80vw]">
           <DialogHeader>
@@ -648,16 +650,15 @@ export default function SubmissionPage() {
               />
             </div>
             <div>
-            <Label htmlFor="group-chat-link">Group Chat Link</Label>
-            <Input
-              id="group-chat-link"
-              type="url"
-              placeholder="https://chat.whatsapp.com/..."
-              value={groupChatLink}
-              onChange={(e) => setGroupChatLink(e.target.value)}
-            />
-          </div>
-
+              <Label htmlFor="group-chat-link">Group Chat Link</Label>
+              <Input
+                id="group-chat-link"
+                type="url"
+                placeholder="https://chat.whatsapp.com/..."
+                value={groupChatLink}
+                onChange={(e) => setGroupChatLink(e.target.value)}
+              />
+            </div>
           </div>
 
           <DialogFooter>
@@ -688,6 +689,13 @@ export default function SubmissionPage() {
         trainee={selectedTrainee}
         onVerify={() => updateStatus("Pending Payment")}
         onDecline={() => updateStatus("Declined")}
+      />
+
+      <DeclinePhotoDialog
+        open={declineDialogOpen}
+        onOpenChange={setDeclineDialogOpen}
+        trainee={selectedTrainee}
+        onSuccess={fetchTrainees}
       />
     </div>
   )

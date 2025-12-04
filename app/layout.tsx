@@ -14,8 +14,7 @@ const poppins = Geist({
 
 export const metadata: Metadata = {
   title: "Training Management System",
-  description: "Professional training scheduler and management platform",
-  generator: "v0.app",
+  description: "PETROSPHERE training scheduler and management platform",
   icons: {
     icon: "/favicon.ico",
   },

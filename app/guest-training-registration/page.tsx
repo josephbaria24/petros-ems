@@ -1131,7 +1131,6 @@ export default function GuestTrainingRegistration() {
                 </div>
               </div>
             )}
-            // PASTE THIS AFTER PART 4
 
             {step === 4 && (
               <div className="space-y-3">
