@@ -72,11 +72,12 @@ export async function POST(req: NextRequest) {
     }
 
     // ✅ Fetch both name AND title from courses table
-    const { data: courseData, error: courseError } = await supabase
-      .from("courses")
-      .select("id, name, title")
-      .eq("id", scheduleData.course_id)
-      .single();
+const { data: courseData, error: courseError } = await supabase
+  .from("courses")
+  .select("id, name, title, serial_number, serial_number_pad") // ✅ add these two
+  .eq("id", scheduleData.course_id)
+  .single();
+
 
     if (courseError || !courseData) {
       console.error("❌ Course fetch failed:", courseError);
@@ -86,20 +87,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
+
+    // ✅ New serial number base + padding
+const serialBase = Number(courseData.serial_number ?? 1);
+const serialPad = Number(courseData.serial_number_pad ?? 5); // fallback to 5 digits if unset
+
     // ✅ Determine which courseTitle to use
     const courseTitle = providedCourseTitle || courseData.title || courseData.name;
     console.log("📚 Using course name:", courseData.name);
     console.log("📚 Using course title:", courseTitle);
 
     // Build schedule date range
-    let scheduleRange = "";
-    let givenThisDate = "";
-    const today = new Date();
-    givenThisDate = today.toLocaleDateString("en-US", {
+    const computedGivenDate = new Date().toLocaleDateString("en-US", {
       month: "long",
       day: "numeric",
       year: "numeric",
     });
+
+    let computedScheduleRange = "";
+
 
     if (scheduleData.schedule_type === "regular") {
       const { data: rangeData } = await supabase
@@ -114,10 +120,10 @@ export async function POST(req: NextRequest) {
         const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
         if (daysDiff > 1) {
-         scheduleRange = formatScheduleRange([start, end]);
+         computedScheduleRange  = formatScheduleRange([start, end]);
 
         } else {
-          scheduleRange = `${start.toLocaleDateString("en-US", { month: "long", day: "numeric" })} & ${end.toLocaleDateString("en-US", { day: "numeric", year: "numeric" })}`;
+          computedScheduleRange  = `${start.toLocaleDateString("en-US", { month: "long", day: "numeric" })} & ${end.toLocaleDateString("en-US", { day: "numeric", year: "numeric" })}`;
         }
       }
     } else {
@@ -138,27 +144,67 @@ export async function POST(req: NextRequest) {
         });
 
         const sortedDates = dates.sort((a, b) => a.getTime() - b.getTime());
-        scheduleRange = formatScheduleRange(sortedDates);
+        computedScheduleRange  = formatScheduleRange(sortedDates);
 
       }
     }
 
-    // ✅ NEW: Fetch trainees with cert + email, with optional filtering
-    let query = supabase
-      .from("trainings")
-      .select("id, first_name, last_name, middle_initial, email, certificate_number, picture_2x2_url, course_id")
-      .eq("schedule_id", scheduleId)
-      .not("certificate_number", "is", null)
-      .not("email", "is", null)
-      .order("last_name", { ascending: true });
+// Fetch trainees and sort alphabetically
+let query = supabase
+  .from("trainings")
+  .select("*")
+  .eq("schedule_id", scheduleId)
+  .order("last_name", { ascending: true })
+  .order("first_name", { ascending: true });
 
-    // ✅ NEW: Filter by selected IDs if provided
+if (selectedTraineeIds && selectedTraineeIds.length > 0) {
+  query = query.in("id", selectedTraineeIds);
+}
+
+const { data: traineesData, error: traineesError } = await query;
+
+if (traineesError || !traineesData?.length) {
+  return NextResponse.json(
+    { success: false, error: "No trainees found" },
+    { status: 404 }
+  );
+}
+
+
+traineesData.sort((a, b) => {
+  const aName = `${a.last_name || ""} ${a.first_name || ""}`.toLowerCase();
+  const bName = `${b.last_name || ""} ${b.first_name || ""}`.toLowerCase();
+  return aName.localeCompare(bName);
+});
+
+// Assign padded certificate numbers
+const updatedTrainees = traineesData.map((trainee, index) => {
+  const serial = serialBase + index + 1;
+  const padded = serial.toString().padStart(serialPad, "0");
+  const certificate_number = `PSI-${courseData.name}-${padded}`;
+  return { ...trainee, certificate_number };
+});
+
+
+
+const lastSerialUsed = serialBase + updatedTrainees.length;
+
+await supabase
+  .from("courses")
+  .update({ serial_number: lastSerialUsed })
+  .eq("id", courseData.id);
+
+
+// Apply filtering if trainee IDs provided
+if (selectedTraineeIds && selectedTraineeIds.length > 0) {
+  query = query.in("id", selectedTraineeIds);
+}
+  // ✅ NEW: Filter by selected IDs if provided
     if (selectedTraineeIds && selectedTraineeIds.length > 0) {
       query = query.in("id", selectedTraineeIds);
       console.log(`🎯 Filtering to ${selectedTraineeIds.length} selected trainees`);
     }
 
-    const { data: traineesData, error: traineesError } = await query;
 
     if (traineesError || !traineesData?.length) {
       console.error("❌ No trainees found or query failed:", traineesError);
@@ -190,8 +236,9 @@ export async function POST(req: NextRequest) {
           )
         );
 
-        for (let i = 0; i < traineesData.length; i++) {
-          const trainee = traineesData[i];
+          for (let i = 0; i < updatedTrainees.length; i++) {
+            const trainee = updatedTrainees[i];
+
           
           try {
             console.log(`📤 Generating certificate for: ${trainee.first_name} ${trainee.last_name}`);
@@ -207,8 +254,8 @@ export async function POST(req: NextRequest) {
                   courseName: courseData.name,
                   courseTitle: courseTitle,
                   courseId: courseData.id,
-                  scheduleRange,
-                  givenThisDate,
+                  givenThisDate: computedGivenDate,
+                  scheduleRange: computedScheduleRange,
                   templateType,
                 }),
               }
@@ -239,7 +286,7 @@ export async function POST(req: NextRequest) {
               body: JSON.stringify({
                 to: trainee.email,
                 subject: `Your ${courseData.name} Certificate - Petrosphere Training Center`,
-                message: generateCertificateEmailHTML(trainee, courseData.name, courseTitle, scheduleRange),
+                message: generateCertificateEmailHTML(trainee, courseData.name, courseTitle, computedScheduleRange ),
                 attachments: [
                   {
                     filename: `Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`,
@@ -322,6 +369,8 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+
 
 function generateCertificateEmailHTML(
   trainee: any,

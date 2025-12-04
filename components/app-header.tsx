@@ -154,16 +154,21 @@ export function AppHeader() {
     .toUpperCase()
 
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-0 shadow-md border-border bg-card px-6">
-      <div className="flex items-center gap-4">
-        <h2 className="text-xl font-semibold text-card-foreground">
-          Training Management System
-        </h2>
-      </div>
+    <header className="sticky top-0 z-50 flex h-16 items-center border-b-4 border-[#FFCC00] justify-between border-0 shadow-md bg-[#1A1D66] px-6">
+      <div className="container mx-auto flex items-center gap-4 px-4 py-4 sm:py-5">
+    <img
+      src="/trans-logo.png"
+      alt="Petrosphere Logo"
+      className="h-10 sm:h-12 w-auto object-contain"
+    />
+
+  </div>
+    
+
 
       <div className="flex items-center gap-3">
         <Button
-          className="cursor-pointer"
+          className="cursor-pointer text-[#daae02]"
           variant="ghost"
           size="icon"
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -178,7 +183,7 @@ export function AppHeader() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="relative cursor-pointer">
-              <Bell className="h-5 w-5" />
+              <Bell className="h-5 w-5 text-[#daae02]" />
               {unreadCount > 0 && (
                 <Badge
                   variant="destructive"
@@ -189,7 +194,7 @@ export function AppHeader() {
               )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-auto bg-background">
+          <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-auto bg-card">
             <div className="flex items-center justify-between px-2 py-1.5">
               <DropdownMenuLabel className="p-0">Notifications</DropdownMenuLabel>
               {unreadCount > 0 && (

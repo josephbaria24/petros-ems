@@ -81,9 +81,7 @@ export async function POST(req: NextRequest) {
     const { 
       trainee, 
       courseName, 
-      courseTitle, 
-      scheduleRange, 
-      givenThisDate, 
+      courseTitle,  
       courseId, 
       templateType = "completion"
     } = body;
@@ -138,73 +136,58 @@ export async function POST(req: NextRequest) {
     // Determine if this is an ID template
     const isIDTemplate = templateType === "excellence";
 
-    // ✅ NEW: Fetch completion date from schedule
-    let completionDate = givenThisDate;
     
-    if (trainee.schedule_id) {
-      try {
-        // Fetch schedule details
-        const { data: schedule, error: scheduleError } = await supabase
-          .from("schedules")
-          .select("schedule_type")
-          .eq("id", trainee.schedule_id)
+// ✅ Always use today's date for givenThisDate
+const today = new Date();
+const computedGivenDate = today.toLocaleDateString("en-US", {
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+});
+let computedScheduleRange = "";
+
+// ✅ Dynamically build scheduleRange based on schedule_type
+if (trainee.schedule_id) {
+  try {
+    const { data: schedule, error: scheduleError } = await supabase
+      .from("schedules")
+      .select("schedule_type")
+      .eq("id", trainee.schedule_id)
+      .single();
+
+    if (schedule && !scheduleError) {
+      if (schedule.schedule_type === "regular") {
+        const { data: rangeData } = await supabase
+          .from("schedule_ranges")
+          .select("start_date, end_date")
+          .eq("schedule_id", trainee.schedule_id)
           .single();
 
-        if (schedule && !scheduleError) {
-          if (schedule.schedule_type === "regular") {
-            // For regular schedules, get the last date from schedule_ranges
-            const { data: ranges, error: rangesError } = await supabase
-              .from("schedule_ranges")
-              .select("end_date")
-              .eq("schedule_id", trainee.schedule_id)
-              .order("end_date", { ascending: false })
-              .limit(1)
-              .single();
+        if (rangeData) {
+          const start = new Date(rangeData.start_date);
+          const end = new Date(rangeData.end_date);
+         computedScheduleRange = formatScheduleRange([start, end]);
+          console.log("📅 scheduleRange (regular):", computedScheduleRange);
 
-            if (ranges && !rangesError) {
-              const endDate = new Date(ranges.end_date);
-              completionDate = endDate.toLocaleDateString("en-US", {
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              });
-              console.log("✅ Using end date from schedule_ranges:", completionDate);
-            }
-          } else if (schedule.schedule_type === "staggered") {
-            // For staggered schedules, get the last date from schedule_dates
-            const { data: dates, error: datesError } = await supabase
-              .from("schedule_dates")
-              .select("date")
-              .eq("schedule_id", trainee.schedule_id)
-              .order("date", { ascending: false })
-              .limit(1)
-              .single();
-
-            if (dates && !datesError) {
-              const lastDate = new Date(dates.date);
-              completionDate = lastDate.toLocaleDateString("en-US", {
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              });
-              console.log("✅ Using last date from schedule_dates:", completionDate);
-            }
-          }
         }
-      } catch (error) {
-        console.warn("⚠️ Could not fetch schedule dates:", error);
+      } else if (schedule.schedule_type === "staggered") {
+        const { data: datesData } = await supabase
+          .from("schedule_dates")
+          .select("date")
+          .eq("schedule_id", trainee.schedule_id)
+          .order("date", { ascending: true });
+
+        if (datesData && datesData.length > 0) {
+          const sorted = datesData.map(d => new Date(d.date)).sort((a, b) => a.getTime() - b.getTime());
+          computedScheduleRange = formatScheduleRange(sorted);
+          console.log("📅 scheduleRange (staggered):", computedScheduleRange);
+        }
       }
     }
-
-    // If no completion date found, use today's date
-    if (!completionDate) {
-      completionDate = new Date().toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      });
-      console.log("⚠️ Using today's date as fallback:", completionDate);
-    }
+  } catch (error) {
+    console.warn("⚠️ Error fetching schedule dates:", error);
+  }
+}
 
     // Fetch template image
     let imageBytes: ArrayBuffer;
@@ -323,8 +306,7 @@ export async function POST(req: NextRequest) {
     const last = capitalize(trainee.last_name);
     const fullName = `${first} ${middle}${last}`;
 
-    // ✅ Use the fetched completion date (formatted as "November 22, 2025")
-    const finalGivenDate = completionDate;
+
 
     // ✅ FIX: Use courseTitle if provided, otherwise fall back to courseName
     const finalCourseTitle = courseTitle || courseName;
@@ -333,22 +315,23 @@ export async function POST(req: NextRequest) {
     console.log("  - {{trainee_name}}:", fullName);
     console.log("  - {{course_name}}:", courseName);
     console.log("  - {{course_title}}:", finalCourseTitle);
-    console.log("  - {{completion_date}}:", finalGivenDate);
+    console.log("  - {{completion_date}}:", computedGivenDate);
     console.log("  - {{certificate_number}}:", trainee.certificate_number);
 
     const replacements: Record<string, string> = {
       "{{trainee_name}}": fullName,
       "{{course_name}}": courseName,
       "{{course_title}}": finalCourseTitle,
-      "{{completion_date}}": finalGivenDate,  // ✅ Now properly formatted from schedule
+      "{{completion_date}}": computedGivenDate,  // still used in some templates
       "{{certificate_number}}": trainee.certificate_number || "",
       "{{batch_number}}": trainee.batch_number?.toString() || "",
       "{{training_provider}}": "Petrosphere Inc.",
-      "{{schedule_range}}": scheduleRange || "",
-      "{{held_on}}": scheduleRange || "",
+      "{{schedule_range}}": computedScheduleRange  || "",
+      "{{held_on}}": computedScheduleRange || "",
       "{{trainee_picture}}": "",
-      "{{given_this}}": finalGivenDate,
+      "{{given_this}}": computedGivenDate,
     };
+
 
     // Embed fonts
     const helveticaFont = await pdfDoc.embedFont('Helvetica');

@@ -663,10 +663,36 @@ export default function TrainingCalendar() {
               <div className="absolute bottom-0 left-0 w-full p-5 bg-gradient-to-t from-black/90 via-black/70 to-transparent text-white space-y-0">
                 <h2 className="text-xl font-bold">{selectedEvent.course}</h2>
                 <p className="text-sm">{selectedEvent.branch === 'online' ? 'Online' : selectedEvent.branch}</p>
-                <p className="text-sm">
-                  {selectedEvent.startDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} -{' '}
-                  {selectedEvent.endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                </p>
+               {selectedEvent.scheduleType === 'staggered' && selectedEvent.dates ? (
+                  <div className="text-sm space-y-1">
+                    {selectedEvent.dates
+                      .sort((a, b) => a.getTime() - b.getTime())
+                      .map(d => (
+                        <div key={d.toISOString()}>
+                          {d.toLocaleDateString('en-US', {
+                            month: 'long',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <p className="text-sm">
+                    {selectedEvent.startDate.toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}{' '}
+                    –{' '}
+                    {selectedEvent.endDate.toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </p>
+                )}
+
                 <Badge className="text-white inline-flex items-center gap-1" style={{ backgroundColor: getStatusColor(selectedEvent) }}>
                   {getStatusLabel(selectedEvent) === 'Finished' && <CheckCircle className="w-4 h-4" />}
                   {getStatusLabel(selectedEvent) === 'Ongoing' && <RefreshCcw className="w-4 h-4" />}
@@ -675,18 +701,18 @@ export default function TrainingCalendar() {
                 </Badge>
 
                 <div className="mt-4">
-                  {new Date() > new Date(selectedEvent.endDate) ? (
-                    <Button variant="outline" disabled className="w-full text-white">
-                      Enrollment Closed
-                    </Button>
-                  ) : (
-                    <Button
-                      className="w-full bg-white text-black hover:bg-gray-200 cursor-pointer"
-                      onClick={() => router.push(`/guest-training-registration?schedule_id=${selectedEvent.id}`)}
-                    >
-                      Enroll Now
-                    </Button>
-                  )}
+                    {new Date() > new Date(selectedEvent.endDate) || getStatusLabel(selectedEvent) === 'Ongoing' ? (
+                      <Button variant="outline" disabled className="w-full text-black cursor-not-allowed dark:text-white">
+                        Enrollment Closed
+                      </Button>
+                    ) : (
+                      <Button
+                        className="w-full bg-white text-black hover:bg-gray-200 cursor-pointer"
+                        onClick={() => router.push(`/guest-training-registration?schedule_id=${selectedEvent.id}`)}
+                      >
+                        Enroll Now
+                      </Button>
+                    )}
                 </div>
               </div>
             </div>

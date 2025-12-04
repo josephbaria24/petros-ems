@@ -1,10 +1,13 @@
-//dashboard/app.tsx
 "use client"
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Calendar, Users, BookOpen, TrendingUp } from "lucide-react"
+import { Bar, BarChart, Line, LineChart, Pie, PieChart, Cell, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from "recharts"
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { Tooltip } from "recharts"
+import EnrollmentBrushChart from "@/components/charts/enrollment-brush-chart"
 
 export default function DashboardPage() {
   const supabase = createClient()
@@ -23,11 +26,14 @@ export default function DashboardPage() {
   }
   
   const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([])
+  const [enrollmentData, setEnrollmentData] = useState<any[]>([])
+  const [courseDistribution, setCourseDistribution] = useState<any[]>([])
+  const [genderData, setGenderData] = useState<any[]>([])
   
   useEffect(() => {
     const fetchStats = async () => {
       const [trainingsRes, coursesRes, schedulesRes] = await Promise.all([
-        supabase.from("trainings").select("*"),
+        supabase.from("trainings").select("*, courses(name)"),
         supabase.from("courses").select("*"),
         supabase.from("schedules").select(`
           id,
@@ -40,6 +46,7 @@ export default function DashboardPage() {
       const participants = trainingsRes.data?.length || 0
       const courses = coursesRes.data?.length || 0
       const events = schedulesRes.data || []
+      const trainings = trainingsRes.data || []
 
       setStats([
         { title: "Total Participants", value: participants.toString(), change: "+12.5%", icon: Users, color: "text-primary" },
@@ -51,10 +58,68 @@ export default function DashboardPage() {
       const formattedEvents = events.map((event: any) => ({
         course: event.courses?.name || "Unnamed Course",
         date: new Date(event.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-        participants: Math.floor(Math.random() * 30) + 10, // Placeholder until you link training counts
+        participants: Math.floor(Math.random() * 30) + 10,
       }))
 
       setRecentEvents(formattedEvents)
+      
+
+const allMonths = Array.from({ length: 12 }, (_, i) =>
+  new Date(0, i).toLocaleString("en-US", { month: "short" })
+)
+
+      // Step 2: Count enrollments per month
+      const monthlyEnrollments = trainings.reduce((acc: Record<string, number>, training: any) => {
+        const month = new Date(training.created_at).toLocaleString("en-US", { month: "short" })
+        acc[month] = (acc[month] || 0) + 1
+        return acc
+      }, {})
+
+
+// Step 3: Format trend with 0s filled in
+const enrollmentTrend = allMonths.map((month) => {
+  const date = new Date(`1 ${month} ${new Date().getFullYear()}`)
+  return {
+    date: date.toISOString(),
+    enrollments: monthlyEnrollments[month] || 0
+  }
+})
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .slice(-6)
+
+// Step 4 (optional): limit to current or past months
+const now = new Date()
+const filteredTrend = enrollmentTrend.filter(d => new Date(d.date) <= now)
+
+setEnrollmentData(filteredTrend)
+
+      // Course distribution
+      const courseCounts = trainings.reduce((acc: any, training: any) => {
+        const courseName = training.courses?.name || "Other"
+        acc[courseName] = (acc[courseName] || 0) + 1
+        return acc
+      }, {})
+
+      const distribution = Object.entries(courseCounts).map(([name, value]) => ({
+        name,
+        value
+      })).slice(0, 5)
+
+      setCourseDistribution(distribution)
+
+      // Gender distribution
+      const genderCounts = trainings.reduce((acc: any, training: any) => {
+        const gender = training.gender || "Unspecified"
+        acc[gender] = (acc[gender] || 0) + 1
+        return acc
+      }, {})
+
+      const genderDist = Object.entries(genderCounts).map(([name, value]) => ({
+        name,
+        value
+      }))
+
+      setGenderData(genderDist)
     }
 
     fetchStats()
@@ -88,8 +153,71 @@ export default function DashboardPage() {
         })}
       </div>
 
-      {/* Recent Activity */}
+      {/* Charts Row */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {/* Enrollment Trend Chart */}
+        <Card className="col-span-1 md:col-span-3">
+          <CardHeader>
+            <CardTitle>Enrollment Trend</CardTitle>
+            <CardDescription>Monthly enrollment statistics</CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <EnrollmentBrushChart data={enrollmentData} width={900} height={400} />
+          </CardContent>
+        </Card>
+
+
+       {/* Gender Distribution Pie Chart */}
+
+      </div>
+
+      {/* Course Distribution & Recent Events */}
       <div className="grid gap-4 md:grid-cols-2">
+        {/* Course Distribution Bar Chart */}
+       {/* Gender Distribution Pie Chart */}
+<Card>
+  <CardHeader>
+    <CardTitle>Gender Distribution</CardTitle>
+    <CardDescription>Participant demographics</CardDescription>
+  </CardHeader>
+  <CardContent>
+    <ChartContainer
+      config={{ value: { label: "Participants" } }}
+      className="h-[300px]"
+    >
+      <div className="flex items-center justify-center h-full">
+        <ResponsiveContainer width={250} height={250}>
+          <PieChart>
+            <Pie
+              data={genderData}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              label={({ name, percent }) =>
+                `${name} ${(percent * 100).toFixed(0)}%`
+              }
+              outerRadius={80}
+              dataKey="value"
+            >
+              {genderData.map((_, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={`var(--chart-${(index % 5) + 1})`}
+                />
+              ))}
+            </Pie>
+
+            {/* ✅ now it's safe */}
+            <ChartTooltip content={<ChartTooltipContent />} />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+    </ChartContainer>
+  </CardContent>
+</Card>
+
+
+        {/* Recent Events */}
         <Card>
           <CardHeader>
             <CardTitle>Recent Training Events</CardTitle>
@@ -115,41 +243,6 @@ export default function DashboardPage() {
               ) : (
                 <p className="text-sm text-muted-foreground">No recent events found.</p>
               )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Upcoming Deadlines</CardTitle>
-            <CardDescription>Submissions and assessments due soon</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {[
-                { title: "First Aid Final Exam", due: "2 days", status: "urgent" },
-                { title: "Webinar Feedback Form", due: "5 days", status: "normal" },
-                { title: "Training Materials Upload", due: "1 week", status: "normal" },
-              ].map((item, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between border-b border-border pb-3 last:border-0 last:pb-0"
-                >
-                  <div>
-                    <p className="font-medium text-card-foreground">{item.title}</p>
-                    <p className="text-sm text-muted-foreground">Due in {item.due}</p>
-                  </div>
-                  <div
-                    className={`text-xs font-medium px-2 py-1 rounded ${
-                      item.status === "urgent"
-                        ? "bg-destructive/10 text-destructive"
-                        : "bg-secondary/10 text-secondary-foreground"
-                    }`}
-                  >
-                    {item.status === "urgent" ? "Urgent" : "Pending"}
-                  </div>
-                </div>
-              ))}
             </div>
           </CardContent>
         </Card>

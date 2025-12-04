@@ -420,7 +420,7 @@ useEffect(() => {
           .replace(/\{\{course_name\}\}/g, courseName)
           .replace(/\{\{course_title\}\}/g, "Basic Occupational Safety and Health (BOSH) for Safety Officer 1")
           .replace(/\{\{completion_date\}\}/g, "November 22, 2025")
-          .replace(/\{\{certificate_number\}\}/g, "PSI-BOSHSO1-001264")
+          .replace(/\{\{certificate_number\}\}/g, "PSI-BOSHSO1-001521")
           .replace(/\{\{batch_number\}\}/g, "Batch 42")
           .replace(/\{\{training_provider\}\}/g, "Petrosphere Inc.")
           .replace(/\{\{trainee_picture\}\}/g, "[Picture]")

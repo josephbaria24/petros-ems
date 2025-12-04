@@ -476,161 +476,208 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
     reader.readAsDataURL(file);
   };
   
-  const handleSubmit = async () => {
-    toast.loading("Submitting registration...");
-  
-    const searchParams = new URLSearchParams(window.location.search);
-    const scheduleId = searchParams.get("schedule_id");
-  
-    if (!scheduleId) {
-      toast.error("Missing schedule ID");
+const handleSubmit = async () => {
+  toast.loading("Submitting registration...");
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const scheduleId = searchParams.get("schedule_id");
+
+  if (!scheduleId) {
+    toast.error("Missing schedule ID");
+    return;
+  }
+
+  try {
+    // 1️⃣ Get course linked to schedule
+    const { data: schedule, error: scheduleError } = await supabase
+      .from("schedules")
+      .select("course_id")
+      .eq("id", scheduleId)
+      .single();
+
+    if (scheduleError || !schedule) {
+      toast.error("Failed to retrieve course");
       return;
     }
-  
-    try {
-      // 1️⃣ Get course linked to schedule
-      const { data: schedule, error: scheduleError } = await supabase
-        .from("schedules")
-        .select("course_id")
-        .eq("id", scheduleId)
-        .single();
-  
-      if (scheduleError || !schedule) {
-        toast.error("Failed to retrieve course");
-        return;
-      }
-  
-      const courseId = schedule.course_id;
 
+    const courseId = schedule.course_id;
 
-      // 2️⃣.5 Get the batch number from the schedule itself
-      const { data: scheduleDetails, error: scheduleDetailsError } = await supabase
-        .from("schedules")
-        .select("batch_number")
-        .eq("id", scheduleId)
-        .single()
+    // 2️⃣.5 Get the batch number from the schedule itself
+    const { data: scheduleDetails, error: scheduleDetailsError } = await supabase
+      .from("schedules")
+      .select("batch_number")
+      .eq("id", scheduleId)
+      .single()
 
-      if (scheduleDetailsError || !scheduleDetails?.batch_number) {
-        toast.error("Failed to get batch number from schedule.")
-        return
-      }
-
-      const batchNumber = scheduleDetails.batch_number
-
-  
-      // 2️⃣ Fetch training fee
-const { data: courseData, error: feeError } = await supabase
-  .from("courses")
-  .select("training_fee, name")
-  .eq("id", courseId)
-  .single();
-  
-      if (feeError) console.error("Error fetching course fee:", feeError);
-  
-      const trainingFee = courseData?.training_fee || 0;
-  
-      // 3️⃣ Create trainee record (store payment summary info here)
-      const trainingPayload = {
-        ...form,
-        schedule_id: scheduleId,
-        course_id: courseId,
-        batch_number: batchNumber,
-        status: "pending",
-        payment_method: paymentMethod,            // ✅ record chosen method
-        payment_status:
-          paymentMethod === "COUNTER" ? "pending" : "awaiting receipt",
-        amount_paid: 0,                           // ✅ start at 0
-        courtesy_title: form.courtesy_title || null,
-      };
-  
-      const { data: insertedTraining, error: insertError } = await supabase
-        .from("trainings")
-        .insert([trainingPayload])
-        .select("id")
-        .single();
-  
-      if (insertError || !insertedTraining) {
-        console.error("Insert training error:", insertError);
-        toast.error("Failed to submit registration.");
-        return;
-      }
-  
-      const trainingId = insertedTraining.id;
-  
-      // 4️⃣ Create booking summary record
-      const { error: bookingError } = await supabase
-        .from("booking_summary")
-        .insert([
-          {
-            training_id: trainingId,
-            reference_number: bookingReference,
-          },
-        ]);
-  
-      if (bookingError) {
-        console.error("Booking summary insert error:", bookingError);
-        toast.error("Failed to create booking summary.");
-        return;
-      }
-
-      // 5️⃣ Success feedback
-      toast.dismiss();
-      toast.success("Registration submitted successfully!", {
-        duration: 3000,
-      });
-  
-      setIsSubmitted(true);
-      // 6️⃣ Send registration email to admin
-try {
-  await fetch("/api/send-registration-email", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      bookingReference,
-      courseName: courseData?.name || course?.name || "N/A",
-      scheduleRange: scheduleRange
-        ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
-        : "N/A",
-      traineeInfo: {
-        name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
-        email: form.email,
-        phone: form.phone_number,
-        gender: form.gender,
-        age: form.age,
-        address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
-        employmentStatus: form.employment_status,
-      },
-      employmentInfo:
-        form.employment_status === "Employed"
-          ? {
-              companyName: form.company_name,
-              position: form.company_position,
-              industry: form.company_industry,
-              companyEmail: form.company_email,
-              city: form.company_city,
-              region: form.company_region,
-            }
-          : null,
-      paymentInfo: {
-        trainingFee: trainingFee,
-        discount,
-        totalAmount: trainingFee - discount,
-        paymentMethod,
-        paymentStatus:
-          paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
-      },
-    }),
-  })
-} catch (emailErr) {
-  console.error("Email sending failed:", emailErr)
-}
-
-    } catch (err) {
-      console.error("Unexpected error:", err);
-      toast.error("Something went wrong.");
+    if (scheduleDetailsError || !scheduleDetails?.batch_number) {
+      toast.error("Failed to get batch number from schedule.")
+      return
     }
-  };
-  
+
+    const batchNumber = scheduleDetails.batch_number
+
+    // 2️⃣ Fetch training fee
+    const { data: courseData, error: feeError } = await supabase
+      .from("courses")
+      .select("training_fee, name")
+      .eq("id", courseId)
+      .single();
+
+    if (feeError) console.error("Error fetching course fee:", feeError);
+
+    const trainingFee = courseData?.training_fee || 0;
+
+    // 3️⃣ Create trainee record (store payment summary info here)
+    const trainingPayload = {
+      ...form,
+      schedule_id: scheduleId,
+      course_id: courseId,
+      batch_number: batchNumber,
+      status: "pending",
+      payment_method: paymentMethod,
+      payment_status:
+        paymentMethod === "COUNTER" ? "pending" : "awaiting receipt",
+      amount_paid: 0,
+      courtesy_title: form.courtesy_title || null,
+    };
+
+    const { data: insertedTraining, error: insertError } = await supabase
+      .from("trainings")
+      .insert([trainingPayload])
+      .select("id")
+      .single();
+
+    if (insertError || !insertedTraining) {
+      console.error("Insert training error:", insertError);
+      toast.error("Failed to submit registration.");
+      return;
+    }
+
+    const trainingId = insertedTraining.id;
+
+    // 4️⃣ Create booking summary record
+    const { error: bookingError } = await supabase
+      .from("booking_summary")
+      .insert([
+        {
+          training_id: trainingId,
+          reference_number: bookingReference,
+        },
+      ]);
+
+    if (bookingError) {
+      console.error("Booking summary insert error:", bookingError);
+      toast.error("Failed to create booking summary.");
+      return;
+    }
+
+    // 5️⃣ Success feedback
+    toast.dismiss();
+    toast.success("Registration submitted successfully!", {
+      duration: 3000,
+    });
+
+    setIsSubmitted(true);
+
+    // 6️⃣ Send registration email to admin
+    try {
+      await fetch("/api/send-registration-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingReference,
+          courseName: courseData?.name || course?.name || "N/A",
+          scheduleRange: scheduleRange
+            ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
+            : "N/A",
+          traineeInfo: {
+            name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
+            email: form.email,
+            phone: form.phone_number,
+            gender: form.gender,
+            age: form.age,
+            address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
+            employmentStatus: form.employment_status,
+          },
+          employmentInfo:
+            form.employment_status === "Employed"
+              ? {
+                  companyName: form.company_name,
+                  position: form.company_position,
+                  industry: form.company_industry,
+                  companyEmail: form.company_email,
+                  city: form.company_city,
+                  region: form.company_region,
+                }
+              : null,
+          paymentInfo: {
+            trainingFee: trainingFee,
+            discount,
+            totalAmount: trainingFee - discount,
+            paymentMethod,
+            paymentStatus:
+              paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+          },
+        }),
+      })
+      console.log("Admin notification email sent")
+    } catch (emailErr) {
+      console.error("Admin email sending failed:", emailErr)
+    }
+
+    // 7️⃣ Send booking summary email to trainee
+    try {
+      await fetch("/api/send-booking-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: form.email,
+          bookingReference,
+          courseName: courseData?.name || course?.name || "N/A",
+          scheduleRange: scheduleRange
+            ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
+            : "N/A",
+          traineeInfo: {
+            name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
+            email: form.email,
+            phone: form.phone_number,
+            gender: form.gender,
+            age: form.age,
+            address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
+            employmentStatus: form.employment_status,
+          },
+          employmentInfo:
+            form.employment_status === "Employed"
+              ? {
+                  companyName: form.company_name,
+                  position: form.company_position,
+                  industry: form.company_industry,
+                  companyEmail: form.company_email,
+                  city: form.company_city,
+                  region: form.company_region,
+                }
+              : null,
+          paymentInfo: {
+            trainingFee: trainingFee,
+            discount,
+            totalAmount: trainingFee - discount,
+            paymentMethod,
+            paymentStatus:
+              paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+          },
+        }),
+      })
+      console.log("Booking summary email sent to trainee")
+    } catch (emailErr) {
+      console.error("Trainee email sending failed:", emailErr)
+      // Don't show error to user since registration was successful
+    }
+
+  } catch (err) {
+    console.error("Unexpected error:", err);
+    toast.error("Something went wrong.");
+  }
+};
   const isEmployed = form.employment_status === "Employed"
   
   const steps = [
@@ -732,7 +779,7 @@ try {
                 </div>
 
                 <div className="space-y-3">
-                <h2 className="text-5xl font-bold mb-3 bg-gradient-to-r from-blue-700 via-slate-800 to-yellow-600 text-transparent bg-clip-text">
+                <h2 className="text-5xl font-bold mb-3">
                     Welcome!
                   </h2>
                   <p className="text-lg text-gray-600 max-w-md mx-auto">

@@ -1,4 +1,4 @@
-// components/participant-directory-dialog.tsx - PART 1 OF 3
+// components/participant-directory-dialog.tsx 
 "use client"
 
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from "@/components/ui/alert-dialog"
@@ -351,110 +351,119 @@ export default function ParticipantDirectoryDialog({
     }
   }, [open, scheduleId])
 
-  const handleDownloadCertificates = async () => {
-    if (!scheduleId) return
+const handleDownloadCertificates = async () => {
+  if (!scheduleId) return;
 
-    const selectedTrainees = getSelectedTrainees()
-    if (selectedTrainees.length === 0) {
-      setAlertTitle("No Selection")
-      setAlertMessage("Please select at least one participant to download certificates.")
-      setAlertOpen(true)
-      return
-    }
-
-    await ensureCertificateNumbers()
-
-    setIsGenerating(true)
-    startLongOperation(
-      "Generating Certificates",
-      "Preparing downloads... This may take up to a minute due to server cold start."
-    )
-
-    try {
-      console.log("📊 Starting certificate download for", selectedTrainees.length, "selected trainees");
-
-      const { data: scheduleData } = await supabase
-        .from("schedules")
-        .select("course_id")
-        .eq("id", scheduleId)
-        .single()
-
-      let courseTitle = courseName
-      let courseId = ""
-
-      if (scheduleData) {
-        const { data: courseData } = await supabase
-          .from("courses")
-          .select("id, title, name")
-          .eq("id", scheduleData.course_id)
-          .single()
-
-        if (courseData) {
-          courseId = courseData.id
-          courseTitle = courseData.title || courseData.name
-          console.log("📚 Course Name:", courseData.name);
-          console.log("📚 Course Title:", courseTitle);
-        }
-      }
-
-      const { data: templateCheck } = await supabase
-        .from("certificate_templates")
-        .select("template_type")
-        .eq("course_id", courseId)
-        .eq("template_type", selectedTemplateType)
-        .maybeSingle()
-
-      if (!templateCheck) {
-        setAlertTitle("Template Not Found")
-        setAlertMessage(
-          `No ${selectedTemplateType} template found for this course.\n\n` +
-          `Please create a ${selectedTemplateType} template first in the template editor.`
-        )
-        setIsGenerating(false)
-        return
-      }
-
-      let successCount = 0;
-      let failCount = 0;
-
-      for (let i = 0; i < selectedTrainees.length; i++) {
-        const trainee = selectedTrainees[i];
-        
-        try {
-          await downloadFromServer(
-            trainee,
-            selectedTemplateType,
-            courseName,
-            scheduleRange,
-            new Date().toLocaleDateString(),
-            courseTitle
-          )
-          successCount++;
-          
-          setProgress(Math.floor(((i + 1) / selectedTrainees.length) * 100))
-          setAlertMessage(
-            `Downloaded ${successCount} of ${selectedTrainees.length} certificates...\n` +
-            `Last: ${trainee.first_name} ${trainee.last_name}`
-          );
-        } catch (error: any) {
-          failCount++;
-          console.error(`Failed to download for ${trainee.first_name} ${trainee.last_name}:`, error);
-        }
-      }
-
-      setAlertTitle("Download Complete");
-      setAlertMessage(
-        `Successfully downloaded ${successCount} certificate(s).` +
-        (failCount > 0 ? `\n${failCount} failed.` : "")
-      );
-    } catch (err: any) {
-      console.error("❌ Critical error:", err);
-      setAlertTitle("Error");
-      setAlertMessage(`Critical error: ${err.message}`);
-    } finally {
-      setIsGenerating(false);
-    }
+  const selectedTrainees = getSelectedTrainees();
+  if (selectedTrainees.length === 0) {
+    setAlertTitle("No Selection");
+    setAlertMessage("Please select at least one participant to download certificates.");
+    setAlertOpen(true);
+    return;
   }
+
+  setIsGenerating(true);
+  startLongOperation(
+    "Generating Certificates",
+    "Preparing downloads... This may take up to a minute due to server cold start."
+  );
+
+  try {
+    console.log("📊 Starting certificate download for", selectedTrainees.length, "selected trainees");
+
+    const { data: scheduleData } = await supabase
+      .from("schedules")
+      .select("course_id")
+      .eq("id", scheduleId)
+      .single();
+
+    if (!scheduleData) throw new Error("Missing schedule data");
+
+    const { data: courseData } = await supabase
+      .from("courses")
+      .select("id, name, title, serial_number, serial_number_pad")
+      .eq("id", scheduleData.course_id)
+      .single();
+
+    if (!courseData) throw new Error("Missing course data");
+
+    const courseTitle = courseData.title || courseData.name;
+    const serialBase = Number(courseData.serial_number ?? 1);
+    const serialPad = Number(courseData.serial_number_pad ?? 5);
+
+    // Sort trainees alphabetically by last name + first name
+    const sortedTrainees = [...selectedTrainees].sort((a, b) => {
+      const aName = `${a.last_name} ${a.first_name}`.toLowerCase();
+      const bName = `${b.last_name} ${b.first_name}`.toLowerCase();
+      return aName.localeCompare(bName);
+    });
+
+    // Assign serials without saving to DB
+    const updatedTrainees = sortedTrainees.map((trainee, index) => {
+      const serial = serialBase + index + 1;
+      const padded = serial.toString().padStart(serialPad, "0");
+      const certificate_number = `PSI-${courseData.name}-${padded}`;
+      return { ...trainee, certificate_number };
+    });
+
+    const { data: templateCheck } = await supabase
+      .from("certificate_templates")
+      .select("template_type")
+      .eq("course_id", courseData.id)
+      .eq("template_type", selectedTemplateType)
+      .maybeSingle();
+
+    if (!templateCheck) {
+      setAlertTitle("Template Not Found");
+      setAlertMessage(
+        `No ${selectedTemplateType} template found for this course.\n\n` +
+        `Please create a ${selectedTemplateType} template first in the template editor.`
+      );
+      setIsGenerating(false);
+      return;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < updatedTrainees.length; i++) {
+      const trainee = updatedTrainees[i];
+
+      try {
+        await downloadFromServer(
+          trainee,
+          selectedTemplateType,
+          courseData.name,
+          scheduleRange,
+          new Date().toLocaleDateString(),
+          courseTitle
+        );
+        successCount++;
+
+        setProgress(Math.floor(((i + 1) / updatedTrainees.length) * 100));
+        setAlertMessage(
+          `Downloaded ${successCount} of ${updatedTrainees.length} certificates...\n` +
+          `Last: ${trainee.first_name} ${trainee.last_name}`
+        );
+      } catch (error: any) {
+        failCount++;
+        console.error(`Failed to download for ${trainee.first_name} ${trainee.last_name}:`, error);
+      }
+    }
+
+    setAlertTitle("Download Complete");
+    setAlertMessage(
+      `Successfully downloaded ${successCount} certificate(s).` +
+      (failCount > 0 ? `\n${failCount} failed.` : "")
+    );
+  } catch (err: any) {
+    console.error("❌ Critical error:", err);
+    setAlertTitle("Error");
+    setAlertMessage(`Critical error: ${err.message}`);
+  } finally {
+    setIsGenerating(false);
+  }
+};
 
   const fetchTrainees = async () => {
     if (!scheduleId) return

@@ -10,6 +10,7 @@ import {
   CalendarCheckIcon,
   LucideAward,
   MapPin,
+  BadgePercent,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -35,6 +36,10 @@ const menuItems = [
         href: "/training-calendar",
       },
       {
+        title: "Training Reports",
+        href: "training-reports",
+      },
+      {
         title: "Directory of Trainees",
         href: "/directory-of-trainees",
       },
@@ -49,6 +54,7 @@ const menuItems = [
     type: "separator",
     title: "Certificates & IDs",
   },
+ 
 
   {
     title: "Certs & ID Management",
@@ -59,6 +65,15 @@ const menuItems = [
     title: "Certificate Tracker",
     icon: MapPin,
     href: "/cert-tracker",
+  },
+   {
+    type: "separator",
+    title: "Voucher Manager",
+  },
+   {
+    title: "Voucher Manager",
+    icon: BadgePercent,
+    href: "/voucher-manager",
   },
 
   // 🌟 Separator
@@ -76,7 +91,8 @@ const menuItems = [
 
 export function AppSidebar() {
   const [collapsed, setCollapsed] = React.useState(false)
-  const [openDropdown, setOpenDropdown] = React.useState<string | null>(null)
+const [openDropdown, setOpenDropdown] = React.useState<string | null>("Trainings")
+
   const pathname = usePathname()
 
   const handleDropdownToggle = (title: string) => {
@@ -86,22 +102,22 @@ export function AppSidebar() {
   return (
     <div
       className={cn(
-        "relative flex h-screen flex-col border-0 shadow-lg bg-sidebar transition-all duration-300 ease-in-out",
+        "relative flex h-screen flex-col border-0 shadow-lg bg-background dark:bg-card transition-all duration-300 ease-in-out",
         collapsed ? "w-16" : "w-64"
       )}
     >
       {/* Logo */}
-      <div className="flex h-16 items-center px-4">
+      {/* <div className="flex h-16 items-center px-4">
         {!collapsed ? (
           <>
-            {/* Light mode logo */}
+            
             <img
               src="/trans-logo-dark.png"
               alt="Petrosphere Training Manager"
               className="h-8 w-auto dark:hidden"
             />
 
-            {/* Dark mode logo */}
+       
             <img
               src="/trans-logo.png"
               alt="Petrosphere Training Manager"
@@ -113,7 +129,20 @@ export function AppSidebar() {
             <img src="/logo.png" alt="P" className="h-6" />
           </div>
         )}
+      </div> */}
+
+      {/* Header / Logo */}
+      <div className="p-4 flex flex-col items-center">
+        {collapsed ? (
+          <span className="font-bold text-xl">TMS</span>
+        ) : (
+          <>
+            <span className="font-bold text-2xl">Training</span>
+            <span className="font-light text-sm">Management System</span>
+          </>
+        )}
       </div>
+
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 p-2 overflow-y-auto">
