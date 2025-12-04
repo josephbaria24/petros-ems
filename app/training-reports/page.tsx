@@ -331,6 +331,15 @@ export default function TrainingReportsPage() {
     // Add your Excel export logic here
   };
 
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+  };
+
   const uniqueYears = Array.from(new Set(reports.map(r => new Date(r.start_date).getFullYear()))).sort((a, b) => b - a);
   const uniqueMonths = Array.from(new Set(reports.map(r => r.month)));
   const uniqueCourses = Array.from(new Set(reports.map(r => r.course)));
@@ -344,9 +353,7 @@ export default function TrainingReportsPage() {
 
   const goToPage = (page: number) => {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
-  };
-
-  if (loading) {
+  };if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-xl">Loading...</div>
@@ -358,14 +365,14 @@ export default function TrainingReportsPage() {
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-[1600px] mx-auto">
         {/* Header */}
-        <div className="bg-primary text-white p-6 rounded-t-lg relative">
+        <div className="bg-primary dark:bg-card text-white p-6 rounded-t-lg relative">
           <h1 className="text-4xl font-bold text-center">{selectedYear} Trainings</h1>
           <div className="absolute top-4 right-4 flex gap-4">
-            <div className="bg-card text-card-foreground dark:bg- px-4 py-2 rounded font-semibold">
+            <div className="bg-card text-card-foreground dark:bg-background px-4 py-2 rounded font-semibold">
               <div className="text-xs">Trainings</div>
               <div className="text-xl">{stats.totalTrainings}</div>
             </div>
-            <div className="bg-card text-card-foreground px-4 py-2 rounded font-semibold">
+            <div className="bg-card text-card-foreground dark:bg-background px-4 py-2 rounded font-semibold">
               <div className="text-xs">Participants</div>
               <div className="text-xl">{stats.totalParticipants}</div>
             </div>
@@ -432,12 +439,14 @@ export default function TrainingReportsPage() {
                 <SelectItem value="25">25 rows</SelectItem>
                 <SelectItem value="50">50 rows</SelectItem>
                 <SelectItem value="100">100 rows</SelectItem>
+                <SelectItem value="500">500 rows</SelectItem>
+                <SelectItem value="1000">1000 rows</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="flex gap-2">
-            <Button onClick={handleAdd}>
+            <Button onClick={handleAdd} className='bg-green-600 cursor-pointer hover:bg-secondary'>
               Add New
             </Button>
             <DropdownMenu>
@@ -473,9 +482,9 @@ export default function TrainingReportsPage() {
         </div>
 
         {deleteMode && (
-          <div className="bg-red-50 p-4 border-b flex items-center justify-between">
+          <div className="bg-red-50 dark:bg-red-950 p-4 border-b flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <span className="text-sm font-medium">
+              <span className="text-sm font-medium dark:text-red-200">
                 {selectedIds.size} selected
               </span>
               <Button
@@ -504,33 +513,33 @@ export default function TrainingReportsPage() {
               <thead>
                 <tr className="bg-[#141454]">
                   {deleteMode && (
-                    <th className="text-white font-semibold px-4 py-3 text-center border-r border-[#141454]">
+                    <th className="text-white font-semibold px-3 py-2 text-center border-r border-[#141454]">
                       <Checkbox
                         checked={selectedIds.size === paginatedReports.length && paginatedReports.length > 0}
                         onCheckedChange={toggleSelectAll}
                       />
                     </th>
                   )}
-                  <th className="text-white font-semibold px-4 py-3 text-center border-r border-[#141454]">Actions</th>
-                  <th className="text-white font-semibold px-4 py-3 text-left border-r border-[#141454]">cert</th>
-                  <th className="text-white font-semibold px-4 py-3 text-left border-r border-[#141454]">ID</th>
-                  <th className="text-white font-semibold px-4 py-3 text-left border-r border-[#141454]">ptr</th>
-                  <th className="text-white font-semibold px-4 py-3 text-left border-r border-[#141454]">month</th>
-                  <th className="text-white font-semibold px-4 py-3 text-left border-r border-[#141454]">course</th>
-                  <th className="text-white font-semibold px-4 py-3 text-left border-r border-[#141454]">type</th>
-                  <th className="text-white font-semibold px-4 py-3 text-left border-r border-[#141454]">start_date</th>
-                  <th className="text-white font-semibold px-4 py-3 text-left border-r border-[#141454]">end_date</th>
-                  <th className="text-white font-semibold px-4 py-3 text-center border-r border-[#141454]">participants</th>
-                  <th className="text-white font-semibold px-4 py-3 text-center border-r border-[#141454]">male</th>
-                  <th className="text-white font-semibold px-4 py-3 text-center border-r border-[#141454]">female</th>
-                  <th className="text-white font-semibold px-4 py-3 text-center border-r border-[#141454]">company</th>
-                  <th className="text-white font-semibold px-4 py-3 text-left">notes</th>
+                  <th className="text-white font-semibold px-3 py-2 text-center border-r border-[#141454] text-xs">Actions</th>
+                  <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">cert</th>
+                  <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">ID</th>
+                  <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">ptr</th>
+                  <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">month</th>
+                  <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">course</th>
+                  <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">type</th>
+                  <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">start_date</th>
+                  <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">end_date</th>
+                  <th className="text-white font-semibold px-3 py-2 text-center border-r border-[#141454] text-xs">participants</th>
+                  <th className="text-white font-semibold px-3 py-2 text-center border-r border-[#141454] text-xs">male</th>
+                  <th className="text-white font-semibold px-3 py-2 text-center border-r border-[#141454] text-xs">female</th>
+                  <th className="text-white font-semibold px-3 py-2 text-center border-r border-[#141454] text-xs">company</th>
+                  <th className="text-white font-semibold px-3 py-2 text-left text-xs">notes</th>
                 </tr>
               </thead>
               <tbody>
                 {paginatedReports.length === 0 ? (
                   <tr>
-                    <td colSpan={deleteMode ? 15 : 14} className="text-center py-8 text-gray-500">
+                    <td colSpan={deleteMode ? 15 : 14} className="text-center py-8 text-gray-500 dark:text-gray-400">
                       No training reports found
                     </td>
                   </tr>
@@ -541,7 +550,7 @@ export default function TrainingReportsPage() {
                       className={`hover:bg-secondary ${index % 2 === 0 ? 'bg-card' : 'bg-card-alt'}`}
                     >
                       {deleteMode && (
-                        <td className="px-4 py-3 border-b border-gray-200">
+                        <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
                           <div className="flex items-center justify-center">
                             <Checkbox
                               checked={selectedIds.has(report.id)}
@@ -550,16 +559,16 @@ export default function TrainingReportsPage() {
                           </div>
                         </td>
                       )}
-                      <td className="px-4 py-3 border-b border-gray-200">
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleEdit(report)}
                         >
-                          <Pencil className="h-4 w-4" />
+                          <Pencil className="h-3 w-3" />
                         </Button>
                       </td>
-                      <td className="px-4 py-3 border-b border-gray-200">
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
                         <div className="flex items-center justify-center">
                           <Checkbox
                             checked={report.cert}
@@ -569,7 +578,7 @@ export default function TrainingReportsPage() {
                           />
                         </div>
                       </td>
-                      <td className="px-4 py-3 border-b border-gray-200">
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
                         <div className="flex items-center justify-center">
                           <Checkbox
                             checked={report.ID}
@@ -579,7 +588,7 @@ export default function TrainingReportsPage() {
                           />
                         </div>
                       </td>
-                      <td className="px-4 py-3 border-b border-gray-200">
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
                         <div className="flex items-center justify-center">
                           <Checkbox
                             checked={report.ptr}
@@ -589,16 +598,20 @@ export default function TrainingReportsPage() {
                           />
                         </div>
                       </td>
-                      <td className="px-4 py-3 border-b border-gray-200">{report.month}</td>
-                      <td className="px-4 py-3 border-b border-gray-200 font-medium">{report.course}</td>
-                      <td className="px-4 py-3 border-b border-gray-200">{report.type}</td>
-                      <td className="px-4 py-3 border-b border-gray-200">{report.start_date}</td>
-                      <td className="px-4 py-3 border-b border-gray-200">{report.end_date}</td>
-                      <td className="px-4 py-3 border-b border-gray-200 text-center">{report.participants}</td>
-                      <td className="px-4 py-3 border-b border-gray-200 text-center">{report.male}</td>
-                      <td className="px-4 py-3 border-b border-gray-200 text-center">{report.female}</td>
-                      <td className="px-4 py-3 border-b border-gray-200 text-center">{report.company}</td>
-                      <td className="px-4 py-3 border-b border-gray-200">{report.notes}</td>
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-xs dark:text-gray-200">{report.month}</td>
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-xs font-medium dark:text-gray-200">{report.course}</td>
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-xs dark:text-gray-200">{report.type}</td>
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-xs dark:text-gray-200">
+                        {formatDate(report.start_date)}
+                      </td>
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-xs dark:text-gray-200">
+                        {formatDate(report.end_date)}
+                      </td>
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-xs text-center dark:text-gray-200">{report.participants}</td>
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-xs text-center dark:text-gray-200">{report.male}</td>
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-xs text-center dark:text-gray-200">{report.female}</td>
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-xs text-center dark:text-gray-200">{report.company}</td>
+                      <td className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 text-xs dark:text-gray-200">{report.notes}</td>
                     </tr>
                   ))
                 )}
@@ -610,7 +623,7 @@ export default function TrainingReportsPage() {
         {/* Pagination */}
         {filteredReports.length > 0 && (
           <div className="bg-card p-4 border-t flex items-center justify-between rounded-b-lg">
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-gray-600 dark:text-gray-400">
               Showing {startIndex + 1} to {Math.min(endIndex, filteredReports.length)} of {filteredReports.length} results
             </div>
             <div className="flex items-center gap-2">
@@ -674,7 +687,6 @@ export default function TrainingReportsPage() {
           </div>
         )}
       </div>
-
       {/* Edit Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="lg:w-[60vw] w-full">
