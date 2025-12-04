@@ -1,19 +1,27 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, Calendar, List, X, Edit2, Save, Plus, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar, List, X, Edit2, Save, Plus, Trash2, MoreVertical, Image as ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabase-client'
 import Image from "next/image"
+import { useRouter } from 'next/navigation'
+import { EditScheduleDialog } from '@/components/edit-schedule-dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 type ScheduleEvent = {
   id: string
   course: string
   branch: string
-  status: 'planned' | 'confirmed' | 'cancelled' | 'finished'
+  status: 'planned' | 'confirmed' | 'cancelled' | 'finished' | 'ongoing'
   startDate: Date
   endDate: Date
   dates?: Date[]
@@ -85,7 +93,6 @@ function NewsCarousel({
         ))}
       </div>
 
-      {/* Dots indicator */}
       <div className="flex justify-center gap-2 pb-4">
         {news.map((_, idx) => (
           <button
@@ -149,7 +156,6 @@ function NewsEditor({
       setItems(items.filter((_, i) => i !== index))
     }
   }
-
 
   return (
     <div className="space-y-4 p-4">
@@ -221,17 +227,18 @@ function NewsEditor({
         </Card>
       ))}
       <div className="flex gap-2 pt-4">
-              <Button onClick={() => onSave(items)} className="flex-1 gap-2">
-                <Save className="w-4 h-4" />
-                Save Changes
-              </Button>
-              <Button variant="outline" onClick={onCancel} className="flex-1">
-                Cancel
-              </Button>
-            </div>
-          </div>
+        <Button onClick={() => onSave(items)} className="flex-1 gap-2">
+          <Save className="w-4 h-4" />
+          Save Changes
+        </Button>
+        <Button variant="outline" onClick={onCancel} className="flex-1">
+          Cancel
+        </Button>
+      </div>
+    </div>
   )
 }
+// Main TrainingCalendar Component (continues from Part 1)
 
 export default function TrainingCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -259,26 +266,26 @@ export default function TrainingCalendar() {
       date: "Nov 10, 2025"
     }
   ])
+  const [editScheduleOpen, setEditScheduleOpen] = useState(false)
+  const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
-      fetchNews()
+    fetchNews()
     fetchSchedules()
-    // Load news from localStorage
-    const savedNews = localStorage.getItem('admin-news-items')
-    if (savedNews) {
-      setNewsItems(JSON.parse(savedNews))
-    }
   }, [])
-const fetchNews = async () => {
-  const { data, error } = await supabase
-    .from("news_items")
-    .select("*")
-    .order("created_at", { ascending: false })
 
-  if (!error && data) {
-    setNewsItems(data)
+  const fetchNews = async () => {
+    const { data, error } = await supabase
+      .from("news_items")
+      .select("*")
+      .order("created_at", { ascending: false })
+
+    if (!error && data && data.length > 0) {
+      setNewsItems(data)
+    }
   }
-}
+
   const fetchSchedules = async () => {
     setLoading(true)
     const { data, error } = await supabase
@@ -294,7 +301,7 @@ const fetchNews = async () => {
       `)
 
     if (!error && data) {
-        const mapped = data
+      const mapped = data
         .map((s: any): ScheduleEvent | null => {
           const course = s.courses?.name || 'Unknown'
       
@@ -304,14 +311,14 @@ const fetchNews = async () => {
               course,
               branch: s.branch,
               status: s.status || 'planned',
-              startDate: new Date(s.schedule_ranges[0].start_date),
-              endDate: new Date(s.schedule_ranges[0].end_date),
+              startDate: new Date(s.schedule_ranges[0].start_date + 'T00:00:00'),
+              endDate: new Date(s.schedule_ranges[0].end_date + 'T00:00:00'),
               scheduleType: 'regular'
             }
           }
       
           if (s.schedule_type === 'staggered' && s.schedule_dates?.length) {
-            const dates = s.schedule_dates.map((d: any) => new Date(d.date))
+            const dates = s.schedule_dates.map((d: any) => new Date(d.date + 'T00:00:00'))
             return {
               id: s.id,
               course,
@@ -329,26 +336,36 @@ const fetchNews = async () => {
         .filter((event): event is ScheduleEvent => event !== null)
       
       setEvents(mapped)
-      
     }
     setLoading(false)
   }
 
-const handleSaveNews = async (items: NewsItem[]) => {
-  await supabase.from("news_items").delete().neq("id", "000");
+  const handleSaveNews = async (items: NewsItem[]) => {
+    await supabase.from("news_items").delete().neq("id", "000")
+    const { error } = await supabase.from("news_items").insert(items)
 
-  const { error } = await supabase.from("news_items").insert(items);
+    if (error) {
+      console.error("Failed to save news:", error)
+      return
+    }
 
-  if (error) {
-    console.error("Failed to save news:", error)
-    return
+    setNewsItems(items)
+    setIsEditingNews(false)
   }
 
-  setNewsItems(items)
-  setIsEditingNews(false)
-}
+  const handleEditSchedule = () => {
+    if (selectedEvent) {
+      setEditingScheduleId(selectedEvent.id)
+      setEditScheduleOpen(true)
+      setShowModal(false)
+    }
+  }
 
-
+  const handleScheduleUpdated = () => {
+    fetchSchedules()
+    setEditScheduleOpen(false)
+    setEditingScheduleId(null)
+  }
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December']
@@ -377,23 +394,26 @@ const handleSaveNews = async (items: NewsItem[]) => {
 
   const getEventsForDay = (day: number) => {
     const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
-    date.setHours(12, 0, 0, 0)
+    date.setHours(0, 0, 0, 0)
   
     const dayEvents = events.filter(event => {
       if (event.scheduleType === 'staggered' && event.dates) {
-        return event.dates.some(d => d.toDateString() === date.toDateString())
+        return event.dates.some(d => {
+          const eventDate = new Date(d)
+          eventDate.setHours(0, 0, 0, 0)
+          return eventDate.getTime() === date.getTime()
+        })
       } else {
         const eventStart = new Date(event.startDate)
         const eventEnd = new Date(event.endDate)
         eventStart.setHours(0, 0, 0, 0)
-        eventEnd.setHours(23, 59, 59, 999)
+        eventEnd.setHours(0, 0, 0, 0)
         return date >= eventStart && date <= eventEnd
       }
     })
   
     return dayEvents.sort((a, b) => a.startDate.getTime() - b.startDate.getTime())
   }
-  
 
   const getAllEventsForMonth = () => {
     return events.filter(event => {
@@ -417,27 +437,40 @@ const handleSaveNews = async (items: NewsItem[]) => {
       )
     }).sort((a, b) => a.startDate.getTime() - b.startDate.getTime())
   }
-  
 
   const getStatusColor = (event: ScheduleEvent) => {
     const now = new Date()
+    now.setHours(0, 0, 0, 0)
     
     if (event.status === 'finished') return '#94a3b8'
     if (event.status === 'cancelled') return '#ef4444'
     
-    if (now > event.endDate) return '#94a3b8'
-    if (now >= event.startDate && now <= event.endDate) return '#f59e0b'
+    const eventEnd = new Date(event.endDate)
+    eventEnd.setHours(0, 0, 0, 0)
+    
+    const eventStart = new Date(event.startDate)
+    eventStart.setHours(0, 0, 0, 0)
+    
+    if (now > eventEnd) return '#94a3b8'
+    if (now >= eventStart && now <= eventEnd) return '#f59e0b'
     return '#10b981'
   }
 
   const getStatusLabel = (event: ScheduleEvent) => {
     const now = new Date()
+    now.setHours(0, 0, 0, 0)
     
     if (event.status === 'finished') return 'Finished'
     if (event.status === 'cancelled') return 'Cancelled'
     
-    if (now > event.endDate) return 'Finished'
-    if (now >= event.startDate && now <= event.endDate) return 'Ongoing'
+    const eventEnd = new Date(event.endDate)
+    eventEnd.setHours(0, 0, 0, 0)
+    
+    const eventStart = new Date(event.startDate)
+    eventStart.setHours(0, 0, 0, 0)
+    
+    if (now > eventEnd) return 'Finished'
+    if (now >= eventStart && now <= eventEnd) return 'Ongoing'
     return 'Upcoming'
   }
 
@@ -450,6 +483,8 @@ const handleSaveNews = async (items: NewsItem[]) => {
     setShowModal(false)
     setSelectedEvent(null)
   }
+
+// Continued from Part 2...
 
   const renderCalendar = () => {
     const days = daysInMonth(currentDate)
@@ -484,30 +519,33 @@ const handleSaveNews = async (items: NewsItem[]) => {
               const eventDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
               const eventStart = new Date(event.startDate)
               const eventEnd = new Date(event.endDate)
-              eventDate.setHours(12, 0, 0, 0)
+              eventDate.setHours(0, 0, 0, 0)
               eventStart.setHours(0, 0, 0, 0)
-              eventEnd.setHours(23, 59, 59, 999)
+              eventEnd.setHours(0, 0, 0, 0)
               
               let isInRange = false
 
               if (event.scheduleType === 'staggered' && event.dates) {
-                isInRange = event.dates.some(d => d.toDateString() === eventDate.toDateString())
+                isInRange = event.dates.some(d => {
+                  const ed = new Date(d)
+                  ed.setHours(0, 0, 0, 0)
+                  return ed.getTime() === eventDate.getTime()
+                })
               } else {
                 isInRange = eventDate >= eventStart && eventDate <= eventEnd
               }
-              
               
               if (!isInRange) {
                 return null
               }
               
               const isStart = event.scheduleType === 'staggered'
-              ? true
-              : eventStart.getDate() === day && eventStart.getMonth() === currentDate.getMonth()
+                ? true
+                : eventStart.getDate() === day && eventStart.getMonth() === currentDate.getMonth()
             
-            const isEnd = event.scheduleType === 'staggered'
-              ? true
-              : eventEnd.getDate() === day && eventEnd.getMonth() === currentDate.getMonth()
+              const isEnd = event.scheduleType === 'staggered'
+                ? true
+                : eventEnd.getDate() === day && eventEnd.getMonth() === currentDate.getMonth()
             
               const color = getStatusColor(event)
               
@@ -599,12 +637,12 @@ const handleSaveNews = async (items: NewsItem[]) => {
                         return (
                           <div key={idx} className="mb-2">
                             <div
-                            className="inline-block px-2 py-1 text-white rounded cursor-pointer hover:opacity-80 text-xs"
-                            style={{ backgroundColor: color }}
-                            onClick={() => openModal(event)}
-                            title={`${event.course} - ${event.branch}`}
+                              className="inline-block px-2 py-1 text-white rounded cursor-pointer hover:opacity-80 text-xs"
+                              style={{ backgroundColor: color }}
+                              onClick={() => openModal(event)}
+                              title={`${event.course} - ${event.branch}`}
                             >
-                            {event.scheduleType === 'staggered' && event.dates
+                              {event.scheduleType === 'staggered' && event.dates
                                 ? event.dates
                                     .filter(d => d.getMonth() === monthIdx && d.getFullYear() === currentDate.getFullYear())
                                     .map(d => d.getDate())
@@ -737,7 +775,6 @@ const handleSaveNews = async (items: NewsItem[]) => {
 
         {/* Right Sidebar */}
         <div className="w-80 space-y-6">
-          {/* News Section */}
           <Card className="overflow-hidden">
             {isEditingNews ? (
               <NewsEditor
@@ -753,7 +790,6 @@ const handleSaveNews = async (items: NewsItem[]) => {
             )}
           </Card>
 
-          {/* Admin Info Section */}
           <Card className="p-4 space-y-3">
             <h3 className="text-lg font-bold">Admin Tools</h3>
             
@@ -775,14 +811,36 @@ const handleSaveNews = async (items: NewsItem[]) => {
         </div>
       </div>
 
+      {/* Event Details Modal */}
       {showModal && selectedEvent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeModal}>
           <div className="bg-card rounded-lg max-w-lg w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="p-6 border-b flex items-start justify-between">
               <h2 className="text-xl font-bold">{selectedEvent.course}</h2>
-              <Button variant="ghost" size="icon" onClick={closeModal}>
-                <X className="w-5 h-5" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon">
+                      <MoreVertical className="w-5 h-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleEditSchedule}>
+                      <Edit2 className="w-4 h-4 mr-2" />
+                      Edit Schedule
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => {
+                      console.log("Edit cover photo for", selectedEvent.id)
+                    }}>
+                      <ImageIcon className="w-4 h-4 mr-2" />
+                      Edit Cover Photo
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="ghost" size="icon" onClick={closeModal}>
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
             </div>
             
             <div className="p-6 space-y-4">
@@ -810,18 +868,31 @@ const handleSaveNews = async (items: NewsItem[]) => {
                   style={{ backgroundColor: getStatusColor(selectedEvent) }}
                 >
                   {getStatusLabel(selectedEvent)}
-                    </Badge>
-                </div>
+                </Badge>
               </div>
+            </div>
             <div className="p-6 border-t flex gap-3 justify-end">
               <Button variant="secondary" onClick={closeModal}>Close</Button>
-                {selectedEvent.status !== 'finished' && (
-                <Button>Enroll Now</Button>
+              {selectedEvent.status !== 'finished' && (
+                <Button 
+                  className="cursor-pointer"
+                  onClick={() => router.push(`/guest-training-registration?schedule_id=${selectedEvent.id}`)}
+                >
+                  Enroll Now
+                </Button>
               )}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Edit Schedule Dialog */}
+      <EditScheduleDialog
+        open={editScheduleOpen}
+        onOpenChange={setEditScheduleOpen}
+        scheduleId={editingScheduleId}
+        onScheduleUpdated={handleScheduleUpdated}
+      />
     </div>
-  )}
-</div>
-)
+  )
 }

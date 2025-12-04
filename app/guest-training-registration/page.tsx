@@ -14,210 +14,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { supabase } from "@/lib/supabase-client"
 import { toast } from "sonner"
 
-export default function GuestTrainingRegistration() {
-  const [step, setStep] = useState(0)
-  const [form, setForm] = useState<any>({})
-  const [uploading, setUploading] = useState(false)
-  const [agreed, setAgreed] = useState(false)
-  const [idPreview, setIdPreview] = useState<string | null>(null)
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
-  const [scheduleRange, setScheduleRange] = useState<{ start_date: string; end_date: string } | null>(null)
-  const [couponCode, setCouponCode] = useState("")
-  const [discount, setDiscount] = useState<number>(0)
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
-  const [bookingReference, setBookingReference] = useState<string>("")
-  const [isSubmitted, setIsSubmitted] = useState(false)
-  const [course, setCourse] = useState<any>(null)
-  const [regions, setRegions] = useState<{ code: string; name: string }[]>([])
-  const [cities, setCities] = useState<{ code: string; name: string }[]>([])
-  const [paymentMethod, setPaymentMethod] = useState("BPI")
-  const [errors, setErrors] = useState<{ [key: string]: boolean }>({})
-
-  const requiredPersonalFields = [
-    "first_name",
-    "last_name",
-    "phone_number",
-    "email",
-    "gender",
-    "age",
-    "mailing_street",
-    "mailing_city",
-    "mailing_province",
-    "employment_status",
-  ]
-
-  const validateStep3 = () => {
-  if (!form.id_picture_url) {
-    toast.error("Please upload a valid ID.")
-    return false
-  }
-  if (!form.picture_2x2_url) {
-    toast.error("Please upload a 2x2 photo.")
-    return false
-  }
-  return true
-}
-
-
-
-
-const validateStep1 = () => {
-  const newErrors: any = {}
-  let firstErrorField: string | null = null
-
-  requiredPersonalFields.forEach((field) => {
-    if (!form[field] || form[field].toString().trim() === "") {
-      newErrors[field] = true
-      if (!firstErrorField) firstErrorField = field
-    }
-  })
-
-  // Additional validation for email format
-  if (form.email) {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(form.email)) {
-      newErrors.email = true
-      if (!firstErrorField) firstErrorField = "email"
-      toast.error("Please enter a valid email address.")
-    }
-  }
-
-  // Additional validation for phone number (must have digits after +63)
-  if (form.phone_number) {
-    const phoneDigits = form.phone_number.replace(/\D/g, "")
-    if (phoneDigits.length < 12) { // +63 + 10 digits
-      newErrors.phone_number = true
-      if (!firstErrorField) firstErrorField = "phone_number"
-      toast.error("Please enter a complete mobile number.")
-    }
-  }
-
-  setErrors(newErrors)
-
-  if (firstErrorField) {
-    const element = document.getElementById(firstErrorField)
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "center" })
-      element.focus()
-    }
-    if (!Object.keys(newErrors).includes("email") && !Object.keys(newErrors).includes("phone_number")) {
-      toast.error("Please complete all required personal details.")
-    }
-    return false
-  }
-
-  return true
-}
-
-
-useEffect(() => {
-  const fetchCourseAndSchedule = async () => {
-    const scheduleId = new URLSearchParams(window.location.search).get("schedule_id")
-    if (!scheduleId) {
-      console.log("No schedule_id found in URL")
-      return
-    }
-
-    console.log("Fetching data for schedule_id:", scheduleId)
-
-    try {
-      // Fetch schedule with related data in one query
-      const { data: scheduleData, error: scheduleError } = await supabase
-        .from("schedules")
-        .select(`
-          course_id,
-          schedule_type,
-          schedule_ranges (start_date, end_date),
-          schedule_dates (date)
-        `)
-        .eq("id", scheduleId)
-        .single()
-
-      console.log("Schedule data:", scheduleData)
-
-      if (scheduleError) {
-        console.error("Error fetching schedule:", scheduleError)
-        return
-      }
-
-      if (!scheduleData) {
-        console.log("No schedule data found")
-        return
-      }
-
-      // Fetch course data
-      if (scheduleData.course_id) {
-        const { data: courseData, error: courseError } = await supabase
-          .from("courses")
-          .select("*")
-          .eq("id", scheduleData.course_id)
-          .single()
-
-        console.log("Course data:", courseData)
-        
-        if (courseError) {
-          console.error("Error fetching course:", courseError)
-        } else {
-          setCourse(courseData)
-        }
-      }
-
-      // Handle schedule dates based on type
-      if (scheduleData.schedule_type === "regular" && scheduleData.schedule_ranges?.length > 0) {
-        const range = scheduleData.schedule_ranges[0]
-        console.log("Setting regular range:", range)
-        setScheduleRange({
-          start_date: range.start_date,
-          end_date: range.end_date
-        })
-      } else if (scheduleData.schedule_type === "staggered" && scheduleData.schedule_dates?.length > 0) {
-        const dates = scheduleData.schedule_dates
-          .map(d => d.date)
-          .sort()
-        
-        console.log("Setting staggered range:", {
-          start_date: dates[0],
-          end_date: dates[dates.length - 1]
-        })
-        
-        setScheduleRange({
-          start_date: dates[0],
-          end_date: dates[dates.length - 1]
-        })
-      } else {
-        console.log("No valid schedule dates found")
-      }
-    } catch (error) {
-      console.error("Unexpected error:", error)
-    }
-  }
-
-  fetchCourseAndSchedule()
-  
-  const bookingRef = Math.floor(Math.random() * 9000000 + 1000000).toString()
-  setBookingReference(bookingRef)
-}, [])
-
-  useEffect(() => {
-    fetch("https://psgc.cloud/api/regions")
-      .then(res => res.json())
-      .then(data => {
-        setRegions(data)
-      })
-      .catch(err => console.error("Failed to fetch regions", err))
-  }, [])
-
-  function formatDateRange(start: string, end: string) {
-    const startDate = new Date(start)
-    const endDate = new Date(end)
-  
-    if (startDate.getMonth() === endDate.getMonth()) {
-      return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })}–${endDate.toLocaleDateString('en-US', { day: '2-digit', year: 'numeric' })}`
-    } else {
-      return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })} – ${endDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })}`
-    }
-  }
-
 // Custom Searchable Dropdown Component
 function SearchableDropdown({
   items,
@@ -243,7 +39,6 @@ function SearchableDropdown({
 
   const selectedItem = items.find(item => item.code === value || item.name === value)
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement
@@ -321,32 +116,221 @@ function SearchableDropdown({
   )
 }
 
+export default function GuestTrainingRegistration() {
+  const [step, setStep] = useState(0)
+  const [form, setForm] = useState<any>({})
+  const [uploading, setUploading] = useState(false)
+  const [agreed, setAgreed] = useState(false)
+  const [idPreview, setIdPreview] = useState<string | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [scheduleRange, setScheduleRange] = useState<{ start_date: string; end_date: string } | null>(null)
+  const [couponCode, setCouponCode] = useState("")
+  const [discount, setDiscount] = useState<number>(0)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [bookingReference, setBookingReference] = useState<string>("")
+  const [isSubmitted, setIsSubmitted] = useState(false)
+  const [course, setCourse] = useState<any>(null)
+  const [regions, setRegions] = useState<{ code: string; name: string }[]>([])
+  const [cities, setCities] = useState<{ code: string; name: string }[]>([])
+  const [paymentMethod, setPaymentMethod] = useState("BPI")
+  const [errors, setErrors] = useState<{ [key: string]: boolean }>({})
 
+  const requiredPersonalFields = [
+    "first_name",
+    "last_name",
+    "phone_number",
+    "email",
+    "gender",
+    "age",
+    "mailing_street",
+    "mailing_city",
+    "mailing_province",
+    "employment_status",
+  ]
 
-const handleDownloadSummary = async () => {
-  const element = document.getElementById("summary-download");
-  if (!element) {
-    toast.error("Summary not found.");
-    return;
+  const validateStep3 = () => {
+    if (!form.id_picture_url) {
+      toast.error("Please upload a valid ID.")
+      return false
+    }
+    if (!form.picture_2x2_url) {
+      toast.error("Please upload a 2x2 photo.")
+      return false
+    }
+    return true
   }
 
-  const html2canvas = (await import("html2canvas")).default;
-  const { jsPDF } = await import("jspdf");
+  const validateStep1 = () => {
+    const newErrors: any = {}
+    let firstErrorField: string | null = null
 
-  const canvas = await html2canvas(element, { scale: 2 });
-  const imgData = canvas.toDataURL("image/png");
+    requiredPersonalFields.forEach((field) => {
+      if (!form[field] || form[field].toString().trim() === "") {
+        newErrors[field] = true
+        if (!firstErrorField) firstErrorField = field
+      }
+    })
 
-  const pdf = new jsPDF("p", "mm", "a4");
+    if (form.email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(form.email)) {
+        newErrors.email = true
+        if (!firstErrorField) firstErrorField = "email"
+        toast.error("Please enter a valid email address.")
+      }
+    }
 
-  const pdfWidth = pdf.internal.pageSize.getWidth();
-  const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+    if (form.phone_number) {
+      const phoneDigits = form.phone_number.replace(/\D/g, "")
+      if (phoneDigits.length < 12) {
+        newErrors.phone_number = true
+        if (!firstErrorField) firstErrorField = "phone_number"
+        toast.error("Please enter a complete mobile number.")
+      }
+    }
 
-  pdf.addImage(imgData, "PNG", 0, 10, pdfWidth, imgHeight);
-  pdf.save(`Booking-Summary-${bookingReference}.pdf`);
-};
+    setErrors(newErrors)
 
+    if (firstErrorField) {
+      const element = document.getElementById(firstErrorField)
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" })
+        element.focus()
+      }
+      if (!Object.keys(newErrors).includes("email") && !Object.keys(newErrors).includes("phone_number")) {
+        toast.error("Please complete all required personal details.")
+      }
+      return false
+    }
 
+    return true
+  }
 
+  useEffect(() => {
+    const fetchCourseAndSchedule = async () => {
+      const scheduleId = new URLSearchParams(window.location.search).get("schedule_id")
+      if (!scheduleId) {
+        console.log("No schedule_id found in URL")
+        return
+      }
+
+      console.log("Fetching data for schedule_id:", scheduleId)
+
+      try {
+        const { data: scheduleData, error: scheduleError } = await supabase
+          .from("schedules")
+          .select(`
+            course_id,
+            schedule_type,
+            schedule_ranges (start_date, end_date),
+            schedule_dates (date)
+          `)
+          .eq("id", scheduleId)
+          .single()
+
+        console.log("Schedule data:", scheduleData)
+
+        if (scheduleError) {
+          console.error("Error fetching schedule:", scheduleError)
+          return
+        }
+
+        if (!scheduleData) {
+          console.log("No schedule data found")
+          return
+        }
+
+        if (scheduleData.course_id) {
+          const { data: courseData, error: courseError } = await supabase
+            .from("courses")
+            .select("*")
+            .eq("id", scheduleData.course_id)
+            .single()
+
+          console.log("Course data:", courseData)
+          
+          if (courseError) {
+            console.error("Error fetching course:", courseError)
+          } else {
+            setCourse(courseData)
+          }
+        }
+
+        if (scheduleData.schedule_type === "regular" && scheduleData.schedule_ranges?.length > 0) {
+          const range = scheduleData.schedule_ranges[0]
+          console.log("Setting regular range:", range)
+          setScheduleRange({
+            start_date: range.start_date,
+            end_date: range.end_date
+          })
+        } else if (scheduleData.schedule_type === "staggered" && scheduleData.schedule_dates?.length > 0) {
+          const dates = scheduleData.schedule_dates
+            .map(d => d.date)
+            .sort()
+          
+          console.log("Setting staggered range:", {
+            start_date: dates[0],
+            end_date: dates[dates.length - 1]
+          })
+          
+          setScheduleRange({
+            start_date: dates[0],
+            end_date: dates[dates.length - 1]
+          })
+        } else {
+          console.log("No valid schedule dates found")
+        }
+      } catch (error) {
+        console.error("Unexpected error:", error)
+      }
+    }
+
+    fetchCourseAndSchedule()
+    
+    const bookingRef = Math.floor(Math.random() * 9000000 + 1000000).toString()
+    setBookingReference(bookingRef)
+  }, [])
+
+  useEffect(() => {
+    fetch("https://psgc.cloud/api/regions")
+      .then(res => res.json())
+      .then(data => {
+        setRegions(data)
+      })
+      .catch(err => console.error("Failed to fetch regions", err))
+  }, [])
+
+  function formatDateRange(start: string, end: string) {
+    const startDate = new Date(start)
+    const endDate = new Date(end)
+  
+    if (startDate.getMonth() === endDate.getMonth()) {
+      return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })}–${endDate.toLocaleDateString('en-US', { day: '2-digit', year: 'numeric' })}`
+    } else {
+      return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })} – ${endDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })}`
+    }
+  }
+  const handleDownloadSummary = async () => {
+    const element = document.getElementById("summary-download");
+    if (!element) {
+      toast.error("Summary not found.");
+      return;
+    }
+
+    const html2canvas = (await import("html2canvas")).default;
+    const { jsPDF } = await import("jspdf");
+
+    const canvas = await html2canvas(element, { scale: 2 });
+    const imgData = canvas.toDataURL("image/png");
+
+    const pdf = new jsPDF("p", "mm", "a4");
+
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+
+    pdf.addImage(imgData, "PNG", 0, 10, pdfWidth, imgHeight);
+    pdf.save(`Booking-Summary-${bookingReference}.pdf`);
+  };
 
   const handleRegionChange = async (regionCode: string) => {
     const selectedRegion = regions.find(r => r.code === regionCode)
@@ -367,64 +351,58 @@ const handleDownloadSummary = async () => {
     }
   }
 
-const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-  const { name, value } = e.target;
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
 
-  // 📌 PHONE AUTO-FORMAT (+63 912 345 6789)
-  if (name === "phone_number") {
-    let digits = value.replace(/\D/g, "");
-    if (!digits.startsWith("63")) digits = "63" + digits;
-    let formatted = "+" + digits.slice(0, 2);
+    if (name === "phone_number") {
+      let digits = value.replace(/\D/g, "");
+      if (!digits.startsWith("63")) digits = "63" + digits;
+      let formatted = "+" + digits.slice(0, 2);
 
-    if (digits.length > 2) formatted += " " + digits.slice(2, 5);
-    if (digits.length > 5) formatted += " " + digits.slice(5, 8);
-    if (digits.length > 8) formatted += " " + digits.slice(8, 12);
+      if (digits.length > 2) formatted += " " + digits.slice(2, 5);
+      if (digits.length > 5) formatted += " " + digits.slice(5, 8);
+      if (digits.length > 8) formatted += " " + digits.slice(8, 12);
 
-    setForm((prev: any) => ({ ...prev, phone_number: formatted }));
-    return;
-  }
+      setForm((prev: any) => ({ ...prev, phone_number: formatted }));
+      return;
+    }
 
-  // 📌 BIRTHDAY → AUTO-CALCULATE AGE
-  if (name === "birthday") {
-    const birth = new Date(value);
-    const age = new Date().getFullYear() - birth.getFullYear();
+    if (name === "birthday") {
+      const birth = new Date(value);
+      const age = new Date().getFullYear() - birth.getFullYear();
+      setForm((prev: any) => ({
+        ...prev,
+        birthday: value,
+        age
+      }));
+      return;
+    }
+
+    if (name === "middle_initial") {
+      const sanitized = value.replace(/[^a-zA-Z]/g, "").slice(0, 1).toUpperCase();
+      setForm((prev: any) => ({ ...prev, middle_initial: sanitized }));
+      return;
+    }
+
+    const autoCapitalizeFields = [
+      "first_name",
+      "last_name",
+      "suffix"
+    ];
+
+    let formattedValue = value;
+
+    if (autoCapitalizeFields.includes(name)) {
+      formattedValue = value.replace(/\b\w/g, (char) => char.toUpperCase());
+    }
+
     setForm((prev: any) => ({
       ...prev,
-      birthday: value,
-      age
+      [name]: formattedValue
     }));
-    return;
-  }
 
-  // 📌 SPECIAL RULE — MIDDLE INITIAL (only 1 letter)
-  if (name === "middle_initial") {
-    const sanitized = value.replace(/[^a-zA-Z]/g, "").slice(0, 1).toUpperCase();
-    setForm((prev: any) => ({ ...prev, middle_initial: sanitized }));
-    return;
-  }
-
-  // 📌 AUTO-CAPITALIZE fields
-  const autoCapitalizeFields = [
-    "first_name",
-    "last_name",
-    "suffix"
-  ];
-
-  let formattedValue = value;
-
-  if (autoCapitalizeFields.includes(name)) {
-    formattedValue = value.replace(/\b\w/g, (char) => char.toUpperCase());
-  }
-
-  setForm((prev: any) => ({
-    ...prev,
-    [name]: formattedValue
-  }));
-
-  // Clear any error for this field
-  setErrors((prev) => ({ ...prev, [name]: false }));
-};
-
+    setErrors((prev) => ({ ...prev, [name]: false }));
+  };
 
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -440,7 +418,6 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
       const previewUrl = reader.result as string;
   
       if (field === "picture_2x2_url") {
-        // Direct upload for 2x2 photo (no cropping)
         setPhotoPreview(previewUrl);
       } else if (field === "id_picture_url") {
         setIdPreview(previewUrl);
@@ -475,209 +452,201 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
     };
     reader.readAsDataURL(file);
   };
-  
-const handleSubmit = async () => {
-  toast.loading("Submitting registration...");
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const scheduleId = searchParams.get("schedule_id");
+  const handleSubmit = async () => {
+    toast.loading("Submitting registration...");
 
-  if (!scheduleId) {
-    toast.error("Missing schedule ID");
-    return;
-  }
+    const searchParams = new URLSearchParams(window.location.search);
+    const scheduleId = searchParams.get("schedule_id");
 
-  try {
-    // 1️⃣ Get course linked to schedule
-    const { data: schedule, error: scheduleError } = await supabase
-      .from("schedules")
-      .select("course_id")
-      .eq("id", scheduleId)
-      .single();
-
-    if (scheduleError || !schedule) {
-      toast.error("Failed to retrieve course");
+    if (!scheduleId) {
+      toast.error("Missing schedule ID");
       return;
     }
 
-    const courseId = schedule.course_id;
-
-    // 2️⃣.5 Get the batch number from the schedule itself
-    const { data: scheduleDetails, error: scheduleDetailsError } = await supabase
-      .from("schedules")
-      .select("batch_number")
-      .eq("id", scheduleId)
-      .single()
-
-    if (scheduleDetailsError || !scheduleDetails?.batch_number) {
-      toast.error("Failed to get batch number from schedule.")
-      return
-    }
-
-    const batchNumber = scheduleDetails.batch_number
-
-    // 2️⃣ Fetch training fee
-    const { data: courseData, error: feeError } = await supabase
-      .from("courses")
-      .select("training_fee, name")
-      .eq("id", courseId)
-      .single();
-
-    if (feeError) console.error("Error fetching course fee:", feeError);
-
-    const trainingFee = courseData?.training_fee || 0;
-
-    // 3️⃣ Create trainee record (store payment summary info here)
-    const trainingPayload = {
-      ...form,
-      schedule_id: scheduleId,
-      course_id: courseId,
-      batch_number: batchNumber,
-      status: "pending",
-      payment_method: paymentMethod,
-      payment_status:
-        paymentMethod === "COUNTER" ? "pending" : "awaiting receipt",
-      amount_paid: 0,
-      courtesy_title: form.courtesy_title || null,
-    };
-
-    const { data: insertedTraining, error: insertError } = await supabase
-      .from("trainings")
-      .insert([trainingPayload])
-      .select("id")
-      .single();
-
-    if (insertError || !insertedTraining) {
-      console.error("Insert training error:", insertError);
-      toast.error("Failed to submit registration.");
-      return;
-    }
-
-    const trainingId = insertedTraining.id;
-
-    // 4️⃣ Create booking summary record
-    const { error: bookingError } = await supabase
-      .from("booking_summary")
-      .insert([
-        {
-          training_id: trainingId,
-          reference_number: bookingReference,
-        },
-      ]);
-
-    if (bookingError) {
-      console.error("Booking summary insert error:", bookingError);
-      toast.error("Failed to create booking summary.");
-      return;
-    }
-
-    // 5️⃣ Success feedback
-    toast.dismiss();
-    toast.success("Registration submitted successfully!", {
-      duration: 3000,
-    });
-
-    setIsSubmitted(true);
-
-    // 6️⃣ Send registration email to admin
     try {
-      await fetch("/api/send-registration-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bookingReference,
-          courseName: courseData?.name || course?.name || "N/A",
-          scheduleRange: scheduleRange
-            ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
-            : "N/A",
-          traineeInfo: {
-            name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
-            email: form.email,
-            phone: form.phone_number,
-            gender: form.gender,
-            age: form.age,
-            address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
-            employmentStatus: form.employment_status,
-          },
-          employmentInfo:
-            form.employment_status === "Employed"
-              ? {
-                  companyName: form.company_name,
-                  position: form.company_position,
-                  industry: form.company_industry,
-                  companyEmail: form.company_email,
-                  city: form.company_city,
-                  region: form.company_region,
-                }
-              : null,
-          paymentInfo: {
-            trainingFee: trainingFee,
-            discount,
-            totalAmount: trainingFee - discount,
-            paymentMethod,
-            paymentStatus:
-              paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
-          },
-        }),
-      })
-      console.log("Admin notification email sent")
-    } catch (emailErr) {
-      console.error("Admin email sending failed:", emailErr)
-    }
+      const { data: schedule, error: scheduleError } = await supabase
+        .from("schedules")
+        .select("course_id")
+        .eq("id", scheduleId)
+        .single();
 
-    // 7️⃣ Send booking summary email to trainee
-    try {
-      await fetch("/api/send-booking-summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: form.email,
-          bookingReference,
-          courseName: courseData?.name || course?.name || "N/A",
-          scheduleRange: scheduleRange
-            ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
-            : "N/A",
-          traineeInfo: {
-            name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
-            email: form.email,
-            phone: form.phone_number,
-            gender: form.gender,
-            age: form.age,
-            address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
-            employmentStatus: form.employment_status,
-          },
-          employmentInfo:
-            form.employment_status === "Employed"
-              ? {
-                  companyName: form.company_name,
-                  position: form.company_position,
-                  industry: form.company_industry,
-                  companyEmail: form.company_email,
-                  city: form.company_city,
-                  region: form.company_region,
-                }
-              : null,
-          paymentInfo: {
-            trainingFee: trainingFee,
-            discount,
-            totalAmount: trainingFee - discount,
-            paymentMethod,
-            paymentStatus:
-              paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
-          },
-        }),
-      })
-      console.log("Booking summary email sent to trainee")
-    } catch (emailErr) {
-      console.error("Trainee email sending failed:", emailErr)
-      // Don't show error to user since registration was successful
-    }
+      if (scheduleError || !schedule) {
+        toast.error("Failed to retrieve course");
+        return;
+      }
 
-  } catch (err) {
-    console.error("Unexpected error:", err);
-    toast.error("Something went wrong.");
-  }
-};
+      const courseId = schedule.course_id;
+
+      const { data: scheduleDetails, error: scheduleDetailsError } = await supabase
+        .from("schedules")
+        .select("batch_number")
+        .eq("id", scheduleId)
+        .single()
+
+      if (scheduleDetailsError || !scheduleDetails?.batch_number) {
+        toast.error("Failed to get batch number from schedule.")
+        return
+      }
+
+      const batchNumber = scheduleDetails.batch_number
+
+      const { data: courseData, error: feeError } = await supabase
+        .from("courses")
+        .select("training_fee, name")
+        .eq("id", courseId)
+        .single();
+
+      if (feeError) console.error("Error fetching course fee:", feeError);
+
+      const trainingFee = courseData?.training_fee || 0;
+
+      const trainingPayload = {
+        ...form,
+        schedule_id: scheduleId,
+        course_id: courseId,
+        batch_number: batchNumber,
+        status: "pending",
+        payment_method: paymentMethod,
+        payment_status:
+          paymentMethod === "COUNTER" ? "pending" : "awaiting receipt",
+        amount_paid: 0,
+        courtesy_title: form.courtesy_title || null,
+      };
+
+      const { data: insertedTraining, error: insertError } = await supabase
+        .from("trainings")
+        .insert([trainingPayload])
+        .select("id")
+        .single();
+
+      if (insertError || !insertedTraining) {
+        console.error("Insert training error:", insertError);
+        toast.error("Failed to submit registration.");
+        return;
+      }
+
+      const trainingId = insertedTraining.id;
+
+      const { error: bookingError } = await supabase
+        .from("booking_summary")
+        .insert([
+          {
+            training_id: trainingId,
+            reference_number: bookingReference,
+          },
+        ]);
+
+      if (bookingError) {
+        console.error("Booking summary insert error:", bookingError);
+        toast.error("Failed to create booking summary.");
+        return;
+      }
+
+      toast.dismiss();
+      toast.success("Registration submitted successfully!", {
+        duration: 3000,
+      });
+
+      setIsSubmitted(true);
+
+      try {
+        await fetch("/api/send-registration-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bookingReference,
+            courseName: courseData?.name || course?.name || "N/A",
+            scheduleRange: scheduleRange
+              ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
+              : "N/A",
+            traineeInfo: {
+              name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
+              email: form.email,
+              phone: form.phone_number,
+              gender: form.gender,
+              age: form.age,
+              address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
+              employmentStatus: form.employment_status,
+            },
+            employmentInfo:
+              form.employment_status === "Employed"
+                ? {
+                    companyName: form.company_name,
+                    position: form.company_position,
+                    industry: form.company_industry,
+                    companyEmail: form.company_email,
+                    city: form.company_city,
+                    region: form.company_region,
+                  }
+                : null,
+            paymentInfo: {
+              trainingFee: trainingFee,
+              discount,
+              totalAmount: trainingFee - discount,
+              paymentMethod,
+              paymentStatus:
+                paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+            },
+          }),
+        })
+        console.log("Admin notification email sent")
+      } catch (emailErr) {
+        console.error("Admin email sending failed:", emailErr)
+      }
+
+      try {
+        await fetch("/api/send-booking-summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: form.email,
+            bookingReference,
+            courseName: courseData?.name || course?.name || "N/A",
+            scheduleRange: scheduleRange
+              ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
+              : "N/A",
+            traineeInfo: {
+              name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
+              email: form.email,
+              phone: form.phone_number,
+              gender: form.gender,
+              age: form.age,
+              address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
+              employmentStatus: form.employment_status,
+            },
+            employmentInfo:
+              form.employment_status === "Employed"
+                ? {
+                    companyName: form.company_name,
+                    position: form.company_position,
+                    industry: form.company_industry,
+                    companyEmail: form.company_email,
+                    city: form.company_city,
+                    region: form.company_region,
+                  }
+                : null,
+            paymentInfo: {
+              trainingFee: trainingFee,
+              discount,
+              totalAmount: trainingFee - discount,
+              paymentMethod,
+              paymentStatus:
+                paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+            },
+          }),
+        })
+        console.log("Booking summary email sent to trainee")
+      } catch (emailErr) {
+        console.error("Trainee email sending failed:", emailErr)
+      }
+
+    } catch (err) {
+      console.error("Unexpected error:", err);
+      toast.error("Something went wrong.");
+    }
+  };
+
   const isEmployed = form.employment_status === "Employed"
   
   const steps = [
@@ -686,13 +655,21 @@ const handleSubmit = async () => {
     { id: 3, title: "Verification Details", subtitle: "Upload your identification documents", icon: Upload, completed: step > 3 },
     { id: 4, title: "Confirmation", subtitle: "You're all set! Enjoy your journey.", icon: CheckCircle2, completed: step > 4 }
   ]
-
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-orange-50 via-white to-emerald-50 flex items-center justify-center p-8">
       <div className="w-full max-w-7xl h-full flex gap-8">
       <div className="hidden lg:flex lg:w-[45%] rounded-3xl bg-banded text-black p-8 flex-col backdrop-blur-sm shadow-[0_20px_60px_rgba(0,0,0,0.3)] border-0">
-        <div className="mb-25">
+        <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Training Registration</h1>
+          {course && (
+            <div className="border rounded-xl inline-block p-2 mt-2">
+              <p className="text-md text-white/90 font-bold m-0">
+                {course.name}
+              </p>
+            </div>
+
+            
+          )}
         </div>
 
         <div className="space-y-0 flex-1 pt-10">
@@ -773,9 +750,6 @@ const handleSubmit = async () => {
                     alt="Registration" 
                     className="w-64 h-64 object-contain"
                   />
-                  
-
-
                 </div>
 
                 <div className="space-y-3">
@@ -789,7 +763,6 @@ const handleSubmit = async () => {
                 
                 <div className="max-w-md mx-auto">
                   <Button 
-
                   variant={"outline"}
                     onClick={() => setStep(1)}
                     size="lg"
@@ -807,8 +780,7 @@ const handleSubmit = async () => {
                 </div>
               </div>
             )}
-
-          {step === 1 && (
+            {step === 1 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-3xl font-bold">Personal Details</h2>
@@ -1159,6 +1131,7 @@ const handleSubmit = async () => {
                 </div>
               </div>
             )}
+            // PASTE THIS AFTER PART 4
 
             {step === 4 && (
               <div className="space-y-3">
@@ -1188,7 +1161,6 @@ const handleSubmit = async () => {
                           <p className="text-gray-600 text-sm">
                             {scheduleRange ? formatDateRange(scheduleRange.start_date, scheduleRange.end_date) : "Loading..."}
                           </p>
-
                         </fieldset>
 
                         <fieldset className="border border-gray-300 rounded-md px-4 pt-4 pb-2 bg-slate-50 relative">
@@ -1219,34 +1191,8 @@ const handleSubmit = async () => {
                           <p className="text-sm text-gray-900 font-semibold">
                             Total Payable: ₱{((course?.training_fee || 0) - discount).toLocaleString()}
                           </p>
-
-                          {/* <div className="mt-3 space-y-1">
-                            <Label htmlFor="coupon_code" className="text-sm font-medium">Coupon Code</Label>
-                            <div className="flex gap-2">
-                              <Input
-                                id="coupon_code"
-                                placeholder="Enter code"
-                                value={couponCode}
-                                onChange={(e) => setCouponCode(e.target.value)}
-                                className="flex-1"
-                              />
-                              <Button
-                                type="button"
-                                onClick={() => {
-                                  if (couponCode === "PETRO10") {
-                                    setDiscount(0.1 * (course?.training_fee || 0))
-                                  } else {
-                                    setDiscount(0)
-                                  }
-                                }}
-                                variant="outline"
-                                className="text-sm"
-                              >
-                                Apply
-                              </Button>
-                            </div>
-                          </div> */}
                         </fieldset>
+                        
                         <fieldset className="border border-gray-300 rounded-md px-4 pt-4 pb-2 bg-slate-50 relative">
                           <legend className="text-sm font-medium px-2 text-gray-700 flex items-center gap-1">
                             <CreditCard className="w-4 h-4 text-gray-500" />

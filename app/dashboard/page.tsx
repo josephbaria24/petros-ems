@@ -32,8 +32,8 @@ export default function DashboardPage() {
   
   useEffect(() => {
     const fetchStats = async () => {
-      const [trainingsRes, coursesRes, schedulesRes] = await Promise.all([
-        supabase.from("trainings").select("*, courses(name)"),
+      const [trainingsRes, coursesRes, schedulesRes, scheduleDatesRes, scheduleRangesRes] = await Promise.all([
+        supabase.from("trainings").select("*, courses(name), schedules(*)"),
         supabase.from("courses").select("*"),
         supabase.from("schedules").select(`
           id,
@@ -41,12 +41,16 @@ export default function DashboardPage() {
           course_id,
           courses ( name )
         `).order("created_at", { ascending: false }).limit(3),
+        supabase.from("schedule_dates").select("*, schedules(*)"),
+        supabase.from("schedule_ranges").select("*, schedules(*)"),
       ])
 
       const participants = trainingsRes.data?.length || 0
       const courses = coursesRes.data?.length || 0
       const events = schedulesRes.data || []
       const trainings = trainingsRes.data || []
+      const scheduleDates = scheduleDatesRes.data || []
+      const scheduleRanges = scheduleRangesRes.data || []
 
       setStats([
         { title: "Total Participants", value: participants.toString(), change: "+12.5%", icon: Users, color: "text-primary" },
@@ -63,35 +67,50 @@ export default function DashboardPage() {
 
       setRecentEvents(formattedEvents)
       
+      const allMonths = Array.from({ length: 12 }, (_, i) =>
+        new Date(0, i).toLocaleString("en-US", { month: "short" })
+      )
 
-const allMonths = Array.from({ length: 12 }, (_, i) =>
-  new Date(0, i).toLocaleString("en-US", { month: "short" })
-)
+      // Step 2: Count enrollments per month based on schedule dates
+      const monthlyEnrollments: Record<string, number> = {}
+      
+      // Process trainings with schedule dates
+      trainings.forEach((training: any) => {
+        const scheduleId = training.schedule_id
+        
+        // Find matching schedule dates
+        const matchingDates = scheduleDates.filter((sd: any) => sd.schedule_id === scheduleId)
+        if (matchingDates.length > 0) {
+          // Use the first date from schedule_dates
+          const month = new Date(matchingDates[0].date).toLocaleString("en-US", { month: "short" })
+          monthlyEnrollments[month] = (monthlyEnrollments[month] || 0) + 1
+        } else {
+          // Check schedule ranges
+          const matchingRange = scheduleRanges.find((sr: any) => sr.schedule_id === scheduleId)
+          if (matchingRange) {
+            // Use start_date from schedule_ranges
+            const month = new Date(matchingRange.start_date).toLocaleString("en-US", { month: "short" })
+            monthlyEnrollments[month] = (monthlyEnrollments[month] || 0) + 1
+          }
+        }
+      })
 
-      // Step 2: Count enrollments per month
-      const monthlyEnrollments = trainings.reduce((acc: Record<string, number>, training: any) => {
-        const month = new Date(training.created_at).toLocaleString("en-US", { month: "short" })
-        acc[month] = (acc[month] || 0) + 1
-        return acc
-      }, {})
-
-
-// Step 3: Format trend with 0s filled in
-const enrollmentTrend = allMonths.map((month) => {
-  const date = new Date(`1 ${month} ${new Date().getFullYear()}`)
-  return {
-    date: date.toISOString(),
-    enrollments: monthlyEnrollments[month] || 0
-  }
-})
+      // Step 3: Format trend with 0s filled in
+      const enrollmentTrend = allMonths.map((month) => {
+        const date = new Date(`1 ${month} ${new Date().getFullYear()}`)
+        return {
+          date: date.toISOString(),
+          enrollments: monthlyEnrollments[month] || 0
+        }
+      })
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
         .slice(-6)
 
-// Step 4 (optional): limit to current or past months
-const now = new Date()
-const filteredTrend = enrollmentTrend.filter(d => new Date(d.date) <= now)
+      // Step 4 (optional): limit to current or past months
+      const now = new Date()
+      const filteredTrend = enrollmentTrend.filter(d => new Date(d.date) <= now)
 
-setEnrollmentData(filteredTrend)
+      setEnrollmentData(filteredTrend)
 
       // Course distribution
       const courseCounts = trainings.reduce((acc: any, training: any) => {
@@ -123,8 +142,8 @@ setEnrollmentData(filteredTrend)
     }
 
     fetchStats()
-  }, [supabase])
-
+  }, [supabase]) 
+  
   return (
     <div className="space-y-6">
       <div>
@@ -159,63 +178,55 @@ setEnrollmentData(filteredTrend)
         <Card className="col-span-1 md:col-span-3">
           <CardHeader>
             <CardTitle>Enrollment Trend</CardTitle>
-            <CardDescription>Monthly enrollment statistics</CardDescription>
+            <CardDescription>Monthly enrollment statistics based on schedule dates</CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             <EnrollmentBrushChart data={enrollmentData} width={900} height={400} />
           </CardContent>
         </Card>
-
-
-       {/* Gender Distribution Pie Chart */}
-
       </div>
 
       {/* Course Distribution & Recent Events */}
       <div className="grid gap-4 md:grid-cols-2">
-        {/* Course Distribution Bar Chart */}
-       {/* Gender Distribution Pie Chart */}
-<Card>
-  <CardHeader>
-    <CardTitle>Gender Distribution</CardTitle>
-    <CardDescription>Participant demographics</CardDescription>
-  </CardHeader>
-  <CardContent>
-    <ChartContainer
-      config={{ value: { label: "Participants" } }}
-      className="h-[300px]"
-    >
-      <div className="flex items-center justify-center h-full">
-        <ResponsiveContainer width={250} height={250}>
-          <PieChart>
-            <Pie
-              data={genderData}
-              cx="50%"
-              cy="50%"
-              labelLine={false}
-              label={({ name, percent }) =>
-                `${name} ${(percent * 100).toFixed(0)}%`
-              }
-              outerRadius={80}
-              dataKey="value"
+        {/* Gender Distribution Pie Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Gender Distribution</CardTitle>
+            <CardDescription>Participant demographics</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ChartContainer
+              config={{ value: { label: "Participants" } }}
+              className="h-[300px]"
             >
-              {genderData.map((_, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={`var(--chart-${(index % 5) + 1})`}
-                />
-              ))}
-            </Pie>
-
-            {/* ✅ now it's safe */}
-            <ChartTooltip content={<ChartTooltipContent />} />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
-    </ChartContainer>
-  </CardContent>
-</Card>
-
+              <div className="flex items-center justify-center h-full">
+                <ResponsiveContainer width={250} height={250}>
+                  <PieChart>
+                    <Pie
+                      data={genderData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) =>
+                        `${name} ${(percent * 100).toFixed(0)}%`
+                      }
+                      outerRadius={80}
+                      dataKey="value"
+                    >
+                      {genderData.map((_, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={`var(--chart-${(index % 5) + 1})`}
+                        />
+                      ))}
+                    </Pie>
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartContainer>
+          </CardContent>
+        </Card>
 
         {/* Recent Events */}
         <Card>

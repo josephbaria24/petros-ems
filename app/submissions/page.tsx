@@ -63,6 +63,7 @@ export default function SubmissionPage() {
   const [processing, setProcessing] = useState(false)
   const [progressCurrent, setProgressCurrent] = useState(0)
   const [progressTotal, setProgressTotal] = useState(0)
+  const [groupChatLink, setGroupChatLink] = useState("")
 
   const getStatusBadge = (status: string) => {
     const normalized = status.toLowerCase();
@@ -441,6 +442,7 @@ export default function SubmissionPage() {
             sendConfirmation: false,
             sendClassroom: true,
             classroomUrl: roomLink,
+            groupChatLink
           }),
         });
 
@@ -645,6 +647,17 @@ export default function SubmissionPage() {
                 onChange={(e) => setRoomLink(e.target.value)}
               />
             </div>
+            <div>
+            <Label htmlFor="group-chat-link">Group Chat Link</Label>
+            <Input
+              id="group-chat-link"
+              type="url"
+              placeholder="https://chat.whatsapp.com/..."
+              value={groupChatLink}
+              onChange={(e) => setGroupChatLink(e.target.value)}
+            />
+          </div>
+
           </div>
 
           <DialogFooter>

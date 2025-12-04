@@ -31,6 +31,12 @@ interface NewScheduleDialogProps {
   onOpenChange: (open: boolean) => void
   onScheduleCreated?: () => void
 }
+function formatDateForDB(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: NewScheduleDialogProps) {
   const [eventType, setEventType] = React.useState<string>("")
@@ -146,24 +152,45 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
       const scheduleId = scheduleData.id
     
       // Step 2: Insert dates
-      if (scheduleType === "regular" && rangeDates?.from && rangeDates?.to) {
-        const { error: rangeError } = await supabase
-          .from("schedule_ranges")
-          .insert({
-            schedule_id: scheduleId,
-            start_date: rangeDates.from.toISOString().split("T")[0],
-            end_date: rangeDates.to.toISOString().split("T")[0],
-          })
-    
-        if (rangeError) {
-          toast.error("Error Saving Range", {
-            id: toastId,
-            description: rangeError.message,
-          })
-          setIsSubmitting(false)
-          return
-        }
-      }
+ // Step 2: Insert dates
+if (scheduleType === "regular" && rangeDates?.from && rangeDates?.to) {
+  const { error: rangeError } = await supabase
+    .from("schedule_ranges")
+    .insert({
+      schedule_id: scheduleId,
+      start_date: formatDateForDB(rangeDates.from),
+      end_date: formatDateForDB(rangeDates.to),
+    })
+
+  if (rangeError) {
+    toast.error("Error Saving Range", {
+      id: toastId,
+      description: rangeError.message,
+    })
+    setIsSubmitting(false)
+    return
+  }
+}
+
+if (scheduleType === "staggered" && multiDates.length > 0) {
+  const staggeredInserts = multiDates.map((d) => ({
+    schedule_id: scheduleId,
+    date: formatDateForDB(d),
+  }))
+
+  const { error: dateError } = await supabase
+    .from("schedule_dates")
+    .insert(staggeredInserts)
+
+  if (dateError) {
+    toast.error("Error Saving Dates", {
+      id: toastId,
+      description: dateError.message,
+    })
+    setIsSubmitting(false)
+    return
+  }
+}
     
       if (scheduleType === "staggered" && multiDates.length > 0) {
         const staggeredInserts = multiDates.map((d) => ({

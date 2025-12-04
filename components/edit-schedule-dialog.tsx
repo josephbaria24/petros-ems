@@ -8,6 +8,14 @@ import { Calendar03 } from "@/components/calendar-03"
 import { Calendar05 } from "@/components/calendar-05"
 import { Button } from "@/components/ui/button"
 import { type DateRange } from "react-day-picker"
+import { Mail } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
 import {
   Popover,
   PopoverContent,
@@ -20,6 +28,7 @@ import {
   CommandGroup,
   CommandEmpty,
 } from "@/components/ui/command"
+
 
 import {
   Dialog,
@@ -40,6 +49,19 @@ interface EditScheduleDialogProps {
   onOpenChange: (open: boolean) => void
   scheduleId: string | null
   onScheduleUpdated?: () => void
+}
+
+
+function formatDateForDB(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseDateFromDB(dateString: string): Date {
+  const [year, month, day] = dateString.split('-').map(Number)
+  return new Date(year, month - 1, day)
 }
 
 export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleUpdated }: EditScheduleDialogProps) {
@@ -109,12 +131,12 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
         if (scheduleData.schedule_type === "regular" && scheduleData.schedule_ranges?.length > 0) {
           const range = scheduleData.schedule_ranges[0]
           setRangeDates({
-            from: new Date(range.start_date),
-            to: new Date(range.end_date),
+           from: parseDateFromDB(range.start_date),
+            to: parseDateFromDB(range.end_date),
           })
           setMultiDates([])
         } else if (scheduleData.schedule_type === "staggered" && scheduleData.schedule_dates?.length > 0) {
-          const dates = scheduleData.schedule_dates.map((d: { date: string }) => new Date(d.date))
+          const dates = scheduleData.schedule_dates.map((d: { date: string }) => parseDateFromDB(d.date))
           setMultiDates(dates)
           setRangeDates(undefined)
         }
@@ -129,115 +151,169 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
     fetchScheduleData()
   }, [scheduleId, open])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-  
-    if (!scheduleId) {
-      toast.error("No schedule selected")
-      return
-    }
+ const handleSubmit = async (e: React.FormEvent, sendEmail: boolean = false) => {
+  e.preventDefault()
 
-    const isRegularValid = scheduleType === "regular" && rangeDates?.from && rangeDates?.to
-    const isStaggeredValid = scheduleType === "staggered" && multiDates.length > 0
-  
-    if (!eventType || !course || (isBranchRequired && !branch) || (!isRegularValid && !isStaggeredValid)) {
-      toast.error("Missing Information", {
-        description: "Please fill in all required fields.",
-      })
-      return
-    }
+  if (!scheduleId) {
+    toast.error("No schedule selected")
+    return
+  }
 
-    setIsSubmitting(true)
-    const toastId = toast.loading("Updating schedule...", {
-      description: "Please wait while we save your changes.",
+  const isRegularValid = scheduleType === "regular" && rangeDates?.from && rangeDates?.to
+  const isStaggeredValid = scheduleType === "staggered" && multiDates.length > 0
+
+  if (!eventType || !course || (isBranchRequired && !branch) || (!isRegularValid && !isStaggeredValid)) {
+    toast.error("Missing Information", {
+      description: "Please fill in all required fields.",
     })
+    return
+  }
+
+  setIsSubmitting(true)
+  const toastId = toast.loading("Updating schedule...", {
+    description: sendEmail 
+      ? "Saving changes and preparing emails..." 
+      : "Please wait while we save your changes.",
+  })
+
+  try {
+    // Step 1: Update the schedule
+    const { error: scheduleError } = await supabase
+      .from("schedules")
+      .update({
+        course_id: course,
+        schedule_type: scheduleType,
+        event_type: eventType,
+        branch: branch,
+      })
+      .eq("id", scheduleId)
   
-    try {
-      // Step 1: Update the schedule
-      const { error: scheduleError } = await supabase
-        .from("schedules")
-        .update({
-          course_id: course,
-          schedule_type: scheduleType,
-          event_type: eventType,
-          branch: branch,
+    if (scheduleError) {
+      toast.error("Error Updating Schedule", {
+        id: toastId,
+        description: scheduleError.message,
+      })
+      setIsSubmitting(false)
+      return
+    }
+  
+    // Step 2: Delete existing dates (both ranges and individual dates)
+    await supabase.from("schedule_ranges").delete().eq("schedule_id", scheduleId)
+    await supabase.from("schedule_dates").delete().eq("schedule_id", scheduleId)
+  
+    // Step 3: Insert new dates based on schedule type
+    if (scheduleType === "regular" && rangeDates?.from && rangeDates?.to) {
+      const { error: rangeError } = await supabase
+        .from("schedule_ranges")
+        .insert({
+          schedule_id: scheduleId,
+          start_date: formatDateForDB(rangeDates.from),
+          end_date: formatDateForDB(rangeDates.to),
         })
-        .eq("id", scheduleId)
-    
-      if (scheduleError) {
-        toast.error("Error Updating Schedule", {
+  
+      if (rangeError) {
+        toast.error("Error Saving Range", {
           id: toastId,
-          description: scheduleError.message,
+          description: rangeError.message,
         })
         setIsSubmitting(false)
         return
       }
-    
-      // Step 2: Delete existing dates (both ranges and individual dates)
-      await supabase.from("schedule_ranges").delete().eq("schedule_id", scheduleId)
-      await supabase.from("schedule_dates").delete().eq("schedule_id", scheduleId)
-    
-      // Step 3: Insert new dates based on schedule type
-      if (scheduleType === "regular" && rangeDates?.from && rangeDates?.to) {
-        const { error: rangeError } = await supabase
-          .from("schedule_ranges")
-          .insert({
-            schedule_id: scheduleId,
-            start_date: rangeDates.from.toISOString().split("T")[0],
-            end_date: rangeDates.to.toISOString().split("T")[0],
-          })
-    
-        if (rangeError) {
-          toast.error("Error Saving Range", {
-            id: toastId,
-            description: rangeError.message,
-          })
-          setIsSubmitting(false)
-          return
-        }
+    }
+  
+    if (scheduleType === "staggered" && multiDates.length > 0) {
+      const staggeredInserts = multiDates.map((d) => ({
+        schedule_id: scheduleId,
+        date: formatDateForDB(d),
+      }))
+  
+      const { error: dateError } = await supabase
+        .from("schedule_dates")
+        .insert(staggeredInserts)
+  
+      if (dateError) {
+        toast.error("Error Saving Dates", {
+          id: toastId,
+          description: dateError.message,
+        })
+        setIsSubmitting(false)
+        return
       }
-    
-      if (scheduleType === "staggered" && multiDates.length > 0) {
-        const staggeredInserts = multiDates.map((d) => ({
-          schedule_id: scheduleId,
-          date: d.toISOString().split("T")[0],
-        }))
-    
-        const { error: dateError } = await supabase
-          .from("schedule_dates")
-          .insert(staggeredInserts)
-    
-        if (dateError) {
-          toast.error("Error Saving Dates", {
+    }
+
+    // Step 4: Send emails if requested
+    if (sendEmail) {
+      try {
+        // Fetch all trainees for this schedule
+        const { data: trainees, error: traineesError } = await supabase
+          .from("trainings")
+          .select("email, first_name, last_name")
+          .eq("schedule_id", scheduleId)
+          .not("email", "is", null)
+
+        if (traineesError) {
+          console.error("Error fetching trainees:", traineesError)
+          toast.warning("Schedule updated but failed to fetch trainees", {
             id: toastId,
-            description: dateError.message,
+            description: "Emails were not sent.",
           })
-          setIsSubmitting(false)
-          return
+        } else if (trainees && trainees.length > 0) {
+          const courseName = courseOptions.find(c => c.id === course)?.name || "Course"
+          const dateText = scheduleType === "regular" && rangeDates?.from && rangeDates?.to
+            ? `${rangeDates.from.toLocaleDateString()} - ${rangeDates.to.toLocaleDateString()}`
+            : multiDates.map(d => d.toLocaleDateString()).join(", ")
+            await fetch("/api/send-schedule-update-email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                trainees,
+                courseName,
+                dateText,
+                branch,
+                eventType,
+              }),
+            })
+
+          toast.success("Schedule Updated & Emails Sent", {
+            id: toastId,
+            description: `${courseName} updated and ${trainees.length} trainees notified.`,
+          })
+        } else {
+          toast.success("Schedule Updated", {
+            id: toastId,
+            description: `No trainees found to notify.`,
+          })
         }
+      } catch (emailError) {
+        console.error("Email error:", emailError)
+        toast.warning("Schedule updated but emails failed", {
+          id: toastId,
+          description: "The schedule was saved successfully.",
+        })
       }
-    
-      // Final Success Toast
+    } else {
+      // Final Success Toast (no email)
       const courseName = courseOptions.find(c => c.id === course)?.name || "Course"
       toast.success("Schedule Updated Successfully", {
         id: toastId,
         description: `${courseName} training schedule has been updated.`,
       })
-    
-      setIsSubmitting(false)
-      onOpenChange(false)
-      
-      // Notify parent to refresh data
-      onScheduleUpdated?.()
-    } catch (error) {
-      console.error("Unexpected error:", error)
-      toast.error("Unexpected Error", {
-        id: toastId,
-        description: "An unexpected error occurred while updating the schedule.",
-      })
-      setIsSubmitting(false)
     }
+  
+    setIsSubmitting(false)
+    onOpenChange(false)
+    
+    // Notify parent to refresh data
+    onScheduleUpdated?.()
+  } catch (error) {
+    console.error("Unexpected error:", error)
+    toast.error("Unexpected Error", {
+      id: toastId,
+      description: "An unexpected error occurred while updating the schedule.",
+    })
+    setIsSubmitting(false)
   }
+}
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -379,12 +455,57 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
             </div>
 
             <DialogFooter className="mt-6">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => onOpenChange(false)} 
+                disabled={isSubmitting}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Updating..." : "Update Schedule"}
-              </Button>
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" disabled={isSubmitting} className="gap-2">
+                    {isSubmitting ? "Updating..." : "Update Schedule"}
+                    <svg 
+                      className="w-4 h-4" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        strokeWidth={2} 
+                        d="M19 9l-7 7-7-7" 
+                      />
+                    </svg>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem 
+                    onClick={(e) => {
+                      e.preventDefault()
+                      handleSubmit(new Event('submit') as any, false)
+                    }}
+                    disabled={isSubmitting}
+                  >
+                    Save Changes Only
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={(e) => {
+                      e.preventDefault()
+                      handleSubmit(new Event('submit') as any, true)
+                    }}
+                    disabled={isSubmitting}
+                    className="gap-2"
+                  >
+                    <Mail className="w-4 h-4" />
+                    Save & Send Email to Trainees
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </DialogFooter>
           </form>
         )}

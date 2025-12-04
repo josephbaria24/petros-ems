@@ -9,6 +9,7 @@ export async function POST(req: NextRequest) {
       sendConfirmation,
       sendClassroom,
       classroomUrl,
+      groupChatLink,
     } = await req.json();
 
     const results = {
@@ -166,20 +167,17 @@ export async function POST(req: NextRequest) {
               <div class="content">
                 <p>Dear ${traineeName},</p>
                 <p>Welcome to your online training classroom! Your payment has been confirmed, and you now have access to your course materials.</p>
-                <p>Click the button below to access your online classroom:</p>
-                <div class="button-container">
-                  <a href="${classroomUrl}" class="button">Access Classroom</a>
-                </div>
-                <p>Alternatively, you can copy and paste this link into your browser:</p>
+                <p>Click the links below to access your meeting room and group chat:</p>
+                
                 <p style="background-color: #f3f4f6; padding: 10px; border-radius: 5px; word-break: break-all;">
                   ${classroomUrl}
                 </p>
-                <p><strong>Important Notes:</strong></p>
-                <ul>
-                  <li>Keep this link secure and do not share it with others</li>
-                  <li>Make sure you have a stable internet connection</li>
-                  <li>Use the latest version of your web browser for the best experience</li>
-                </ul>
+               ${groupChatLink ? `
+                  <p>You may also join the group chat for announcements and coordination:</p>
+                  <p style="background-color: #eef2ff; padding: 10px; border-radius: 5px; word-break: break-all;">
+                    ${groupChatLink}
+                  </p>
+                ` : ""}
                 <p>If you have any technical difficulties accessing the classroom, please contact our support team.</p>
                 <p>Best regards,<br><strong>Petrosphere Incorporated</strong></p>
               </div>

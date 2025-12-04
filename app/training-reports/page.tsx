@@ -312,23 +312,117 @@ export default function TrainingReportsPage() {
 
     const reader = new FileReader();
     reader.onload = async (e) => {
-      const text = e.target?.result as string;
-      // Parse CSV and insert into database
-      console.log('CSV imported:', text);
-      toast.success('CSV file uploaded successfully');
-      // Add your CSV parsing logic here
+      try {
+        const text = e.target?.result as string;
+        const lines = text.split('\n').filter(line => line.trim());
+        
+        if (lines.length < 2) {
+          toast.error('CSV file is empty or invalid');
+          return;
+        }
+
+        // Skip header row and parse data
+        const dataLines = lines.slice(1);
+        const newReports: Omit<TrainingReport, 'id'>[] = [];
+
+        for (const line of dataLines) {
+          const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+          
+          if (values.length >= 13) {
+            newReports.push({
+              cert: values[0].toLowerCase() === 'true',
+              ID: values[1].toLowerCase() === 'true',
+              ptr: values[2].toLowerCase() === 'true',
+              month: values[3] || '',
+              course: values[4] || '',
+              type: values[5] || '',
+              start_date: values[6] || '',
+              end_date: values[7] || '',
+              participants: parseInt(values[8]) || 0,
+              male: parseInt(values[9]) || 0,
+              female: parseInt(values[10]) || 0,
+              company: parseInt(values[11]) || 0,
+              notes: values[12] || '',
+            });
+          }
+        }
+
+        if (newReports.length === 0) {
+          toast.error('No valid data found in CSV');
+          return;
+        }
+
+        // Insert into database
+        const { data, error } = await supabase
+          .from('training_reports')
+          .insert(newReports)
+          .select();
+
+        if (error) {
+          toast.error('Failed to import CSV data');
+          throw error;
+        }
+
+        if (data) {
+          setReports(prev => [...prev, ...data]);
+          toast.success(`Successfully imported ${data.length} training reports`);
+        }
+      } catch (error) {
+        console.error('Error importing CSV:', error);
+        toast.error('Failed to parse CSV file');
+      }
     };
     reader.onerror = () => {
       toast.error('Failed to read CSV file');
     };
     reader.readAsText(file);
+    
+    // Reset input
+    event.target.value = '';
   };
 
   const handleExportExcel = () => {
-    // Export filtered reports to Excel
-    console.log('Exporting to Excel:', filteredReports);
-    toast.success('Exporting to Excel...');
-    // Add your Excel export logic here
+    try {
+      // Create CSV content
+      const headers = ['cert', 'ID', 'ptr', 'month', 'course', 'type', 'start_date', 'end_date', 'participants', 'male', 'female', 'company', 'notes'];
+      const csvRows = [headers.join(',')];
+
+      filteredReports.forEach(report => {
+        const row = [
+          report.cert,
+          report.ID,
+          report.ptr,
+          `"${report.month}"`,
+          `"${report.course}"`,
+          `"${report.type}"`,
+          report.start_date,
+          report.end_date,
+          report.participants,
+          report.male,
+          report.female,
+          report.company,
+          `"${report.notes}"`,
+        ];
+        csvRows.push(row.join(','));
+      });
+
+      const csvContent = csvRows.join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      
+      link.setAttribute('href', url);
+      link.setAttribute('download', `training_reports_${selectedYear}_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success(`Exported ${filteredReports.length} training reports to CSV`);
+    } catch (error) {
+      console.error('Error exporting:', error);
+      toast.error('Failed to export data');
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -686,8 +780,7 @@ export default function TrainingReportsPage() {
             </div>
           </div>
         )}
-      </div>
-      {/* Edit Dialog */}
+      </div>{/* Edit Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="lg:w-[60vw] w-full">
           <DialogHeader>
