@@ -2,10 +2,9 @@
   "name": "my-v0-project",
   "version": "0.1.0",
   "private": true,
-
   "eslintConfig": {
-  "root": true
-},
+    "root": true
+  },
   "scripts": {
     "build": "next build",
     "dev": "next dev",
@@ -49,11 +48,6 @@
     "@types/ssh2-sftp-client": "^9.0.5",
     "@types/xlsx": "^0.0.35",
     "@vercel/analytics": "latest",
-    "@visx/brush": "^3.12.0",
-    "@visx/gradient": "^3.12.0",
-    "@visx/group": "^3.12.0",
-    "@visx/pattern": "^3.12.0",
-    "@visx/xychart": "^3.12.0",
     "adm-zip": "^0.5.16",
     "autoprefixer": "^10.4.20",
     "basic-ftp": "^5.0.5",
