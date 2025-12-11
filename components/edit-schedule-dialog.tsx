@@ -1,3 +1,5 @@
+//components\edit-schedule-dialog.tsx
+
 "use client"
 
 import * as React from "react"
@@ -43,6 +45,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { supabase } from "@/lib/supabase-client"
 import { toast } from "sonner"
+import { recalculateScheduleStatus } from "@/lib/schedule-status-updater"
 
 interface EditScheduleDialogProps {
   open: boolean
@@ -241,7 +244,10 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
       }
     }
 
-    // Step 4: Send emails if requested
+    // Step 4: RECALCULATE SCHEDULE STATUS
+    await recalculateScheduleStatus(scheduleId)
+
+    // Step 5: Send emails if requested
     if (sendEmail) {
       try {
         // Fetch all trainees for this schedule
@@ -317,7 +323,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-w-full p-6">
+      <DialogContent className="sm:max-w-4xl max-w-full p-6 bg-card">
         <DialogHeader>
           <DialogTitle>Edit Training Schedule</DialogTitle>
           <DialogDescription>

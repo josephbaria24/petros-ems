@@ -7,11 +7,7 @@ import { randomUUID } from "crypto";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+
 
 // Helper: convert NextRequest -> Node-style Readable with headers
 function toNodeRequest(req: NextRequest): any {

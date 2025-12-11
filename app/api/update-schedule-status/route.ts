@@ -3,8 +3,71 @@ import { NextResponse } from 'next/server'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // Use service role key for admin access
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+// Helper function to calculate correct status based on dates
+function calculateScheduleStatus(
+  scheduleType: string,
+  scheduleRanges: any[] | null,
+  scheduleDates: any[] | null,
+  currentStatus: string
+): string {
+  // Don't auto-update cancelled schedules
+  if (currentStatus === 'cancelled') {
+    return currentStatus
+  }
+
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+
+  if (scheduleType === 'regular' && scheduleRanges?.[0]) {
+    const start = new Date(scheduleRanges[0].start_date)
+    const end = new Date(scheduleRanges[0].end_date)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(0, 0, 0, 0)
+
+    // If start date is in the future -> upcoming
+    if (now < start) {
+      return 'planned'
+    }
+    // If today is between start and end (inclusive) -> ongoing
+    if (now >= start && now <= end) {
+      return 'ongoing'
+    }
+    // If end date has passed -> finished
+    if (now > end) {
+      return 'finished'
+    }
+  } 
+  
+  if (scheduleType === 'staggered' && scheduleDates?.length) {
+    const dates = scheduleDates.map((d: any) => {
+      const date = new Date(d.date)
+      date.setHours(0, 0, 0, 0)
+      return date
+    })
+    
+    const firstDate = new Date(Math.min(...dates.map(d => d.getTime())))
+    const lastDate = new Date(Math.max(...dates.map(d => d.getTime())))
+
+    // If first date is in the future -> upcoming
+    if (now < firstDate) {
+      return 'planned'
+    }
+    // If today is between first and last date (inclusive) -> ongoing
+    if (now >= firstDate && now <= lastDate) {
+      return 'ongoing'
+    }
+    // If last date has passed -> finished
+    if (now > lastDate) {
+      return 'finished'
+    }
+  }
+
+  // Default fallback
+  return currentStatus
+}
 
 export async function POST(request: Request) {
   try {
@@ -26,7 +89,6 @@ export async function POST(request: Request) {
         schedule_ranges (start_date, end_date),
         schedule_dates (date)
       `)
-      .not('status', 'in', '("cancelled")')
 
     if (error) {
       console.error('Error fetching schedules:', error)
@@ -37,39 +99,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'No schedules found', updated: 0 })
     }
 
-    const now = new Date()
-    now.setHours(0, 0, 0, 0)
-
     const updates: { id: string; status: string; oldStatus: string }[] = []
 
     for (const schedule of schedules) {
-      let newStatus = schedule.status
       const oldStatus = schedule.status
-
-      if (schedule.schedule_type === 'regular' && schedule.schedule_ranges?.[0]) {
-        const start = new Date(schedule.schedule_ranges[0].start_date)
-        const end = new Date(schedule.schedule_ranges[0].end_date)
-        start.setHours(0, 0, 0, 0)
-        end.setHours(23, 59, 59, 999)
-
-        if (now > end) {
-          newStatus = 'finished'
-        } else if (now >= start && now <= end) {
-          newStatus = 'ongoing'
-        }
-      } else if (schedule.schedule_type === 'staggered' && schedule.schedule_dates?.length) {
-        const dates = schedule.schedule_dates.map((d: any) => new Date(d.date))
-        const firstDate = new Date(Math.min(...dates.map(d => d.getTime())))
-        const lastDate = new Date(Math.max(...dates.map(d => d.getTime())))
-        firstDate.setHours(0, 0, 0, 0)
-        lastDate.setHours(23, 59, 59, 999)
-
-        if (now > lastDate) {
-          newStatus = 'finished'
-        } else if (now >= firstDate && now <= lastDate) {
-          newStatus = 'ongoing'
-        }
-      }
+      const newStatus = calculateScheduleStatus(
+        schedule.schedule_type,
+        schedule.schedule_ranges,
+        schedule.schedule_dates,
+        oldStatus
+      )
 
       // Only update if status changed
       if (newStatus !== oldStatus) {

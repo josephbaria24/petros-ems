@@ -19,6 +19,13 @@ import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Da
 import { exportTraineeExcel } from "@/lib/exports/export-excel"
 import { exportCertificatesNew } from "@/lib/exports/export-certificate"
 import { batchAssignCertificateSerials } from "@/lib/certificate-serial"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+
 
 interface ParticipantDirectoryDialogProps {
   open: boolean
@@ -773,7 +780,7 @@ const handleDownloadCertificates = async () => {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="lg:w-[70vw] sm:w-[90vw] max-h-[90vh] overflow-y-auto pt-10">
+      <DialogContent className="lg:w-[60vw] sm:w-[90vw] max-h-[90vh] overflow-y-auto pt-10 bg-card">
         <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
           <AlertDialogContent className="max-w-sm">
             <AlertDialogHeader>
@@ -797,43 +804,120 @@ const handleDownloadCertificates = async () => {
         </AlertDialog>
 
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-white bg-primary p-2 rounded-md flex justify-between items-center">
-            Directory of Participants
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-primary-foreground/20">
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleDownloadExcel} disabled={isDownloadingDirectory}>
-                  {isDownloadingDirectory ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Preparing...</>
-                  ) : (
-                    <><Download className="mr-2 h-4 w-4" />Download Excel</>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel>Database Management</DropdownMenuLabel>
-                <DropdownMenuItem onClick={fetchDatabaseStats} disabled={isLoadingStats}>
-                  <Database className="mr-2 h-4 w-4" />View Statistics
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleBackupDatabase}>
-                  <Download className="mr-2 h-4 w-4" />Create Backup
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleResetDatabase} className="text-orange-600">
-                  <RefreshCw className="mr-2 h-4 w-4" />Reset Database
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleDeleteAllRecords} className="text-destructive">
-                  <Trash2 className="mr-2 h-4 w-4" />Delete All Records
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </DialogTitle>
-        </DialogHeader>
+  <DialogTitle className="text-lg font-semibold bg-muted/50 border p-2 rounded-md flex justify-between items-center">
+    Directory of Participants
+
+    {/* Action Button Group */}
+    <TooltipProvider>
+  <div className="flex items-center gap-2">
+
+    {/* Excel Download */}
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={handleDownloadExcel}
+          disabled={isDownloadingDirectory}
+          className="cursor-pointer"
+        >
+          {isDownloadingDirectory ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Preparing...
+            </>
+          ) : (
+            <>
+              <Download className="mr-2 h-4 w-4" />
+              Excel
+            </>
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        Download participant directory as Excel file
+      </TooltipContent>
+        </Tooltip>
+
+        {/* Database Stats */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={fetchDatabaseStats}
+              disabled={isLoadingStats}
+              className="cursor-pointer"
+            >
+              <Database className="mr-2 h-4 w-4" />
+              Stats
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            View master database statistics
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Backup */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleBackupDatabase}
+              className="cursor-pointer"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Backup
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            Create a backup of the master database
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Reset */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="text-orange-600 border-orange-600 hover:bg-orange-600 hover:text-white cursor-pointer"
+              onClick={handleResetDatabase}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Reset
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            Reset the entire database (creates backup first)
+          </TooltipContent>
+        </Tooltip>
+
+        {/* Delete All */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="destructive" 
+              size="sm"
+              onClick={handleDeleteAllRecords}
+              className="cursor-pointer"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete All
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            Delete ALL training records (dangerous)
+          </TooltipContent>
+        </Tooltip>
+
+      </div>
+    </TooltipProvider>
+
+  </DialogTitle>
+</DialogHeader>
+
 
         <div className="bg-yellow-400 dark:bg-blue-950 dark:text-white p-4 rounded-md">
           <div className="text-sm font-semibold uppercase mb-1">
@@ -886,7 +970,7 @@ const handleDownloadCertificates = async () => {
         ) : (
           <div className="max-h-[350px] overflow-y-auto border border-border rounded-md">
             <Table>
-              <TableHeader className="sticky top-0 bg-background z-10">
+              <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
                   <TableHead className="w-12">
                     <Checkbox checked={selectAll} onCheckedChange={handleSelectAll} aria-label="Select all" />

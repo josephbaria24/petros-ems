@@ -97,9 +97,11 @@ export default function EnrollmentBrushChartRecharts({
                 {/* BRUSH */}
                 <Brush
                   dataKey="date"
-                  travellerWidth={12}
-                  height={brushChartHeight - 20}
+                  radius={14}
+                  travellerWidth={10}
+                  height={brushChartHeight - 10}
                   stroke="#fff"
+                  fill="#141454"
                   startIndex={Math.floor(data.length * 0.2)}
                   endIndex={Math.floor(data.length * 0.6)}
                   onChange={(range) => {

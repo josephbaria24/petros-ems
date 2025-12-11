@@ -85,6 +85,33 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     })
   }
 
+
+  function formatScheduleDateRange(start: string, end: string) {
+  const s = new Date(start)
+  const e = new Date(end)
+
+  const sameMonth = s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()
+
+  const fullMonth = s.toLocaleString("en-US", { month: "long" })
+  const shortMonth = s.toLocaleString("en-US", { month: "short" })
+  const endShortMonth = e.toLocaleString("en-US", { month: "short" })
+
+  if (s.toDateString() === e.toDateString()) {
+    // Single date
+    return `${fullMonth} ${s.getDate()}, ${s.getFullYear()}`
+  }
+
+  if (sameMonth) {
+    // Example: November 21–25, 2025
+    return `${fullMonth} ${s.getDate()}–${e.getDate()}, ${s.getFullYear()}`
+  }
+
+  // Example: Nov. 29, 2025 – Dec. 2, 2025
+  return `${shortMonth}. ${s.getDate()}, ${s.getFullYear()} – ${endShortMonth}. ${e.getDate()}, ${e.getFullYear()}`
+}
+
+
+
   const handleEdit = (participant: Participant) => {
     setSelectedParticipant(participant)
     setEditDialogOpen(true)
@@ -234,10 +261,12 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           let scheduleDisplay = ""
           if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length) {
             const range = schedule.schedule_ranges[0]
-            scheduleDisplay = `${new Date(range.start_date).toLocaleDateString()} – ${new Date(range.end_date).toLocaleDateString()}`
+            scheduleDisplay = formatScheduleDateRange(range.start_date, range.end_date)
           } else if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length) {
             scheduleDisplay = schedule.schedule_dates
-              .map((d: { date: string }) => new Date(d.date).toLocaleDateString())
+              .map((d: { date: string }) =>
+                formatScheduleDateRange(d.date, d.date)
+              )
               .join(", ")
           }
 

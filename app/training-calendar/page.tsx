@@ -1,3 +1,5 @@
+//app\training-calendar\page.tsx
+
 "use client"
 
 import { useState, useEffect } from 'react'
@@ -9,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabase-client'
 import Image from "next/image"
 import { useRouter } from 'next/navigation'
+import CourseCoverUploadDialog from '@/components/course-cover-upload'
 import { EditScheduleDialog } from '@/components/edit-schedule-dialog'
 import {
   DropdownMenu,
@@ -26,12 +29,16 @@ type ScheduleEvent = {
   endDate: Date
   dates?: Date[]
   scheduleType: 'regular' | 'staggered'
+  cover_image?: string
+  course_id: string | null
+   
 }
 
 type NewsItem = {
-  title: string
-  image: string
-  date: string
+  id?: string;   // id is optional so new items can be created
+  title: string;
+  image: string;
+  date: string;
 }
 
 // News Carousel Component
@@ -53,7 +60,7 @@ function NewsCarousel({
 
   return (
     <div className="relative">
-      <div className="p-4 bg-primary text-primary-foreground flex justify-between items-center">
+      <div className="p-2 bg-secondary text-primary-foreground flex justify-between items-center">
         <h3 className="font-bold text-sm">Latest News</h3>
         <Button
           variant="ghost"
@@ -66,7 +73,7 @@ function NewsCarousel({
         </Button>
       </div>
       
-      <div className="relative h-48 overflow-hidden">
+      <div className="relative h-62 overflow-hidden">
         {news.map((item, idx) => (
           <div
             key={idx}
@@ -156,6 +163,9 @@ function NewsEditor({
       setItems(items.filter((_, i) => i !== index))
     }
   }
+
+
+
 
   return (
     <div className="space-y-4 p-4">
@@ -249,6 +259,12 @@ export default function TrainingCalendar() {
   const [showModal, setShowModal] = useState(false)
   const [hoveredEventId, setHoveredEventId] = useState<string | null>(null)
   const [isEditingNews, setIsEditingNews] = useState(false)
+  const [showCoverUploadDialog, setShowCoverUploadDialog] = useState(false)
+  const handleCoverUploadSuccess = (newUrl: string) => {
+    setShowCoverUploadDialog(false)
+    fetchSchedules() // Refresh the calendar
+    setShowModal(false) // Close the event modal
+  }
   const [newsItems, setNewsItems] = useState<NewsItem[]>([
     {
       title: "New HSE Training Program Launched",
@@ -275,16 +291,16 @@ export default function TrainingCalendar() {
     fetchSchedules()
   }, [])
 
-  const fetchNews = async () => {
-    const { data, error } = await supabase
-      .from("news_items")
-      .select("*")
-      .order("created_at", { ascending: false })
+const fetchNews = async () => {
+  const { data, error } = await supabase
+    .from("news_items")
+    .select("*")
+    .order("created_at", { ascending: false })
 
-    if (!error && data && data.length > 0) {
-      setNewsItems(data)
-    }
+  if (!error && data) {
+    setNewsItems(data) // now includes id
   }
+}
 
   const fetchSchedules = async () => {
     setLoading(true)
@@ -295,7 +311,7 @@ export default function TrainingCalendar() {
         branch,
         status,
         schedule_type,
-        courses (name),
+        courses (id, name, cover_image),
         schedule_ranges (start_date, end_date),
         schedule_dates (date)
       `)
@@ -304,7 +320,9 @@ export default function TrainingCalendar() {
       const mapped = data
         .map((s: any): ScheduleEvent | null => {
           const course = s.courses?.name || 'Unknown'
-      
+          const cover_image = s.courses?.cover_image || null
+          const course_id = s.courses?.id || null
+          
           if (s.schedule_type === 'regular' && s.schedule_ranges?.[0]) {
             return {
               id: s.id,
@@ -313,7 +331,9 @@ export default function TrainingCalendar() {
               status: s.status || 'planned',
               startDate: new Date(s.schedule_ranges[0].start_date + 'T00:00:00'),
               endDate: new Date(s.schedule_ranges[0].end_date + 'T00:00:00'),
-              scheduleType: 'regular'
+              scheduleType: 'regular',
+              cover_image: cover_image || `/course-covers/default.png`,
+              course_id           
             }
           }
       
@@ -327,7 +347,9 @@ export default function TrainingCalendar() {
               startDate: dates[0],
               endDate: dates[dates.length - 1],
               dates,
-              scheduleType: 'staggered'
+              scheduleType: 'staggered',
+              cover_image: cover_image || `/course-covers/default.png`,
+              course_id
             }
           }
       
@@ -340,18 +362,77 @@ export default function TrainingCalendar() {
     setLoading(false)
   }
 
-  const handleSaveNews = async (items: NewsItem[]) => {
-    await supabase.from("news_items").delete().neq("id", "000")
-    const { error } = await supabase.from("news_items").insert(items)
+const handleSaveNews = async (items: NewsItem[]) => {
+  try {
+    // Split into updates and inserts
+    const itemsToUpdate = items.filter(item => item.id);
+    const itemsToInsert = items.filter(item => !item.id);
 
-    if (error) {
-      console.error("Failed to save news:", error)
-      return
+    // Detect deleted items
+    const existingIds = newsItems.map(n => n.id).filter(Boolean);
+    const newIds = itemsToUpdate.map(n => n.id).filter(Boolean);
+    const deletedIds = existingIds.filter(id => !newIds.includes(id));
+
+    // Delete removed items
+    if (deletedIds.length > 0) {
+      const { error: deleteError } = await supabase
+        .from("news_items")
+        .delete()
+        .in("id", deletedIds);
+      
+      if (deleteError) {
+        console.error("Failed to delete news items:", deleteError);
+        alert("Failed to delete some items");
+        return;
+      }
     }
 
-    setNewsItems(items)
-    setIsEditingNews(false)
+    // Update existing items
+    if (itemsToUpdate.length > 0) {
+      const { error: updateError } = await supabase
+        .from("news_items")
+        .upsert(itemsToUpdate.map(item => ({
+          id: item.id,
+          title: item.title,
+          image: item.image,
+          date: item.date
+        })), { onConflict: "id" });
+      
+      if (updateError) {
+        console.error("Failed to update news items:", updateError);
+        alert("Failed to update items");
+        return;
+      }
+    }
+
+    // Insert new items
+    if (itemsToInsert.length > 0) {
+      const { error: insertError } = await supabase
+        .from("news_items")
+        .insert(itemsToInsert.map(item => ({
+          title: item.title,
+          image: item.image,
+          date: item.date
+        })));
+      
+      if (insertError) {
+        console.error("Failed to insert news items:", insertError);
+        alert("Failed to add new items");
+        return;
+      }
+    }
+
+    // Reload IDs from database
+    await fetchNews();
+    setIsEditingNews(false);
+    
+    // Show success message
+    alert("News items saved successfully!");
+  } catch (err) {
+    console.error("Unexpected error saving news:", err);
+    alert("An unexpected error occurred");
   }
+};
 
   const handleEditSchedule = () => {
     if (selectedEvent) {
@@ -593,6 +674,45 @@ export default function TrainingCalendar() {
     return cells
   }
 
+
+
+
+
+
+  
+const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>, event: ScheduleEvent) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append("image", file);
+
+  const res = await fetch("/api/upload", { method: "POST", body: formData });
+  const result = await res.json();
+
+  if (!result.url) {
+    alert("Upload failed");
+    return;
+  }
+
+  // Save into SUPABASE using course_id
+  const { error } = await supabase
+    .from("courses")
+    .update({ cover_image: result.url })
+    .eq("id", event.course_id);
+
+  if (error) {
+    console.error(error);
+    alert("Failed to save cover image.");
+    return;
+  }
+
+  fetchSchedules(); // Refresh UI
+  alert("Cover photo updated!");
+};
+
+
+
   const renderListView = () => {
     const eventsByCourse: { [key: string]: ScheduleEvent[] } = {}
     
@@ -774,8 +894,8 @@ export default function TrainingCalendar() {
         </div>
 
         {/* Right Sidebar */}
-        <div className="w-80 space-y-6">
-          <Card className="overflow-hidden">
+        <div className="w-100 space-y-2 ">
+          <Card className="overflow-y-auto">
             {isEditingNews ? (
               <NewsEditor
                 news={newsItems}
@@ -815,33 +935,51 @@ export default function TrainingCalendar() {
       {showModal && selectedEvent && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeModal}>
           <div className="bg-card rounded-lg max-w-lg w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b flex items-start justify-between">
-              <h2 className="text-xl font-bold">{selectedEvent.course}</h2>
-              <div className="flex items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
-                      <MoreVertical className="w-5 h-5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={handleEditSchedule}>
-                      <Edit2 className="w-4 h-4 mr-2" />
-                      Edit Schedule
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => {
-                      console.log("Edit cover photo for", selectedEvent.id)
-                    }}>
-                      <ImageIcon className="w-4 h-4 mr-2" />
-                      Edit Cover Photo
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button variant="ghost" size="icon" onClick={closeModal}>
-                  <X className="w-5 h-5" />
-                </Button>
-              </div>
-            </div>
+            <div className="p-6 border-b space-y-4">
+  {/* Cover Preview */}
+  <div className="relative w-full h-40 rounded-lg overflow-hidden border bg-muted">
+    <Image
+      src={selectedEvent.cover_image || "/course-covers/default.png"}
+      alt={`${selectedEvent.course} cover`}
+      fill
+      className="object-cover"
+    />
+  </div>
+
+  {/* Title + Actions */}
+  <div className="flex items-center justify-between">
+    <h2 className="text-xl font-bold">{selectedEvent.course}</h2>
+
+    <div className="flex items-center gap-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon">
+            <MoreVertical className="w-5 h-5" />
+          </Button>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={handleEditSchedule}>
+            <Edit2 className="w-4 h-4 mr-2" />
+            Edit Schedule
+          </DropdownMenuItem>
+
+          {/* File Upload */}
+            <DropdownMenuItem onClick={() => setShowCoverUploadDialog(true)}>
+              <ImageIcon className="w-4 h-4 mr-2" />
+              Edit Cover Photo
+            </DropdownMenuItem>
+
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Button variant="ghost" size="icon" onClick={closeModal}>
+        <X className="w-5 h-5" />
+      </Button>
+    </div>
+  </div>
+</div>
+
             
             <div className="p-6 space-y-4">
               <div>
@@ -885,6 +1023,14 @@ export default function TrainingCalendar() {
           </div>
         </div>
       )}
+      <CourseCoverUploadDialog
+  open={showCoverUploadDialog}
+  onOpenChange={setShowCoverUploadDialog}
+  courseId={selectedEvent?.course_id || null}
+  courseName={selectedEvent?.course || ''}
+  currentCoverUrl={selectedEvent?.cover_image}
+  onUploadSuccess={handleCoverUploadSuccess}
+/>
 
       {/* Edit Schedule Dialog */}
       <EditScheduleDialog
@@ -893,6 +1039,7 @@ export default function TrainingCalendar() {
         scheduleId={editingScheduleId}
         onScheduleUpdated={handleScheduleUpdated}
       />
+      
     </div>
   )
 }

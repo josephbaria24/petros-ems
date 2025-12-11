@@ -27,6 +27,7 @@ type ScheduleEvent = {
   endDate: Date
   dates?: Date[]
   scheduleType: 'regular' | 'staggered'
+  cover_image?: string | null
 }
 
 // News Carousel Component
@@ -63,11 +64,11 @@ function NewsCarousel() {
 
   return (
     <div className="relative">
-      <div className="p-4 bg-primary text-primary-foreground">
-        <h3 className="font-bold text-sm">Latest News</h3>
+      <div className="p-2 bg-card ">
+        <h3 className="font-bold text-lg">Latest News</h3>
       </div>
 
-      <div className="relative h-48 overflow-hidden">
+      <div className="relative h-62 overflow-hidden">
         {news.map((item, idx) => (
           <div
             key={idx}
@@ -128,60 +129,62 @@ export default function TrainingCalendar() {
     fetchSchedules()
   }, [])
 
-  const fetchSchedules = async () => {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('schedules')
-      .select(`
-        id,
-        branch,
-        status,
-        schedule_type,
-        courses (name),
-        schedule_ranges (start_date, end_date),
-        schedule_dates (date)
-      `)
+const fetchSchedules = async () => {
+  setLoading(true)
+  const { data, error } = await supabase
+    .from('schedules')
+    .select(`
+      id,
+      branch,
+      status,
+      schedule_type,
+      courses (name, cover_image),
+      schedule_ranges (start_date, end_date),
+      schedule_dates (date)
+    `)
 
-    if (!error && data) {
-        const mapped = data
-        .map((s: any): ScheduleEvent | null => {
-          const course = s.courses?.name || 'Unknown'
-      
-          if (s.schedule_type === 'regular' && s.schedule_ranges?.[0]) {
-            return {
-              id: s.id,
-              course,
-              branch: s.branch,
-              status: s.status || 'planned',
-              startDate: new Date(s.schedule_ranges[0].start_date),
-              endDate: new Date(s.schedule_ranges[0].end_date),
-              scheduleType: 'regular'
-            }
+  if (!error && data) {
+    const mapped = data
+      .map((s: any): ScheduleEvent | null => {
+        const course = s.courses?.name || 'Unknown'
+        const cover_image = s.courses?.cover_image || null
+        
+        if (s.schedule_type === 'regular' && s.schedule_ranges?.[0]) {
+          return {
+            id: s.id,
+            course,
+            branch: s.branch,
+            status: s.status || 'planned',
+            startDate: new Date(s.schedule_ranges[0].start_date),
+            endDate: new Date(s.schedule_ranges[0].end_date),
+            scheduleType: 'regular',
+            cover_image
           }
-      
-          if (s.schedule_type === 'staggered' && s.schedule_dates?.length) {
-            const dates = s.schedule_dates.map((d: any) => new Date(d.date))
-            return {
-              id: s.id,
-              course,
-              branch: s.branch,
-              status: s.status || 'planned',
-              startDate: dates[0],
-              endDate: dates[dates.length - 1],
-              dates,
-              scheduleType: 'staggered'
-            }
+        }
+    
+        if (s.schedule_type === 'staggered' && s.schedule_dates?.length) {
+          const dates = s.schedule_dates.map((d: any) => new Date(d.date))
+          return {
+            id: s.id,
+            course,
+            branch: s.branch,
+            status: s.status || 'planned',
+            startDate: dates[0],
+            endDate: dates[dates.length - 1],
+            dates,
+            scheduleType: 'staggered',
+            cover_image
           }
-      
-          return null
-        })
-        .filter((event): event is ScheduleEvent => event !== null)
-      
-      setEvents(mapped)
-      
-    }
-    setLoading(false)
+        }
+    
+        return null
+      })
+      .filter((event): event is ScheduleEvent => event !== null)
+    
+    setEvents(mapped)
   }
+  setLoading(false)
+}
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December']
@@ -257,7 +260,9 @@ export default function TrainingCalendar() {
     if (event.status === 'cancelled') return '#ef4444'    // red
     if (event.status === 'finished') return '#94a3b8'     // gray
     if (event.status === 'ongoing') return '#ed6205'      // orange
-    if (event.status === 'confirmed' || event.status === 'planned') return '#facc15' // yellow
+    
+    // Display 'planned' and 'confirmed' as upcoming (yellow)
+    if (event.status === 'planned' || event.status === 'confirmed') return '#facc15' // yellow
     
     // Fallback: calculate based on dates if status is unknown
     const now = new Date()
@@ -276,11 +281,14 @@ export default function TrainingCalendar() {
   }
 
   const getStatusLabel = (event: ScheduleEvent) => {
-    const now = new Date()
-    
+    // Display 'planned' and 'confirmed' as 'Upcoming'
+    if (event.status === 'planned' || event.status === 'confirmed') return 'Upcoming'
     if (event.status === 'finished') return 'Finished'
     if (event.status === 'cancelled') return 'Cancelled'
+    if (event.status === 'ongoing') return 'Ongoing'
     
+    // Fallback based on dates
+    const now = new Date()
     if (now > event.endDate) return 'Finished'
     if (now >= event.startDate && now <= event.endDate) return 'Ongoing'
     return 'Upcoming'
@@ -355,6 +363,7 @@ export default function TrainingCalendar() {
               : eventEnd.getDate() === day && eventEnd.getMonth() === currentDate.getMonth()
             
               const color = getStatusColor(event)
+              const displayStatus = getStatusLabel(event)
               
               return (
                 <div
@@ -377,7 +386,7 @@ export default function TrainingCalendar() {
                   title={`${event.course} - ${event.branch}`}
                 >
                   <div className="truncate">
-                    {isStart && `${event.branch} ${event.course} - ${event.status}`}
+                    {isStart && `${event.branch} ${event.course} - ${displayStatus}`}
                   </div>
                 </div>
               )
@@ -594,7 +603,7 @@ export default function TrainingCalendar() {
         </div>
 
         {/* Right Sidebar */}
-        <div className="w-80 space-y-6">
+        <div className="w-100 space-y-6">
           {/* News Section */}
           <Card className="overflow-hidden">
             <NewsCarousel />
@@ -615,8 +624,8 @@ export default function TrainingCalendar() {
                 <a href="mailto:info@petrosphere.com.ph" className="block text-blue-600 dark:text-blue-400 hover:underline">
                   info@petrosphere.com.ph
                 </a>
-                <a href="tel:+6348433060" className="block text-blue-600 dark:text-blue-400 hover:underline">
-                  (048) 433 0601
+                <a href="tel:+639177087994" className="block text-blue-600 dark:text-blue-400 hover:underline">
+                  0917-708-7994 - GLOBE
                 </a>
                 <a href="https://www.petrosphere.com.ph" target="_blank" rel="noopener noreferrer" className="block text-blue-600 dark:text-blue-400 hover:underline">
                   www.petrosphere.com.ph
@@ -642,7 +651,7 @@ export default function TrainingCalendar() {
           <div className="relative bg-black rounded-2xl overflow-hidden max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="relative w-full h-[580px]">
               <Image
-                src={`/course-covers/${selectedEvent.course.toLowerCase()}.png`}
+                src={selectedEvent.cover_image || `/course-covers/default.png`}
                 onError={(e) => {
                   e.currentTarget.src = '/course-covers/default.png'
                 }}
