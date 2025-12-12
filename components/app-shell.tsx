@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase-client"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { Suspense } from "react"
+import { cn } from "@/lib/utils"
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -15,7 +16,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   // Define which routes are public (don't require auth)
-  const publicRoutes = ["/login", "/auth/callback", "/guest", "/reupload"]
+  const publicRoutes = ["/login", "/auth/callback", "/guest", "/reupload", "/upload-receipt"]
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
   
   // Define which routes should hide sidebar and header
@@ -80,6 +81,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (!isPublicRoute && !isAuthenticated) {
     return null
   }
+const isFullBleed = pathname.startsWith("/upload-receipt")
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -87,7 +89,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {!isGuestPage && isAuthenticated && <AppSidebar />}
         <div className="flex flex-1 flex-col overflow-hidden">
           {!isGuestPage && isAuthenticated && <AppHeader />}
-          <main className="flex-1 overflow-y-auto bg-background p-6">{children}</main>
+          <main
+            className={cn(
+              "flex-1 overflow-y-auto",
+              isFullBleed ? "p-0 bg-transparent" : "p-6 bg-background"
+            )}
+          >
+            {children}
+          </main>
         </div>
       </Suspense>
     </div>

@@ -6,6 +6,7 @@ import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "sonner" // ✅ Fixed import
 import AppShell from "@/components/app-shell"
+import { headers } from "next/headers"
 
 const poppins = Geist({
   subsets: ["latin"],

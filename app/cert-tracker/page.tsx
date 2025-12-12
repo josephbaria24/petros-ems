@@ -664,7 +664,7 @@ const CertificateTracker = () => {
                         <div key={index} className="flex items-start mb-4 last:mb-0">
                           {/* Timeline line */}
                           {index < currentStages.length - 1 && (
-                            <div className="absolute left-[9px] top-6 w-0.5 h-8 bg-gray-200" />
+                            <div className="absolute left-[7px] top-6 w-0.5 h-8 bg-gray-200" />
                           )}
                           
                           {/* Icon */}

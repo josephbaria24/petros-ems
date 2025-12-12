@@ -61,14 +61,14 @@ function NewsCarousel({
   return (
     <div className="relative">
       <div className="p-2 bg-secondary text-primary-foreground flex justify-between items-center">
-        <h3 className="font-bold text-sm">Latest News</h3>
+        <h3 className="font-bold text-sm text-accent-foreground">Latest News</h3>
         <Button
           variant="ghost"
           size="sm"
           onClick={onEdit}
-          className="h-8 gap-2 text-primary-foreground hover:bg-primary-foreground/20"
+          className="h-8 gap-2 hover:bg-primary-foreground/20 text-accent-foreground"
         >
-          <Edit2 className="w-4 h-4" />
+          <Edit2 className="w-4 h-4 text-accent-foreground" />
           Edit News
         </Button>
       </div>

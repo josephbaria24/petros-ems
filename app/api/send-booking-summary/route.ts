@@ -35,6 +35,19 @@ export async function POST(req: Request) {
             <p style="margin: 0.25rem 0;"><strong>Account Name:</strong> PETROSPHERE INCORPORATED</p>
             <p style="margin: 0.25rem 0;"><strong>Account Number:</strong> 3481 0038 99</p>
           </div>
+          
+          <!-- ✅ ADDED: Receipt Upload Link -->
+          <div style="margin-top: 1rem; padding: 1rem; background-color: #dbeafe; border-radius: 0.5rem; border: 2px solid #3b82f6;">
+            <p style="font-weight: 600; color: #1e3a8a; margin-bottom: 0.5rem;">📤 After Payment:</p>
+            <p style="margin: 0.5rem 0; color: #1e40af;">Upload your payment receipt for faster verification:</p>
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}/upload-receipt" 
+               style="display: inline-block; margin-top: 0.5rem; padding: 0.75rem 1.5rem; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 0.5rem; font-weight: 600;">
+              Upload Receipt Now
+            </a>
+            <p style="margin-top: 0.5rem; font-size: 0.875rem; color: #4b5563;">
+              Use your booking reference: <strong style="color: #1e3a8a;">${bookingReference}</strong>
+            </p>
+          </div>
         </div>
       `;
     } else if (paymentInfo.paymentMethod === "GCASH") {
@@ -53,6 +66,19 @@ export async function POST(req: Request) {
             <li>Download receipt and keep it for your records.</li>
           </ol>
           <p style="margin-top: 0.75rem; font-size: 0.875rem; color: #4b5563;">If you have questions, feel free to contact us at 0917 708 7994.</p>
+          
+          <!-- ✅ ADDED: Receipt Upload Link -->
+          <div style="margin-top: 1rem; padding: 1rem; background-color: #dbeafe; border-radius: 0.5rem; border: 2px solid #3b82f6;">
+            <p style="font-weight: 600; color: #1e3a8a; margin-bottom: 0.5rem;">📤 After Payment:</p>
+            <p style="margin: 0.5rem 0; color: #1e40af;">Upload your GCash receipt for faster verification:</p>
+            <a href="${process.env.NEXT_PUBLIC_APP_URL}/upload-receipt" 
+               style="display: inline-block; margin-top: 0.5rem; padding: 0.75rem 1.5rem; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 0.5rem; font-weight: 600;">
+              Upload Receipt Now
+            </a>
+            <p style="margin-top: 0.5rem; font-size: 0.875rem; color: #4b5563;">
+              Use your booking reference: <strong style="color: #1e3a8a;">${bookingReference}</strong>
+            </p>
+          </div>
         </div>
       `;
     } else if (paymentInfo.paymentMethod === "COUNTER") {
@@ -229,6 +255,7 @@ export async function POST(req: Request) {
               <h3 style="color: #1e3a8a; margin: 0 0 0.75rem 0; font-size: 1rem;">📋 Next Steps:</h3>
               <ol style="margin: 0; padding-left: 1.25rem; color: #374151; line-height: 1.6;">
                 <li>Complete your payment using the instructions above</li>
+                <li>Upload your payment receipt using the link provided</li>
                 <li>Keep your booking reference <strong>${bookingReference}</strong> for future inquiries</li>
                 <li>You will receive a confirmation once your payment is verified</li>
                 <li>Arrive at the venue 15 minutes before the training starts</li>
@@ -239,7 +266,7 @@ export async function POST(req: Request) {
             <div style="background-color: #f9fafb; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem;">
               <h3 style="color: #111827; margin: 0 0 0.75rem 0; font-size: 1rem;">📞 Need Help?</h3>
               <p style="margin: 0.25rem 0; color: #4b5563; font-size: 0.875rem;">
-                <strong>Phone:</strong> (048) 433 0601
+                <strong>Phone:</strong> Globe/TM 0917-708-7994
               </p>
               <p style="margin: 0.25rem 0; color: #4b5563; font-size: 0.875rem;">
                 <strong>Email:</strong> info@petrosphere.com.ph

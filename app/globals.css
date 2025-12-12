@@ -41,7 +41,7 @@
 
 .dark {
   --blue-dark: #141454;
-  --background: #000000;
+  --background: #121212;
   --foreground: #ffcf14;
   --card: #161824;
   --card-foreground: #f0f0fc;
@@ -117,11 +117,32 @@
 }
 
 @layer base {
+    
   * {
     @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
+  }
+  
+}
+@layer base {
+  button,
+  [role="button"],
+  a,
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  summary,
+  label {
+    cursor: pointer;
+  }
+
+  /* Disabled states should NOT show pointer */
+  button:disabled,
+  input:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
   }
 }
 
