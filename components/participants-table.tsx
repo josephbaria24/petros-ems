@@ -1,4 +1,5 @@
-//components\participants-table.tsx
+//components\participants-table.tsx - PART 1 OF 3
+// Copy this entire file first
 
 "use client"
 
@@ -52,6 +53,8 @@ type Participant = {
   status: string
   type: string
   submissionCount: number
+  sortDate?: Date | null
+  scheduleMonth?: string
 }
 
 interface ParticipantsTableProps {
@@ -64,6 +67,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [data, setData] = React.useState<Participant[]>([])
   const [loading, setLoading] = React.useState(true)
+  const [globalFilter, setGlobalFilter] = React.useState("")
   
   // Alert dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
@@ -85,32 +89,33 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     })
   }
 
-
   function formatScheduleDateRange(start: string, end: string) {
-  const s = new Date(start)
-  const e = new Date(end)
+    const s = new Date(start)
+    const e = new Date(end)
 
-  const sameMonth = s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()
+    const sameMonth = s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()
 
-  const fullMonth = s.toLocaleString("en-US", { month: "long" })
-  const shortMonth = s.toLocaleString("en-US", { month: "short" })
-  const endShortMonth = e.toLocaleString("en-US", { month: "short" })
+    const fullMonth = s.toLocaleString("en-US", { month: "long" })
+    const shortMonth = s.toLocaleString("en-US", { month: "short" })
+    const endShortMonth = e.toLocaleString("en-US", { month: "short" })
 
-  if (s.toDateString() === e.toDateString()) {
-    // Single date
-    return `${fullMonth} ${s.getDate()}, ${s.getFullYear()}`
+    if (s.toDateString() === e.toDateString()) {
+      // Single date
+      return `${fullMonth} ${s.getDate()}, ${s.getFullYear()}`
+    }
+
+    if (sameMonth) {
+      // Example: November 21–25, 2025
+      return `${fullMonth} ${s.getDate()}–${e.getDate()}, ${s.getFullYear()}`
+    }
+
+    // Example: Nov. 29, 2025 – Dec. 2, 2025
+    return `${shortMonth}. ${s.getDate()}, ${s.getFullYear()} – ${endShortMonth}. ${e.getDate()}, ${e.getFullYear()}`
   }
 
-  if (sameMonth) {
-    // Example: November 21–25, 2025
-    return `${fullMonth} ${s.getDate()}–${e.getDate()}, ${s.getFullYear()}`
+  function getScheduleMonth(date: Date): string {
+    return date.toLocaleString("en-US", { month: "long", year: "numeric" })
   }
-
-  // Example: Nov. 29, 2025 – Dec. 2, 2025
-  return `${shortMonth}. ${s.getDate()}, ${s.getFullYear()} – ${endShortMonth}. ${e.getDate()}, ${e.getFullYear()}`
-}
-
-
 
   const handleEdit = (participant: Participant) => {
     setSelectedParticipant(participant)
@@ -121,6 +126,9 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     setSelectedParticipant(participant)
     setDeleteDialogOpen(true)
   }
+
+// PART 2 OF 3 - Continue from Part 1
+// Paste this directly after Part 1
 
   const handleDeleteConfirm = async () => {
     if (!selectedParticipant) return
@@ -250,6 +258,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       setData([])
     } else {
       console.log("Fetched schedules data:", data)
+      const now = new Date()
       const mapped: Participant[] = (data ?? [])
         .map((schedule) => {
           const courseName = schedule.courses?.name ?? "Unknown Course"
@@ -259,15 +268,22 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           const scheduleStatus = schedule.status ?? "planned"
 
           let scheduleDisplay = ""
+          let sortDate: Date | null = null
+          let scheduleMonth: string | undefined = undefined
+          
           if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length) {
             const range = schedule.schedule_ranges[0]
             scheduleDisplay = formatScheduleDateRange(range.start_date, range.end_date)
+            sortDate = new Date(range.start_date)
+            scheduleMonth = getScheduleMonth(sortDate)
           } else if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length) {
             scheduleDisplay = schedule.schedule_dates
               .map((d: { date: string }) =>
                 formatScheduleDateRange(d.date, d.date)
               )
               .join(", ")
+            sortDate = new Date(schedule.schedule_dates[0].date)
+            scheduleMonth = getScheduleMonth(sortDate)
           }
 
           return {
@@ -278,9 +294,25 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
             status: scheduleStatus,
             type,
             submissionCount: schedule.trainings?.length ?? 0,
+            sortDate,
+            scheduleMonth,
           }
         })
-        .filter((item): item is Participant => item !== null)
+        .sort((a, b) => {
+          if (!a.sortDate && !b.sortDate) return 0
+          if (!a.sortDate) return 1
+          if (!b.sortDate) return -1
+          
+          const aFuture = a.sortDate >= now
+          const bFuture = b.sortDate >= now
+          
+          // Both future: sort ascending (nearest first)
+          if (aFuture && bFuture) return a.sortDate.getTime() - b.sortDate.getTime()
+          // Both past: sort descending (most recent first)
+          if (!aFuture && !bFuture) return b.sortDate.getTime() - a.sortDate.getTime()
+          // One future, one past: future comes first
+          return aFuture ? -1 : 1
+        })
 
       setData(mapped)
     }
@@ -292,19 +324,13 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     fetchTrainings()
   }, [status, refreshTrigger, fetchTrainings])
 
+// PART 3 OF 3 - Continue from Part 2
+// Paste this directly after Part 2
+
   const columns: ColumnDef<Participant>[] = [
     {
       accessorKey: "course",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="hover:bg-muted"
-        >
-          Course
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
+      header: "Course",
       cell: ({ row }) => {
         const submissionCount = row.original.submissionCount
         return (
@@ -312,7 +338,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
             <div className="font-medium text-card-foreground">{row.getValue("course")}</div>
             <div className="flex gap-2">
               <Link
-                href={`/submissions?scheduleId=${row.original.id}`}
+                href={`/submissions?scheduleId=${row.original.id}&from=${status}`}
                 className="flex items-center gap-1 text-xs hover:bg-muted rounded-md px-2 py-1.5 cursor-pointer"
               >
                 <FileText className="h-3 w-3" />
@@ -350,30 +376,12 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     },
     {
       accessorKey: "branch",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="hover:bg-muted"
-        >
-          Branch
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
+      header: "Branch",
       cell: ({ row }) => <div className="text-card-foreground">{row.getValue("branch")}</div>,
     },
     {
       accessorKey: "schedule",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="hover:bg-muted"
-        >
-          Schedule
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      ),
+      header: "Schedule",
       cell: ({ row }) => <div className="text-card-foreground">{row.getValue("schedule")}</div>,
     },
     {
@@ -456,11 +464,41 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onGlobalFilterChange: setGlobalFilter,
+    globalFilterFn: (row, columnId, filterValue) => {
+      const search = filterValue.toLowerCase()
+      
+      // Search in course, branch, schedule (including month names), status, and type
+      const course = String(row.getValue("course")).toLowerCase()
+      const branch = String(row.getValue("branch")).toLowerCase()
+      const schedule = String(row.getValue("schedule")).toLowerCase()
+      const status = String(row.getValue("status")).toLowerCase()
+      const type = String(row.getValue("type")).toLowerCase()
+      
+      return course.includes(search) || 
+             branch.includes(search) || 
+             schedule.includes(search) ||
+             status.includes(search) ||
+             type.includes(search)
+    },
     state: {
       sorting,
       columnFilters,
+      globalFilter,
     },
   })
+
+  // Get unique months from data for the filter
+  const uniqueMonths = React.useMemo(() => {
+    const months = data
+      .map(d => d.scheduleMonth)
+      .filter((month): month is string => month !== undefined)
+    return Array.from(new Set(months)).sort((a, b) => {
+      const dateA = new Date(a)
+      const dateB = new Date(b)
+      return dateB.getTime() - dateA.getTime() // Most recent first
+    })
+  }, [data])
 
   if (loading) {
     return <Card className="p-6">Loading {status === "all" ? "all" : status} schedules...</Card>
@@ -468,15 +506,83 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
 
   return (
     <>
-      <Card className="p-6 border-0 shadow-md">
-        <div className="flex items-center justify-between mb-4">
+      <Card className="p-3 border-0 shadow-md">
+        <div className="flex items-center justify-between mb-1">
           <Input
-            placeholder="Filter courses..."
-            value={(table.getColumn("course")?.getFilterValue() as string) ?? ""}
-            onChange={(event) => table.getColumn("course")?.setFilterValue(event.target.value)}
-            className="max-w-sm"
+            placeholder="Search courses, branches, schedules, status, or types..."
+            value={globalFilter ?? ""}
+            onChange={(event) => setGlobalFilter(event.target.value)}
+            className="max-w-md"
           />
           <div className="flex items-center gap-2">
+            <Select
+              value={(table.getColumn("course")?.getFilterValue() as string) ?? "all"}
+              onValueChange={(value) => table.getColumn("course")?.setFilterValue(value === "all" ? "" : value)}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by course" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Courses</SelectItem>
+                {Array.from(new Set(data.map(d => d.course)))
+                  .filter(course => course && course.trim() !== "")
+                  .sort()
+                  .map((course) => (
+                    <SelectItem key={course} value={course}>{course}</SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={(table.getColumn("branch")?.getFilterValue() as string) ?? "all"}
+              onValueChange={(value) => table.getColumn("branch")?.setFilterValue(value === "all" ? "" : value)}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Filter by branch" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Branches</SelectItem>
+                {Array.from(new Set(data.map(d => d.branch)))
+                  .filter(branch => branch && branch.trim() !== "")
+                  .sort()
+                  .map((branch) => (
+                    <SelectItem key={branch} value={branch}>{branch}</SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+
+            {/* <Select
+              value={(table.getColumn("schedule")?.getFilterValue() as string) ?? "all"}
+              onValueChange={(value) => table.getColumn("schedule")?.setFilterValue(value === "all" ? "" : value)}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by month" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Months</SelectItem>
+                {uniqueMonths.map((month) => (
+                  <SelectItem key={month} value={month}>{month}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select> */}
+
+            <Select
+              value={(table.getColumn("status")?.getFilterValue() as string) ?? "all"}
+              onValueChange={(value) => table.getColumn("status")?.setFilterValue(value === "all" ? "" : value)}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="planned">Planned</SelectItem>
+                <SelectItem value="ongoing">Ongoing</SelectItem>
+                <SelectItem value="confirmed">Confirmed</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+                <SelectItem value="finished">Finished</SelectItem>
+              </SelectContent>
+            </Select>
+
             <Select
               value={(table.getColumn("type")?.getFilterValue() as string) ?? "all"}
               onValueChange={(value) => table.getColumn("type")?.setFilterValue(value === "all" ? "" : value)}
@@ -496,7 +602,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
 
         <div className="rounded-md border border-border">
           <Table>
-            <TableHeader>
+            <TableHeader className="font-bold bg-muted">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (

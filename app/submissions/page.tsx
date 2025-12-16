@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import { SubmissionDialog } from "@/components/submission-dialog"
@@ -24,6 +24,7 @@ import {
   Loader2,
   PieChart,
   ImageOff,
+  ArrowLeft,
 } from "lucide-react";
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -47,10 +48,13 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import Link from "next/link"
 
 export default function SubmissionPage() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const scheduleId = searchParams.get("scheduleId")
+  const fromTab = searchParams.get("from") || "all"
 
   const [trainees, setTrainees] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -482,7 +486,15 @@ export default function SubmissionPage() {
   return (
     <div className="p-6 space-y-2">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Trainee Submissions</h1>
+        <div className="flex items-center gap-3">
+          <Link href={`/training-schedules?tab=${fromTab}`}>
+            <Button variant="ghost" size="sm" className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+          </Link>
+          <h1 className="text-2xl font-bold">Trainee Submissions</h1>
+        </div>
         
         {bulkMode ? (
           <div className="flex gap-2">

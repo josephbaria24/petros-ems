@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
@@ -8,10 +9,14 @@ import { ParticipantsTable } from "@/components/participants-table"
 import { NewScheduleDialog } from "@/components/new-schedule-dialog"
 import { supabase } from "@/lib/supabase-client"
 
-
 export default function TrainingSchedulesPage() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [refreshTrigger, setRefreshTrigger] = React.useState(0)
+  
+  // Get tab from URL or default to "all"
+  const currentTab = searchParams.get("tab") || "all"
 
   const handleScheduleCreated = () => {
     // Increment to trigger refresh in all tables
@@ -70,9 +75,14 @@ export default function TrainingSchedulesPage() {
         console.error("Error updating finished schedules:", updateError)
       } else {
         console.log(`✅ ${toUpdate.length} schedules auto-updated to "finished".`)
-        setRefreshTrigger((prev) => prev + 1) // ✅ Refresh ParticipantsTable
+        setRefreshTrigger((prev) => prev + 1)
       }
     }
+  }
+
+  const handleTabChange = (value: string) => {
+    // Update URL with the new tab
+    router.push(`/training-schedules?tab=${value}`, { scroll: false })
   }
 
   return (
@@ -88,19 +98,18 @@ export default function TrainingSchedulesPage() {
         </Button>
       </div>
 
-      <Tabs defaultValue="all" className="space-y-4">
-      <TabsList className="bg-transparent">
-        {["all", "planned", "ongoing", "confirmed", "cancelled", "finished"].map(key => (
-          <TabsTrigger
-            key={key}
-            value={key}
-            className="data-[state=active]:bg-card data-[state=active]:shadow-sm"
-          >
-            {key.charAt(0).toUpperCase() + key.slice(1)}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-
+      <Tabs value={currentTab} onValueChange={handleTabChange} className="space-y-4">
+        <TabsList className="bg-transparent">
+          {["all", "planned", "ongoing", "confirmed", "cancelled", "finished"].map(key => (
+            <TabsTrigger
+              key={key}
+              value={key}
+              className="data-[state=active]:bg-card data-[state=active]:shadow-sm"
+            >
+              {key.charAt(0).toUpperCase() + key.slice(1)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
         <TabsContent value="all" className="space-y-4">
           <ParticipantsTable status="all" refreshTrigger={refreshTrigger} />
@@ -112,6 +121,10 @@ export default function TrainingSchedulesPage() {
 
         <TabsContent value="ongoing" className="space-y-4">
           <ParticipantsTable status="ongoing" refreshTrigger={refreshTrigger} />
+        </TabsContent>
+
+        <TabsContent value="confirmed" className="space-y-4">
+          <ParticipantsTable status="confirmed" refreshTrigger={refreshTrigger} />
         </TabsContent>
 
         <TabsContent value="cancelled" className="space-y-4">
