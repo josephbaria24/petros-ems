@@ -1,4 +1,4 @@
-// app/upload-receipt/page.tsx
+// app/upload-receipt/page.tsx - FIXED FOR VERCEL
 'use client';
 
 import { useState } from 'react';
@@ -34,6 +34,9 @@ export default function UploadReceiptPage() {
   const [showStatus, setShowStatus] = useState(false);
   const [bookingStatus, setBookingStatus] = useState<BookingStatus | null>(null);
 
+  // Reduced max file size for Vercel
+  const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB (safe limit for Vercel)
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
@@ -44,9 +47,9 @@ export default function UploadReceiptPage() {
         return;
       }
 
-      // Validate file size (max 5MB)
-      if (selectedFile.size > 5 * 1024 * 1024) {
-        setMessage('File size must be less than 5MB');
+      // Validate file size (4MB max for Vercel)
+      if (selectedFile.size > MAX_FILE_SIZE) {
+        setMessage('File size must be less than 4MB for online uploads');
         setUploadStatus('error');
         return;
       }
@@ -117,6 +120,13 @@ export default function UploadReceiptPage() {
       return;
     }
 
+    // Double-check file size before upload
+    if (file.size > MAX_FILE_SIZE) {
+      setMessage('File size must be less than 4MB');
+      setUploadStatus('error');
+      return;
+    }
+
     setUploading(true);
     setUploadStatus('idle');
     setMessage('');
@@ -127,6 +137,13 @@ export default function UploadReceiptPage() {
       formData.append('file', file);
       formData.append('referenceNumber', referenceNumber.trim().toUpperCase());
 
+      console.log('Uploading file:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        referenceNumber: referenceNumber.trim().toUpperCase(),
+      });
+
       // Upload receipt using client upload API
       const response = await fetch('/api/client/upload-receipt', {
         method: 'POST',
@@ -134,6 +151,7 @@ export default function UploadReceiptPage() {
       });
 
       const data = await response.json();
+      console.log('Upload response:', data);
 
       if (response.ok) {
         setUploadStatus('success');
@@ -149,12 +167,20 @@ export default function UploadReceiptPage() {
         if (fileInput) fileInput.value = '';
       } else {
         setUploadStatus('error');
-        setMessage(data.error || 'Failed to upload receipt. Please try again.');
+        const errorMessage = data.error || 'Failed to upload receipt. Please try again.';
+        setMessage(errorMessage);
+        
+        // Log detailed error for debugging
+        console.error('Upload failed:', {
+          status: response.status,
+          error: data.error,
+          details: data.details,
+        });
       }
     } catch (error) {
       console.error('Upload error:', error);
       setUploadStatus('error');
-      setMessage('An error occurred while uploading. Please try again.');
+      setMessage('An error occurred while uploading. Please check your connection and try again.');
     } finally {
       setUploading(false);
     }
@@ -162,6 +188,14 @@ export default function UploadReceiptPage() {
 
   const formatCurrency = (value: number) => 
     value.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' });
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 py-7 px-4 sm:px-6 lg:px-8">
@@ -328,7 +362,12 @@ export default function UploadReceiptPage() {
                         alt="Receipt preview"
                         className="max-h-64 mx-auto rounded-lg"
                       />
-                      <p className="text-sm text-slate-400 text-center">{file?.name}</p>
+                      <div className="text-center space-y-1">
+                        <p className="text-sm text-slate-400">{file?.name}</p>
+                        <p className="text-xs text-slate-500">
+                          {file && formatFileSize(file.size)}
+                        </p>
+                      </div>
                       <button
                         type="button"
                         onClick={(e) => {
@@ -348,7 +387,7 @@ export default function UploadReceiptPage() {
                         Click to upload or drag and drop
                       </p>
                       <p className="text-xs text-slate-500">
-                        PNG, JPG or JPEG (max. 5MB)
+                        PNG, JPG or JPEG (max. 4MB)
                       </p>
                     </>
                   )}
@@ -402,6 +441,7 @@ export default function UploadReceiptPage() {
             <h3 className="text-sm font-medium text-blue-400 mb-2">📌 Important Notes:</h3>
             <ul className="text-xs text-slate-400 space-y-1">
               <li>• Make sure the receipt image is clear and readable</li>
+              <li>• File size must be less than 4MB (compress large images if needed)</li>
               <li>• Include transaction details (amount, date, reference number)</li>
               <li>• Payment verification typically takes 1-2 business days</li>
               <li>• You'll receive an email once your payment is confirmed</li>

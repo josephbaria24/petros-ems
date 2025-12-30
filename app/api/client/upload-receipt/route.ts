@@ -1,9 +1,18 @@
-// app/api/client/upload-receipt/route.ts - FIXED VERSION
+// app/api/client/upload-receipt/route.ts - FIXED FOR VERCEL
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+// IMPORTANT: Disable body parsing for Vercel
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+// Increase body size limit for Vercel (up to 4.5MB for hobby plan, 50MB for pro)
+export const config = {
+  api: {
+    bodyParser: false,
+    responseLimit: false,
+  },
+};
 
 // ENV guards
 if (!process.env.NEXT_PUBLIC_APP_URL) {
@@ -26,14 +35,27 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    // Parse formData with error handling
+    console.log('📥 Starting upload receipt process...');
+    
+    // Parse formData with better error handling for Vercel
     let formData: FormData;
     try {
-      formData = await req.formData();
-    } catch (parseError) {
+      // Clone the request to avoid consumption issues
+      const clonedReq = req.clone();
+      formData = await clonedReq.formData();
+    } catch (parseError: any) {
       console.error('❌ FormData parse error:', parseError);
+      console.error('Error details:', {
+        message: parseError.message,
+        stack: parseError.stack,
+        name: parseError.name,
+      });
+      
       return NextResponse.json(
-        { error: 'Invalid request format. Please try again.' },
+        { 
+          error: 'Failed to parse upload data. Please ensure your file is less than 4.5MB and try again.',
+          details: parseError.message 
+        },
         { status: 400 }
       );
     }
@@ -45,6 +67,7 @@ export async function POST(req: Request) {
       hasFile: !!file, 
       fileName: file?.name,
       fileSize: file?.size,
+      fileType: file?.type,
       referenceNumber 
     });
 
@@ -71,15 +94,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // Validate file size (5MB max)
-    if (file.size > 5 * 1024 * 1024) {
+    // Validate file size (4.5MB max for Vercel Hobby, adjust if needed)
+    const maxSize = 4.5 * 1024 * 1024; // 4.5MB
+    if (file.size > maxSize) {
       return NextResponse.json(
-        { error: 'File size must be less than 5MB' },
+        { error: `File size must be less than ${(maxSize / 1024 / 1024).toFixed(1)}MB` },
         { status: 400 }
       );
     }
 
     // 1. Find the booking summary
+    console.log('🔍 Looking up booking:', referenceNumber);
     const { data: bookingSummary, error: bookingError } = await supabase
       .from('booking_summary')
       .select('id, training_id')
@@ -93,6 +118,8 @@ export async function POST(req: Request) {
         { status: 404 }
       );
     }
+
+    console.log('✅ Booking found:', bookingSummary.id);
 
     // 2. Get training details
     const { data: training, error: trainingError } = await supabase
@@ -109,6 +136,8 @@ export async function POST(req: Request) {
       );
     }
 
+    console.log('✅ Training found:', training.id);
+
     // Get course details to retrieve training_fee
     const { data: course } = await supabase
       .from('courses')
@@ -118,14 +147,19 @@ export async function POST(req: Request) {
 
     const trainingFee = course?.training_fee || 0;
 
-    // 3. Upload file - Use 'receipt' field name to match admin API
-    const uploadFormData = new FormData();
+    // 3. Upload file to FTP
+    console.log('📤 Preparing file upload...');
     
-    // Convert File to Blob and append with 'receipt' field name
-    const fileBlob = new Blob([await file.arrayBuffer()], { type: file.type });
-    uploadFormData.append('receipt', fileBlob, file.name);
+    // Convert File to ArrayBuffer then to Buffer
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    // Create new FormData for upload
+    const uploadFormData = new FormData();
+    const blob = new Blob([buffer], { type: file.type });
+    uploadFormData.append('receipt', blob, file.name);
 
-    console.log('📤 Uploading file to FTP with field name "receipt"...');
+    console.log('📤 Uploading to FTP with field name "receipt"...');
 
     const uploadResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/upload-receipt`, {
       method: 'POST',
@@ -249,10 +283,19 @@ export async function POST(req: Request) {
       receiptUrl: publicUrl,
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Upload receipt error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    });
+    
     return NextResponse.json(
-      { error: 'An unexpected error occurred. Please try again.' },
+      { 
+        error: 'An unexpected error occurred. Please try again.',
+        details: error.message 
+      },
       { status: 500 }
     );
   }
