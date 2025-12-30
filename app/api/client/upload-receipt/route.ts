@@ -1,11 +1,33 @@
+
 // app/api/client/upload-receipt/route.ts - FIXED VERSION
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
+
+
+
+// ✅ ENV guards (put them HERE)
+if (!process.env.NEXT_PUBLIC_APP_URL) {
+  throw new Error('NEXT_PUBLIC_APP_URL is not defined');
+}
+
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  throw new Error('NEXT_PUBLIC_SUPABASE_URL is not defined');
+}
+
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  throw new Error('SUPABASE_SERVICE_ROLE_KEY is not defined');
+}
+
+
+// ✅ Safe to create clients AFTER guards
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
 
 export async function POST(req: Request) {
   try {
