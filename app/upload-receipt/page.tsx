@@ -34,8 +34,8 @@ export default function UploadReceiptPage() {
   const [showStatus, setShowStatus] = useState(false);
   const [bookingStatus, setBookingStatus] = useState<BookingStatus | null>(null);
 
-  // Reduced max file size for Vercel
-  const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB (safe limit for Vercel)
+  // Max file size (same as your working upload API)
+  const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -47,9 +47,9 @@ export default function UploadReceiptPage() {
         return;
       }
 
-      // Validate file size (4MB max for Vercel)
+      // Validate file size (5MB max)
       if (selectedFile.size > MAX_FILE_SIZE) {
-        setMessage('File size must be less than 4MB for online uploads');
+        setMessage('File size must be less than 5MB');
         setUploadStatus('error');
         return;
       }
@@ -122,7 +122,7 @@ export default function UploadReceiptPage() {
 
     // Double-check file size before upload
     if (file.size > MAX_FILE_SIZE) {
-      setMessage('File size must be less than 4MB');
+      setMessage('File size must be less than 5MB');
       setUploadStatus('error');
       return;
     }
@@ -387,7 +387,7 @@ export default function UploadReceiptPage() {
                         Click to upload or drag and drop
                       </p>
                       <p className="text-xs text-slate-500">
-                        PNG, JPG or JPEG (max. 4MB)
+                        PNG, JPG or JPEG (max. 5MB)
                       </p>
                     </>
                   )}
@@ -441,7 +441,7 @@ export default function UploadReceiptPage() {
             <h3 className="text-sm font-medium text-blue-400 mb-2">📌 Important Notes:</h3>
             <ul className="text-xs text-slate-400 space-y-1">
               <li>• Make sure the receipt image is clear and readable</li>
-              <li>• File size must be less than 4MB (compress large images if needed)</li>
+              <li>• File size must be less than 5MB (compress large images if needed)</li>
               <li>• Include transaction details (amount, date, reference number)</li>
               <li>• Payment verification typically takes 1-2 business days</li>
               <li>• You'll receive an email once your payment is confirmed</li>
