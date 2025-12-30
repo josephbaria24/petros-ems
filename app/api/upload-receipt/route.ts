@@ -9,115 +9,121 @@ import { randomUUID } from "crypto";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Helper: convert NextRequest -> Node-style Readable with headers
-function toNodeRequest(req: NextRequest): any {
-  const readable = new Readable({ read() {} });
-  req
-    .arrayBuffer()
-    .then((buffer) => {
-      readable.push(Buffer.from(buffer));
-      readable.push(null);
-    })
-    .catch((err) => readable.destroy(err));
+// Helper: convert NextRequest -> Node-style Readable with headers (FIXED FOR VERCEL)
+async function toNodeRequest(req: NextRequest): Promise<any> {
+  // IMPORTANT: Get the buffer FIRST before creating the stream
+  const buffer = await req.arrayBuffer();
+  
+  const readable = new Readable({ 
+    read() {
+      // Push the data immediately since we already have it
+      this.push(Buffer.from(buffer));
+      this.push(null);
+    } 
+  });
+  
   (readable as any).headers = Object.fromEntries(req.headers);
   (readable as any).method = req.method;
   (readable as any).url = req.url;
+  
   return readable;
 }
 
 export async function POST(req: NextRequest) {
-  return new Promise<NextResponse>((resolve) => {
+  return new Promise<NextResponse>(async (resolve) => {
     const form = new IncomingForm({ multiples: false });
-    const nodeReq = toNodeRequest(req);
+    
+    try {
+      // IMPORTANT: await the conversion
+      const nodeReq = await toNodeRequest(req);
 
-    form.parse(nodeReq, async (err: any, fields: Fields, files: Files) => {
-      if (err) {
-        console.error("Form parse error:", err);
-        resolve(NextResponse.json({ error: err.message }, { status: 500 }));
-        return;
-      }
-
-      const receiptFile = Array.isArray(files.receipt)
-        ? files.receipt[0]
-        : (files.receipt as any);
-
-      if (!receiptFile) {
-        resolve(
-          NextResponse.json({ error: "No receipt uploaded" }, { status: 400 })
-        );
-        return;
-      }
-
-      const client = new ftp.Client();
-      client.ftp.verbose = true;
-
-      try {
-        // Connect using your FTP credentials
-        await client.access({
-          host: process.env.HOSTINGER_SFTP_HOST!,
-          user: process.env.HOSTINGER_SFTP_USER!,
-          password: process.env.HOSTINGER_SFTP_PASS!,
-          port: 21,
-          secure: false,
-        });
-
-        // Generate unique filename for receipt
-        const extension = receiptFile.originalFilename
-          ?.split(".")
-          ?.pop()
-          ?.toLowerCase();
-        const newFileName = `receipt_${randomUUID()}.${extension}`;
-
-        // Try to create receipts directory if it doesn't exist (from root)
-        try {
-          await client.ensureDir("receipts");
-          console.log("✅ Receipts directory ensured");
-        } catch (dirError) {
-          console.log("⚠️ Could not ensure receipts directory:", dirError);
+      form.parse(nodeReq, async (err: any, fields: Fields, files: Files) => {
+        if (err) {
+          console.error("❌ Form parse error:", err);
+          resolve(NextResponse.json({ error: err.message }, { status: 500 }));
+          return;
         }
 
-        // IMPORTANT: Go back to root directory before uploading
-        await client.cd("/");
-        console.log("📂 Changed to root directory");
+        const receiptFile = Array.isArray(files.receipt)
+          ? files.receipt[0]
+          : (files.receipt as any);
 
-        // Upload with full path from root
-        const uploadPath = `receipts/${newFileName}`;
-        const publicUrl = `https://petrosphere.com.ph/uploads/trainees/receipts/${newFileName}`;
+        if (!receiptFile) {
+          resolve(
+            NextResponse.json({ error: "No receipt uploaded" }, { status: 400 })
+          );
+          return;
+        }
+
+        const client = new ftp.Client();
+        client.ftp.verbose = true;
 
         try {
-          await client.uploadFrom(receiptFile.filepath, uploadPath);
-          console.log(`✅ Uploaded to ${uploadPath}`);
-          
-          client.close();
-          resolve(NextResponse.json({ url: publicUrl }, { status: 200 }));
-        } catch (uploadError: any) {
-          console.error("❌ Failed to upload to receipts folder:", uploadError);
-          
-          // Fallback: upload to root with receipts_ prefix
+          // Connect using your FTP credentials
+          await client.access({
+            host: process.env.HOSTINGER_SFTP_HOST!,
+            user: process.env.HOSTINGER_SFTP_USER!,
+            password: process.env.HOSTINGER_SFTP_PASS!,
+            port: 21,
+            secure: false,
+          });
+
+          // Generate unique filename for receipt
+          const extension = receiptFile.originalFilename
+            ?.split(".")
+            ?.pop()
+            ?.toLowerCase();
+          const newFileName = `receipt_${randomUUID()}.${extension}`;
+
+          // Ensure receipts directory exists and navigate into it
           try {
-            const fallbackPath = `receipts_${newFileName}`;
-            const fallbackUrl = `https://petrosphere.com.ph/uploads/trainees/receipts_${newFileName}`;
+            await client.ensureDir("receipts");
+            console.log("✅ Receipts directory ensured, now inside receipts/");
             
-            await client.uploadFrom(receiptFile.filepath, fallbackPath);
-            console.log(`✅ Uploaded to root as ${fallbackPath}`);
+            // Now we're inside receipts/, so just use the filename
+            await client.uploadFrom(receiptFile.filepath, newFileName);
+            console.log(`✅ Uploaded to receipts/${newFileName}`);
             
+            const publicUrl = `https://petrosphere.com.ph/uploads/trainees/receipts/${newFileName}`;
             client.close();
-            resolve(NextResponse.json({ url: fallbackUrl }, { status: 200 }));
-          } catch (fallbackError: any) {
-            console.error("❌ Fallback upload also failed:", fallbackError);
-            client.close();
-            resolve(
-              NextResponse.json({ error: "Failed to upload file to server" }, { status: 500 })
-            );
+            
+            resolve(NextResponse.json({ url: publicUrl }, { status: 200 }));
+            
+          } catch (uploadError: any) {
+            console.error("❌ Failed to upload to receipts folder:", uploadError);
+            
+            // Fallback: go back to root and upload with receipts_ prefix
+            try {
+              await client.cd("/");
+              const fallbackFileName = `receipts_${newFileName}`;
+              await client.uploadFrom(receiptFile.filepath, fallbackFileName);
+              console.log(`✅ Uploaded to root as ${fallbackFileName}`);
+              
+              const fallbackUrl = `https://petrosphere.com.ph/uploads/trainees/${fallbackFileName}`;
+              client.close();
+              
+              resolve(NextResponse.json({ url: fallbackUrl }, { status: 200 }));
+            } catch (fallbackError: any) {
+              console.error("❌ Fallback upload also failed:", fallbackError);
+              client.close();
+              resolve(
+                NextResponse.json({ error: "Failed to upload file to server" }, { status: 500 })
+              );
+            }
           }
+        } catch (connError: any) {
+          console.error("❌ FTP connection error:", connError);
+          client.close();
+          resolve(
+            NextResponse.json({ error: connError.message }, { status: 500 })
+          );
         }
-      } catch (uploadErr: any) {
-        console.error("❌ FTP connection/upload error:", uploadErr);
-        client.close();
-        resolve(
-          NextResponse.json({ error: uploadErr.message }, { status: 500 })
-        );
-      }
-    });
+      });
+    } catch (conversionError: any) {
+      console.error("❌ Request conversion error:", conversionError);
+      resolve(
+        NextResponse.json({ error: "Failed to process request" }, { status: 500 })
+      );
+    }
   });
 }
