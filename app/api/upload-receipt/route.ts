@@ -1,4 +1,4 @@
-//app\api\upload-receipt\route.ts
+//app/api/upload-receipt/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
 import { IncomingForm, Files, Fields } from "formidable";
@@ -8,8 +8,6 @@ import { randomUUID } from "crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-
 
 // Helper: convert NextRequest -> Node-style Readable with headers
 function toNodeRequest(req: NextRequest): any {
@@ -70,37 +68,47 @@ export async function POST(req: NextRequest) {
           ?.toLowerCase();
         const newFileName = `receipt_${randomUUID()}.${extension}`;
 
-        // Try to create receipts directory if it doesn't exist
+        // Ensure receipts directory exists and navigate into it
         try {
           await client.ensureDir("receipts");
-          console.log("Receipts directory ensured");
-        } catch (dirError) {
-          console.log("Could not ensure receipts directory, uploading to root");
+          console.log("✅ Receipts directory ensured, now inside receipts/");
+          
+          // Now we're inside receipts/, so just use the filename
+          await client.uploadFrom(receiptFile.filepath, newFileName);
+          console.log(`✅ Uploaded to receipts/${newFileName}`);
+          
+          const publicUrl = `https://petrosphere.com.ph/uploads/trainees/receipts/${newFileName}`;
+          client.close();
+          
+          resolve(NextResponse.json({ url: publicUrl }, { status: 200 }));
+          
+        } catch (uploadError: any) {
+          console.error("❌ Failed to upload to receipts folder:", uploadError);
+          
+          // Fallback: go back to root and upload with receipts_ prefix
+          try {
+            await client.cd("/");
+            const fallbackFileName = `receipts_${newFileName}`;
+            await client.uploadFrom(receiptFile.filepath, fallbackFileName);
+            console.log(`✅ Uploaded to root as ${fallbackFileName}`);
+            
+            const fallbackUrl = `https://petrosphere.com.ph/uploads/trainees/${fallbackFileName}`;
+            client.close();
+            
+            resolve(NextResponse.json({ url: fallbackUrl }, { status: 200 }));
+          } catch (fallbackError: any) {
+            console.error("❌ Fallback upload also failed:", fallbackError);
+            client.close();
+            resolve(
+              NextResponse.json({ error: "Failed to upload file to server" }, { status: 500 })
+            );
+          }
         }
-
-        // Try to upload to receipts folder first, fallback to root if fails
-        let uploadPath = `receipts/${newFileName}`;
-        let publicUrl = `https://petrosphere.com.ph/uploads/trainees/receipts/${newFileName}`;
-
-        try {
-          await client.uploadFrom(receiptFile.filepath, uploadPath);
-          console.log(`Uploaded to ${uploadPath}`);
-        } catch (uploadError) {
-          console.log("Failed to upload to receipts folder, trying root directory");
-          // Fallback: upload to root with receipts_ prefix
-          uploadPath = `receipts_${newFileName}`;
-          publicUrl = `https://petrosphere.com.ph/uploads/trainees/receipts/receipts_${newFileName}`;
-          await client.uploadFrom(receiptFile.filepath, uploadPath);
-          console.log(`Uploaded to root as ${uploadPath}`);
-        }
-
+      } catch (connError: any) {
+        console.error("❌ FTP connection error:", connError);
         client.close();
-
-        resolve(NextResponse.json({ url: publicUrl }, { status: 200 }));
-      } catch (uploadErr: any) {
-        console.error("FTP upload error:", uploadErr);
         resolve(
-          NextResponse.json({ error: uploadErr.message }, { status: 500 })
+          NextResponse.json({ error: connError.message }, { status: 500 })
         );
       }
     });
