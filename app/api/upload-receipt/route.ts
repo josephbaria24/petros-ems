@@ -68,33 +68,40 @@ export async function POST(req: NextRequest) {
           ?.toLowerCase();
         const newFileName = `receipt_${randomUUID()}.${extension}`;
 
-        // Ensure receipts directory exists and navigate into it
+        // Try to create receipts directory if it doesn't exist (from root)
         try {
           await client.ensureDir("receipts");
-          console.log("✅ Receipts directory ensured, now inside receipts/");
+          console.log("✅ Receipts directory ensured");
+        } catch (dirError) {
+          console.log("⚠️ Could not ensure receipts directory:", dirError);
+        }
+
+        // IMPORTANT: Go back to root directory before uploading
+        await client.cd("/");
+        console.log("📂 Changed to root directory");
+
+        // Upload with full path from root
+        const uploadPath = `receipts/${newFileName}`;
+        const publicUrl = `https://petrosphere.com.ph/uploads/trainees/receipts/${newFileName}`;
+
+        try {
+          await client.uploadFrom(receiptFile.filepath, uploadPath);
+          console.log(`✅ Uploaded to ${uploadPath}`);
           
-          // Now we're inside receipts/, so just use the filename
-          await client.uploadFrom(receiptFile.filepath, newFileName);
-          console.log(`✅ Uploaded to receipts/${newFileName}`);
-          
-          const publicUrl = `https://petrosphere.com.ph/uploads/trainees/receipts/${newFileName}`;
           client.close();
-          
           resolve(NextResponse.json({ url: publicUrl }, { status: 200 }));
-          
         } catch (uploadError: any) {
           console.error("❌ Failed to upload to receipts folder:", uploadError);
           
-          // Fallback: go back to root and upload with receipts_ prefix
+          // Fallback: upload to root with receipts_ prefix
           try {
-            await client.cd("/");
-            const fallbackFileName = `receipts_${newFileName}`;
-            await client.uploadFrom(receiptFile.filepath, fallbackFileName);
-            console.log(`✅ Uploaded to root as ${fallbackFileName}`);
+            const fallbackPath = `receipts_${newFileName}`;
+            const fallbackUrl = `https://petrosphere.com.ph/uploads/trainees/receipts_${newFileName}`;
             
-            const fallbackUrl = `https://petrosphere.com.ph/uploads/trainees/${fallbackFileName}`;
+            await client.uploadFrom(receiptFile.filepath, fallbackPath);
+            console.log(`✅ Uploaded to root as ${fallbackPath}`);
+            
             client.close();
-            
             resolve(NextResponse.json({ url: fallbackUrl }, { status: 200 }));
           } catch (fallbackError: any) {
             console.error("❌ Fallback upload also failed:", fallbackError);
@@ -104,11 +111,11 @@ export async function POST(req: NextRequest) {
             );
           }
         }
-      } catch (connError: any) {
-        console.error("❌ FTP connection error:", connError);
+      } catch (uploadErr: any) {
+        console.error("❌ FTP connection/upload error:", uploadErr);
         client.close();
         resolve(
-          NextResponse.json({ error: connError.message }, { status: 500 })
+          NextResponse.json({ error: uploadErr.message }, { status: 500 })
         );
       }
     });
