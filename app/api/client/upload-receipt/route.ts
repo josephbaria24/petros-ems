@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
           await ftpClient.uploadFrom(receiptFile.filepath, `receipts/${newFileName}`);
           ftpClient.close();
 
-          const publicUrl = `https://petrosphere.com.ph/uploads/receipts/${newFileName}`;
+          const publicUrl = `https://petrosphere.com.ph/uploads/trainees/receipts/${newFileName}`;
           console.log('✅ File uploaded to:', publicUrl);
 
           // 4. Check if a payment record already exists for this training
@@ -250,7 +250,7 @@ export async function POST(req: NextRequest) {
               console.log('✅ Confirmation email sent');
             } else {
               console.log('⚠️ Email send failed, but continuing...');
-            }
+            } 
           } catch (emailError) {
             console.error('❌ Email error:', emailError);
             // Don't fail the request if email fails
