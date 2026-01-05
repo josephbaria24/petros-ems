@@ -651,8 +651,6 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           </div>
         </div>
       </Card>
-      // components/participants-table.tsx - PART 3 OF 3
-// Paste this directly after Part 2
 
       {/* View Dialog */}
       <AlertDialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>

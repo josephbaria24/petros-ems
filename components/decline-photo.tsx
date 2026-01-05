@@ -1,3 +1,4 @@
+//components/decline-photo.tsx
 "use client"
 
 import { useState } from "react"
@@ -66,7 +67,7 @@ export function DeclinePhotoDialog({
             token,
             declined_at: new Date().toISOString(),
           },
-          status: "Pending" // Reset to pending for re-upload
+          status: "Declined (Waiting for Resubmission)" // ✅ Fixed status
         })
         .eq("id", trainee.id)
 

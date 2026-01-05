@@ -1,15 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Card } from "@/components/ui/card"
+import { supabase } from "@/lib/supabase-client"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Upload, CheckCircle, XCircle, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
-import { supabase } from "@/lib/supabase-client"
 
 export default function ReuploadPage() {
   const searchParams = useSearchParams()
@@ -17,171 +16,198 @@ export default function ReuploadPage() {
   const traineeId = searchParams.get("traineeId")
 
   const [loading, setLoading] = useState(true)
-  const [traineeData, setTraineeData] = useState<any>(null)
-  const [declineInfo, setDeclineInfo] = useState<any>(null)
-  const [expired, setExpired] = useState(false)
-  
-  const [idPicture, setIdPicture] = useState<File | null>(null)
-  const [picture2x2, setPicture2x2] = useState<File | null>(null)
-  const [idPreview, setIdPreview] = useState<string>("")
-  const [preview2x2, setPreview2x2] = useState<string>("")
-  const [uploading, setUploading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [trainee, setTrainee] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
+  const [idFile, setIdFile] = useState<File | null>(null)
+  const [photo2x2File, setPhoto2x2File] = useState<File | null>(null)
+  const [idPreview, setIdPreview] = useState<string | null>(null)
+  const [photo2x2Preview, setPhoto2x2Preview] = useState<string | null>(null)
+
   useEffect(() => {
-    if (token && traineeId) {
-      validateAndFetchData()
-    }
+    validateAndFetchTrainee()
   }, [token, traineeId])
 
-  const validateAndFetchData = async () => {
+  const validateAndFetchTrainee = async () => {
+    if (!token || !traineeId) {
+      setError("Invalid or missing reupload link.")
+      setLoading(false)
+      return
+    }
+
     try {
-      const { data, error } = await supabase
+      const { data, error: fetchError } = await supabase
         .from("trainings")
-        .select("*, courses:course_id(name)")
+        .select("*")
         .eq("id", traineeId)
         .single()
 
-      if (error || !data) {
-        throw new Error("Invalid link")
-      }
-
-      const declined = data.declined_photos
-
-      if (!declined || declined.token !== token) {
-        throw new Error("Invalid or expired link")
-      }
-
-      // Check if link is expired (7 days)
-      const declinedDate = new Date(declined.declined_at)
-      const now = new Date()
-      const daysDiff = (now.getTime() - declinedDate.getTime()) / (1000 * 60 * 60 * 24)
-
-      if (daysDiff > 7) {
-        setExpired(true)
+      if (fetchError || !data) {
+        setError("Unable to find your registration.")
         setLoading(false)
         return
       }
 
-      setTraineeData(data)
-      setDeclineInfo(declined)
+      // Verify token matches
+      if (data.declined_photos?.token !== token) {
+        setError("This reupload link is invalid or has expired.")
+        setLoading(false)
+        return
+      }
+
+      // Check if link expired (7 days)
+      const declinedDate = new Date(data.declined_photos.declined_at)
+      const expiryDate = new Date(declinedDate.getTime() + 7 * 24 * 60 * 60 * 1000)
+      
+      if (new Date() > expiryDate) {
+        setError("This reupload link has expired. Please contact support.")
+        setLoading(false)
+        return
+      }
+
+      setTrainee(data)
       setLoading(false)
-    } catch (error: any) {
-      console.error("Validation error:", error)
-      toast.error(error.message || "Invalid or expired link")
+    } catch (err) {
+      console.error("Validation error:", err)
+      setError("An error occurred. Please try again.")
       setLoading(false)
     }
   }
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: "id" | "2x2") => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'id' | '2x2') => {
     const file = e.target.files?.[0]
     if (!file) return
 
     // Validate file type
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please upload an image file")
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please upload an image file')
       return
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("File size must be less than 5MB")
+      toast.error('File size must be less than 5MB')
       return
     }
 
-    if (type === "id") {
-      setIdPicture(file)
-      setIdPreview(URL.createObjectURL(file))
-    } else {
-      setPicture2x2(file)
-      setPreview2x2(URL.createObjectURL(file))
+    // Create preview
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      if (type === 'id') {
+        setIdFile(file)
+        setIdPreview(reader.result as string)
+      } else {
+        setPhoto2x2File(file)
+        setPhoto2x2Preview(reader.result as string)
+      }
     }
-  }
-
-  const uploadToServer = async (file: File): Promise<string> => {
-    const formData = new FormData()
-    formData.append("image", file)
-
-    const response = await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    })
-
-    if (!response.ok) {
-      throw new Error("Upload failed")
-    }
-
-    const data = await response.json()
-    return data.url
+    reader.readAsDataURL(file)
   }
 
   const handleSubmit = async () => {
-    if (declineInfo.id_picture && !idPicture) {
+    if (!trainee) return
+
+    const needsId = trainee.declined_photos?.id_picture
+    const needs2x2 = trainee.declined_photos?.picture_2x2
+
+    if (needsId && !idFile) {
       toast.error("Please upload your ID picture")
       return
     }
 
-    if (declineInfo.picture_2x2 && !picture2x2) {
-      toast.error("Please upload your 2x2 picture")
+    if (needs2x2 && !photo2x2File) {
+      toast.error("Please upload your 2x2 photo")
       return
     }
 
-    setUploading(true)
+    setSubmitting(true)
 
     try {
-      const updates: any = {}
+      let idUrl = trainee.id_picture_url
+      let photo2x2Url = trainee.picture_2x2_url
 
-      if (declineInfo.id_picture && idPicture) {
-        const idUrl = await uploadToServer(idPicture)
-        updates.id_picture_url = idUrl
+      // Upload ID if needed
+      if (needsId && idFile) {
+        const formData = new FormData()
+        formData.append('image', idFile)
+        
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!response.ok) throw new Error('Failed to upload ID picture')
+        
+        const data = await response.json()
+        idUrl = data.url
       }
 
-      if (declineInfo.picture_2x2 && picture2x2) {
-        const url2x2 = await uploadToServer(picture2x2)
-        updates.picture_2x2_url = url2x2
+      // Upload 2x2 if needed
+      if (needs2x2 && photo2x2File) {
+        const formData = new FormData()
+        formData.append('image', photo2x2File)
+        
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!response.ok) throw new Error('Failed to upload 2x2 photo')
+        
+        const data = await response.json()
+        photo2x2Url = data.url
       }
 
       // Update database
-      const { error } = await supabase
+      const { error: updateError } = await supabase
         .from("trainings")
         .update({
-          ...updates,
-          declined_photos: null, // Clear decline info
-          status: "Pending", // Reset to pending for review
+          id_picture_url: idUrl,
+          picture_2x2_url: photo2x2Url,
+          status: "Resubmitted (Pending Verification)",
+          declined_photos: null, // Clear decline data
         })
         .eq("id", traineeId)
 
-      if (error) throw error
+      if (updateError) throw updateError
 
       setSuccess(true)
-      toast.success("Photos uploaded successfully! We'll review them shortly.")
+      toast.success("Photos resubmitted successfully!")
+
     } catch (error: any) {
-      console.error("Upload error:", error)
-      toast.error(error.message || "Failed to upload photos")
+      console.error("Reupload error:", error)
+      toast.error(error.message || "Failed to resubmit photos")
     } finally {
-      setUploading(false)
+      setSubmitting(false)
     }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     )
   }
 
-  if (expired) {
+  if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <Card className="max-w-md w-full p-6">
-          <div className="text-center space-y-4">
-            <XCircle className="h-16 w-16 text-red-500 mx-auto" />
-            <h2 className="text-2xl font-bold">Link Expired</h2>
-            <p className="text-muted-foreground">
-              This re-upload link has expired. Please contact us for assistance.
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <div className="flex items-center gap-2 text-red-600">
+              <XCircle className="h-6 w-6" />
+              <CardTitle>Invalid Link</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-600">{error}</p>
+            <p className="text-sm text-gray-500 mt-4">
+              If you need assistance, please contact Petrosphere Training Institute.
             </p>
-          </div>
+          </CardContent>
         </Card>
       </div>
     )
@@ -189,126 +215,175 @@ export default function ReuploadPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <Card className="max-w-md w-full p-6">
-          <div className="text-center space-y-4">
-            <CheckCircle className="h-16 w-16 text-green-500 mx-auto" />
-            <h2 className="text-2xl font-bold">Upload Successful!</h2>
-            <p className="text-muted-foreground">
-              Your photos have been uploaded successfully. We'll review them and get back to you soon.
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <div className="flex items-center gap-2 text-green-600">
+              <CheckCircle className="h-6 w-6" />
+              <CardTitle>Photos Resubmitted Successfully!</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-600">
+              Thank you for resubmitting your photos. Our team will review them shortly
+              and contact you once they've been verified.
             </p>
-          </div>
-        </Card>
-      </div>
-    )
-  }
-
-  if (!traineeData || !declineInfo) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <Card className="max-w-md w-full p-6">
-          <div className="text-center space-y-4">
-            <XCircle className="h-16 w-16 text-red-500 mx-auto" />
-            <h2 className="text-2xl font-bold">Invalid Link</h2>
-            <p className="text-muted-foreground">
-              This link is invalid or has already been used.
-            </p>
-          </div>
+            <Alert className="mt-4 bg-blue-50 border-blue-200">
+              <AlertDescription>
+                You will receive an email notification once your photos have been reviewed.
+              </AlertDescription>
+            </Alert>
+          </CardContent>
         </Card>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-2xl mx-auto py-8">
-        <Card className="p-6 space-y-6">
-          <div className="text-center space-y-2">
-            <h1 className="text-3xl font-bold">Photo Re-upload</h1>
-            <p className="text-muted-foreground">
-              Hello, {traineeData.first_name} {traineeData.last_name}
-            </p>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 py-12">
+      <div className="max-w-3xl mx-auto">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-2xl">Photo Resubmission</CardTitle>
+            <CardDescription>
+              Hello {trainee?.first_name} {trainee?.last_name}, please resubmit the required photos below.
+            </CardDescription>
+          </CardHeader>
 
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Reason for decline:</strong> {declineInfo.reason}
-            </AlertDescription>
-          </Alert>
-
-          <div className="space-y-6">
-            {declineInfo.id_picture && (
-              <div className="space-y-3">
-                <Label htmlFor="id-picture" className="text-lg font-semibold">
-                  ID Picture *
-                </Label>
-                <Input
-                  id="id-picture"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handleFileChange(e, "id")}
-                  className="cursor-pointer"
-                />
-                {idPreview && (
-                  <div className="mt-3">
-                    <img
-                      src={idPreview}
-                      alt="ID Preview"
-                      className="max-w-xs rounded-lg border-2 border-primary"
-                    />
-                  </div>
-                )}
-              </div>
+          <CardContent className="space-y-6">
+            {/* Decline Reason */}
+            {trainee?.declined_photos?.reason && (
+              <Alert className="bg-red-50 border-red-200">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-red-800">
+                  <strong>Reason for Decline:</strong>
+                  <p className="mt-1">{trainee.declined_photos.reason}</p>
+                </AlertDescription>
+              </Alert>
             )}
 
-            {declineInfo.picture_2x2 && (
-              <div className="space-y-3">
-                <Label htmlFor="picture-2x2" className="text-lg font-semibold">
-                  2x2 Picture *
-                </Label>
-                <Input
-                  id="picture-2x2"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handleFileChange(e, "2x2")}
-                  className="cursor-pointer"
-                />
-                {preview2x2 && (
-                  <div className="mt-3">
-                    <img
-                      src={preview2x2}
-                      alt="2x2 Preview"
-                      className="max-w-xs rounded-lg border-2 border-primary"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* ID Picture Upload */}
+              {trainee?.declined_photos?.id_picture && (
+                <div className="space-y-3">
+                  <Label className="text-base font-semibold">
+                    ID Picture
+                    <span className="text-red-500 ml-1">*</span>
+                  </Label>
+                  
+                  {idPreview ? (
+                    <div className="relative">
+                      <img 
+                        src={idPreview} 
+                        alt="ID Preview" 
+                        className="w-full h-48 object-cover rounded border-2 border-green-300"
+                      />
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="absolute top-2 right-2"
+                        onClick={() => {
+                          setIdFile(null)
+                          setIdPreview(null)
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleFileChange(e, 'id')}
+                        className="hidden"
+                        id="id-upload"
+                      />
+                      <label htmlFor="id-upload" className="cursor-pointer">
+                        <Upload className="h-12 w-12 mx-auto text-gray-400 mb-2" />
+                        <p className="text-sm text-gray-600">Click to upload ID picture</p>
+                        <p className="text-xs text-gray-400 mt-1">PNG, JPG (max 5MB)</p>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
 
-          <Button
-            onClick={handleSubmit}
-            disabled={uploading}
-            className="w-full"
-            size="lg"
-          >
-            {uploading ? (
-              <>
-                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              <>
-                <Upload className="h-5 w-5 mr-2" />
-                Submit Photos
-              </>
-            )}
-          </Button>
+              {/* 2x2 Photo Upload */}
+              {trainee?.declined_photos?.picture_2x2 && (
+                <div className="space-y-3">
+                  <Label className="text-base font-semibold">
+                    2x2 Photo
+                    <span className="text-red-500 ml-1">*</span>
+                  </Label>
+                  
+                  {photo2x2Preview ? (
+                    <div className="relative">
+                      <img 
+                        src={photo2x2Preview} 
+                        alt="2x2 Preview" 
+                        className="w-full h-48 object-cover rounded border-2 border-green-300"
+                      />
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="absolute top-2 right-2"
+                        onClick={() => {
+                          setPhoto2x2File(null)
+                          setPhoto2x2Preview(null)
+                        }}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleFileChange(e, '2x2')}
+                        className="hidden"
+                        id="2x2-upload"
+                      />
+                      <label htmlFor="2x2-upload" className="cursor-pointer">
+                        <Upload className="h-12 w-12 mx-auto text-gray-400 mb-2" />
+                        <p className="text-sm text-gray-600">Click to upload 2x2 photo</p>
+                        <p className="text-xs text-gray-400 mt-1">PNG, JPG (max 5MB)</p>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
-          <p className="text-xs text-center text-muted-foreground">
-            This link will expire in 7 days from the decline date.
-          </p>
+            <Alert>
+              <AlertDescription>
+                <strong>Photo Requirements:</strong>
+                <ul className="list-disc list-inside mt-2 text-sm space-y-1">
+                  <li>Clear, well-lit photos</li>
+                  <li>Face must be clearly visible</li>
+                  <li>No blurry or pixelated images</li>
+                  <li>Professional appearance</li>
+                </ul>
+              </AlertDescription>
+            </Alert>
+
+            <Button 
+              onClick={handleSubmit} 
+              disabled={submitting}
+              className="w-full"
+              size="lg"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                'Submit Photos'
+              )}
+            </Button>
+          </CardContent>
         </Card>
       </div>
     </div>

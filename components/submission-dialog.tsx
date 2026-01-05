@@ -1,4 +1,4 @@
-//components/submission-dialog.tsx 
+//components/submission-dialog.tsx - FIXED FLOW (Part 1 - Replace entire component)
 "use client";
 
 import { useState, useEffect } from "react";
@@ -30,7 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User } from "lucide-react";
+import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, AlertCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase-client";
 
 interface Payment {
@@ -50,7 +50,7 @@ interface SubmissionDialogProps {
   onOpenChange: (open: boolean) => void;
   trainee: any;
   onVerify: () => void;
-  onDecline: () => void;
+  onDecline: () => void; // This will now open decline dialog
 }
 
 export function SubmissionDialog({
@@ -58,7 +58,7 @@ export function SubmissionDialog({
   onOpenChange,
   trainee,
   onVerify,
-  onDecline,
+  onDecline, // Will be used to open decline photo dialog
 }: SubmissionDialogProps) {
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -87,6 +87,7 @@ export function SubmissionDialog({
   });
   const [show2x2ViewModal, setShow2x2ViewModal] = useState(false);
   const [showIdViewModal, setShowIdViewModal] = useState(false);
+  const [sendingFollowUp, setSendingFollowUp] = useState(false);
 
   const [newAddress, setNewAddress] = useState({
     mailing_street: trainee?.mailing_street || "",
@@ -94,7 +95,6 @@ export function SubmissionDialog({
     mailing_province: trainee?.mailing_province || "",
   });
 
-  // Fetch payments function
   const fetchPayments = async () => {
     if (!trainee?.id) return;
     
@@ -106,30 +106,33 @@ export function SubmissionDialog({
 
     if (!error && data) {
       setPayments(data);
-      
-      // Calculate total amount paid
       const total = data.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
-      
-      // Update trainings table with total
       await supabase
         .from("trainings")
         .update({ amount_paid: total })
         .eq("id", trainee.id);
-      await checkAndUpdatePaymentStatus(total);
     }
   };
 
-  // Check and update payment status
   const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
     if (!trainee?.id || !trainee?.training_fee) return;
 
-const originalFee = Number(trainee.training_fee);
-const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
+    const originalFee = Number(trainee.training_fee);
+    const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
+
+    const currentStatus = trainee.status?.toLowerCase();
+    if (
+      currentStatus === "pending" ||
+      currentStatus === "awaiting receipt" ||
+      currentStatus === "declined (waiting for resubmission)" ||
+      currentStatus === "resubmitted (pending verification)"
+    ) {
+      return;
+    }
 
     let newStatus = "";
     let newPaymentStatus: string | null = null;
 
-    // If discount applied
     if (discountedFee !== null) {
       if (totalPaid >= discountedFee) {
         newStatus = "Payment Completed";
@@ -141,9 +144,7 @@ const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
         newStatus = "Pending Payment";
         newPaymentStatus = null;
       }
-    }
-    // No discount
-    else {
+    } else {
       if (totalPaid >= originalFee) {
         newStatus = "Payment Completed";
         newPaymentStatus = "Payment Completed";
@@ -165,7 +166,6 @@ const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
       .eq("id", trainee.id);
   };
 
-  // Initialize discount state
   useEffect(() => {
     if (open && trainee) {
       setIsDiscounted(trainee.has_discount ?? false);
@@ -175,7 +175,6 @@ const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
     }
   }, [open, trainee?.id]);
 
-  // Calculate discount percentage
   useEffect(() => {
     if (!isDiscounted || !trainee?.training_fee) {
       setDiscountPercent(null);
@@ -194,13 +193,11 @@ const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
     setDiscountPercent(Math.round(percent));
   }, [isDiscounted, discountPrice, trainee?.training_fee]);
 
-  // Fetch payments on open
   useEffect(() => {
     if (open && trainee?.id) {
       fetchPayments();
     }
   }, [open, trainee?.id]);
-
 
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
@@ -209,6 +206,25 @@ const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
 
   if (!trainee) return null;
 
+  // ✅ FIXED: Determine which view to show
+  const needsPhotoVerification = 
+    trainee.status?.toLowerCase() === "pending" ||
+    trainee.status?.toLowerCase() === "awaiting receipt" ||
+    trainee.status?.toLowerCase() === "resubmitted (pending verification)";
+
+  const isInitialSubmission = 
+    trainee.status?.toLowerCase() === "pending" ||
+    trainee.status?.toLowerCase() === "awaiting receipt";
+
+  const isResubmission = 
+    trainee.status?.toLowerCase() === "resubmitted (pending verification)";
+
+  const isDeclinedAwaitingResubmission = 
+    trainee.status?.toLowerCase() === "declined (waiting for resubmission)";
+
+  // ✅ For all other statuses, show full details view
+  const showFullDetailsView = !needsPhotoVerification && !isDeclinedAwaitingResubmission;
+
   const formatCurrency = (value: number) =>
     value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
   const isPending = trainee.status?.toLowerCase() === "pending";
@@ -216,8 +232,79 @@ const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
   const hasPayments = payments.length > 0;
 
-// components/submission-dialog.tsx - PART 2: Handler Functions
-// (This continues from Part 1)
+  const handleFollowUp = async () => {
+    setSendingFollowUp(true);
+    try {
+      const declinedInfo = trainee.declined_photos;
+      const token = declinedInfo?.token || crypto.randomUUID();
+      const reuploadUrl = `${window.location.origin}/reupload?token=${token}&traineeId=${trainee.id}`;
+
+      const declinedPhotos = [];
+      if (declinedInfo?.id_picture) declinedPhotos.push("ID Picture");
+      if (declinedInfo?.picture_2x2) declinedPhotos.push("2x2 Picture");
+
+      const emailContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: #dc2626; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+            .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+            .declined-list { background: white; padding: 15px; border-left: 4px solid #dc2626; margin: 20px 0; }
+            .button { display: inline-block; background: #2563eb; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h2>Follow-Up: Photo Resubmission Required</h2>
+            </div>
+            <div class="content">
+              <p>Dear ${trainee.first_name} ${trainee.last_name},</p>
+              
+              <p>This is a follow-up reminder that we are still waiting for your resubmitted photos.</p>
+              
+              <div class="declined-list">
+                <strong>Photos Requiring Resubmission:</strong>
+                <ul>
+                  ${declinedPhotos.map(photo => `<li>${photo}</li>`).join('')}
+                </ul>
+              </div>
+              
+              <p>Please re-upload the required photo(s) by clicking the button below:</p>
+              
+              <a href="${reuploadUrl}" class="button">Re-upload Photos Now</a>
+              
+              <p><small>If you have questions, please contact us.</small></p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      const response = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: trainee.email,
+          subject: "Follow-Up: Photo Resubmission Required",
+          message: emailContent,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to send follow-up email");
+
+      alert("Follow-up email sent successfully!");
+    } catch (error) {
+      console.error("Error sending follow-up:", error);
+      alert("Failed to send follow-up email");
+    } finally {
+      setSendingFollowUp(false);
+    }
+  };
+
 
   const handleFileSelect = async () => {
     const input = document.createElement("input");
@@ -241,7 +328,6 @@ const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
 
         const { url } = await response.json();
         
-        // Show preview dialog
         setUploadedReceiptUrl(url);
         if (file.type.startsWith("image/")) {
           const reader = new FileReader();
@@ -288,10 +374,8 @@ const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
         online_classroom_url: sendClassroom ? onlineClassroomUrl : null,
         confirmation_email_sent: sendEmail,
         classroom_url_sent: sendClassroom,
-        receipt_uploaded_by: 'admin', // Mark as admin upload
+        receipt_uploaded_by: 'admin',
       };
-  
-      console.log("🧾 Inserting payment payload:", payload);
 
       if (isNaN(finalAmount) || finalAmount <= 0) {
         alert("Invalid amount. Please enter a valid number.");
@@ -302,16 +386,12 @@ const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
         .from("payments")
         .insert(payload)
         .select();
-  
-      console.log("💾 Supabase insert result:", { data, error });
-  
+
       if (error) throw error;
 
-      // Calculate new total and check if payment is complete
       const newTotalPaid = totalPaid + parseFloat(amountPaid);
       await checkAndUpdatePaymentStatus(newTotalPaid);
 
-      // Send email notifications if requested
       if (sendEmail || sendClassroom) {
         try {
           const notifyRes = await fetch("/api/send-payment-notification", {
@@ -327,16 +407,13 @@ const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
             }),
           });
       
-          const notifyData = await notifyRes.json();
-          console.log("📧 Email notification result:", notifyData);
-      
           if (notifyRes.ok) {
             alert("Payment saved and email sent successfully!");
           } else {
             alert("Payment saved, but email failed to send.");
           }
         } catch (emailError) {
-          console.error("❌ Error sending email notification:", emailError);
+          console.error("Error sending email notification:", emailError);
           alert("Payment saved, but email notification failed.");
         }
       } else {
@@ -351,7 +428,7 @@ const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
       fetchPayments();
       
     } catch (error) {
-      console.error("❌ Error saving payment:", error);
+      console.error("Error saving payment:", error);
       alert("Failed to save payment. Check console for details.");
     } finally {
       setSaving(false);
@@ -422,138 +499,126 @@ const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
     }
   };
 
+  const handleApprovePayment = async () => {
+    if (!selectedPaymentId) return;
 
-  
-// Add these handler functions (after your existing handlers)
+    let finalAmount = 0;
+    const fee = discountApplied ?? Number(trainee.training_fee);
 
-const handleApprovePayment = async () => {
-  if (!selectedPaymentId) return;
-
-  let finalAmount = 0;
-  const fee = discountApplied ?? Number(trainee.training_fee);
-
-  // Calculate amount based on type
-  if (approveType === 'full') {
-    finalAmount = fee;
-  } else if (approveType === 'half') {
-    finalAmount = fee / 2;
-  } else if (approveType === 'custom') {
-    finalAmount = Number(approveAmount);
-    if (isNaN(finalAmount) || finalAmount <= 0) {
-      alert('Please enter a valid amount');
-      return;
+    if (approveType === 'full') {
+      finalAmount = fee;
+    } else if (approveType === 'half') {
+      finalAmount = fee / 2;
+    } else if (approveType === 'custom') {
+      finalAmount = Number(approveAmount);
+      if (isNaN(finalAmount) || finalAmount <= 0) {
+        alert('Please enter a valid amount');
+        return;
+      }
     }
-  }
 
-  setSaving(true);
-  try {
-    // Calculate new total
-    const newTotal = totalPaid + finalAmount;
-    const discountedFee = discountApplied ?? Number(trainee.training_fee);
+    setSaving(true);
+    try {
+      const newTotal = totalPaid + finalAmount;
+      const discountedFee = discountApplied ?? Number(trainee.training_fee);
+      
+      let finalStatus = 'completed';
+      if (newTotal >= discountedFee) {
+        finalStatus = isDiscounted ? 'Payment Completed (Discounted)' : 'Payment Completed';
+      } else if (newTotal > 0) {
+        finalStatus = isDiscounted ? 'Partially Paid (Discounted)' : 'Partially Paid';
+      }
+
+      const { error: updateError } = await supabase
+        .from('payments')
+        .update({
+          payment_status: finalStatus,
+          amount_paid: finalAmount,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', selectedPaymentId);
+
+      if (updateError) throw updateError;
+
+      await supabase
+        .from('trainings')
+        .update({
+          amount_paid: newTotal,
+          payment_status: finalStatus,
+          status: newTotal >= discountedFee ? 'Payment Completed' : 'Partially Paid',
+        })
+        .eq('id', trainee.id);
+
+      try {
+        await fetch('/api/send-payment-notification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            traineeEmail: trainee.email,
+            traineeName: `${trainee.first_name} ${trainee.last_name}`,
+            amount: finalAmount,
+            sendConfirmation: true,
+            sendClassroom: false,
+          }),
+        });
+      } catch (emailError) {
+        console.error('Email error:', emailError);
+      }
+
+      alert('Payment approved and client notified!');
+      setShowApproveDialog(false);
+      setSelectedPaymentId(null);
+      setApproveAmount('');
+      setApproveType('full');
+      fetchPayments();
+
+    } catch (error) {
+      console.error('Error approving payment:', error);
+      alert('Failed to approve payment. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeclinePayment = async (paymentId: string) => {
+    const confirm = window.confirm(
+      'Are you sure you want to decline this payment? The client will be notified to upload a clearer receipt.'
+    );
     
-    // Determine final status
-    let finalStatus = 'completed';
-    if (newTotal >= discountedFee) {
-      finalStatus = isDiscounted ? 'Payment Completed (Discounted)' : 'Payment Completed';
-    } else if (newTotal > 0) {
-      finalStatus = isDiscounted ? 'Partially Paid (Discounted)' : 'Partially Paid';
-    }
+    if (!confirm) return;
 
-    // Update payment record
-    const { error: updateError } = await supabase
-      .from('payments')
-      .update({
-        payment_status: finalStatus,
-        amount_paid: finalAmount,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', selectedPaymentId);
-
-    if (updateError) throw updateError;
-
-    // Update trainings table
-    await supabase
-      .from('trainings')
-      .update({
-        amount_paid: newTotal,
-        payment_status: finalStatus,
-        status: newTotal >= discountedFee ? 'Payment Completed' : 'Partially Paid',
-      })
-      .eq('id', trainee.id);
-
-    // Send confirmation email to client
+    setSaving(true);
     try {
-      await fetch('/api/send-payment-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          traineeEmail: trainee.email,
-          traineeName: `${trainee.first_name} ${trainee.last_name}`,
-          amount: finalAmount,
-          sendConfirmation: true,
-          sendClassroom: false,
-        }),
-      });
-    } catch (emailError) {
-      console.error('Email error:', emailError);
+      const { error: deleteError } = await supabase
+        .from('payments')
+        .delete()
+        .eq('id', paymentId);
+
+      if (deleteError) throw deleteError;
+
+      try {
+        await fetch('/api/send-payment-rejection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            traineeEmail: trainee.email,
+            traineeName: `${trainee.first_name} ${trainee.last_name}`,
+          }),
+        });
+      } catch (emailError) {
+        console.error('Email error:', emailError);
+      }
+
+      alert('Payment declined and client notified.');
+      fetchPayments();
+
+    } catch (error) {
+      console.error('Error declining payment:', error);
+      alert('Failed to decline payment. Please try again.');
+    } finally {
+      setSaving(false);
     }
-
-    alert('Payment approved and client notified!');
-    setShowApproveDialog(false);
-    setSelectedPaymentId(null);
-    setApproveAmount('');
-    setApproveType('full');
-    fetchPayments();
-
-  } catch (error) {
-    console.error('Error approving payment:', error);
-    alert('Failed to approve payment. Please try again.');
-  } finally {
-    setSaving(false);
-  }
-};
-
-const handleDeclinePayment = async (paymentId: string) => {
-  const confirm = window.confirm(
-    'Are you sure you want to decline this payment? The client will be notified to upload a clearer receipt.'
-  );
-  
-  if (!confirm) return;
-
-  setSaving(true);
-  try {
-    // Delete the payment record
-    const { error: deleteError } = await supabase
-      .from('payments')
-      .delete()
-      .eq('id', paymentId);
-
-    if (deleteError) throw deleteError;
-
-    // Send rejection email to client
-    try {
-      await fetch('/api/send-payment-rejection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          traineeEmail: trainee.email,
-          traineeName: `${trainee.first_name} ${trainee.last_name}`,
-        }),
-      });
-    } catch (emailError) {
-      console.error('Email error:', emailError);
-    }
-
-    alert('Payment declined and client notified.');
-    fetchPayments();
-
-  } catch (error) {
-    console.error('Error declining payment:', error);
-    alert('Failed to decline payment. Please try again.');
-  } finally {
-    setSaving(false);
-  }
-};
+  };
 
   const handleMarkAsPaid = async () => {
     if (!amountPaid || parseFloat(amountPaid) <= 0) {
@@ -571,7 +636,7 @@ const handleDeclinePayment = async (paymentId: string) => {
           payment_status: "completed",
           amount_paid: parseFloat(amountPaid),
           receipt_link: null,
-          receipt_uploaded_by: 'admin', // Mark as admin
+          receipt_uploaded_by: 'admin',
         });
 
       if (error) throw error;
@@ -602,7 +667,6 @@ const handleDeclinePayment = async (paymentId: string) => {
 
       if (error) throw error;
 
-      // Check remaining payments
       const { data: newPayments } = await supabase
         .from("payments")
         .select("*")
@@ -751,25 +815,42 @@ const handleDeclinePayment = async (paymentId: string) => {
     input.click();
   };
 
-// components/submission-dialog.tsx - PART 4: Complete Return JSX
-// (This is the complete return statement - combines all parts)
-
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        {isPending ? (
+        {/* ✅ VIEW 1: PHOTO VERIFICATION - For Pending/Resubmitted */}
+        {needsPhotoVerification ? (
           <DialogContent className="w-[40vw]">
             <DialogHeader>
-              <DialogTitle>Review Submission</DialogTitle>
+              <DialogTitle>
+                {isResubmission ? "Review Resubmitted Photos" : "Review Submission"}
+              </DialogTitle>
+              {isResubmission && trainee.declined_photos && (
+                <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
+                  <p className="font-semibold text-yellow-800">Previous Decline Reason:</p>
+                  <p className="text-yellow-700 mt-1">{trainee.declined_photos.reason}</p>
+                  <p className="text-xs text-yellow-600 mt-2">
+                    Declined: {new Date(trainee.declined_photos.declined_at).toLocaleDateString()}
+                  </p>
+                </div>
+              )}
             </DialogHeader>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* ID Picture */}
               <div className="relative cursor-pointer" onClick={() => setShowIdViewModal(true)}>
-                <h4 className="text-sm font-semibold mb-2">ID Picture</h4>
+                <h4 className="text-sm font-semibold mb-2">
+                  ID Picture
+                  {trainee.declined_photos?.id_picture && (
+                    <span className="ml-2 text-xs text-red-600">(Was Declined)</span>
+                  )}
+                </h4>
                 <img
                   src={trainee.id_picture_url}
                   alt="ID Picture"
-                  className="w-full rounded border hover:opacity-80 transition"
+                  className={`w-full rounded border hover:opacity-80 transition ${
+                    trainee.declined_photos?.id_picture ? 'border-red-400 border-2' : ''
+                  }`}
                 />
                 <Button
                   size="icon"
@@ -783,12 +864,21 @@ const handleDeclinePayment = async (paymentId: string) => {
                   <Edit />
                 </Button>
               </div>
+              
+              {/* 2x2 Photo */}
               <div className="relative cursor-pointer" onClick={() => setShow2x2ViewModal(true)}>
-                <h4 className="text-sm font-semibold mb-2">2x2 Photo</h4>
+                <h4 className="text-sm font-semibold mb-2">
+                  2x2 Photo
+                  {trainee.declined_photos?.picture_2x2 && (
+                    <span className="ml-2 text-xs text-red-600">(Was Declined)</span>
+                  )}
+                </h4>
                 <img
                   src={trainee.picture_2x2_url}
                   alt="2x2 Photo"
-                  className="w-full rounded border hover:opacity-80 transition"
+                  className={`w-full rounded border hover:opacity-80 transition ${
+                    trainee.declined_photos?.picture_2x2 ? 'border-red-400 border-2' : ''
+                  }`}
                 />
                 <Button
                   size="icon"
@@ -803,15 +893,140 @@ const handleDeclinePayment = async (paymentId: string) => {
                 </Button>
               </div>
             </div>
-
+            
             <DialogFooter className="pt-4">
               <Button variant="destructive" onClick={onDecline}>
                 Decline
               </Button>
-              <Button onClick={onVerify}>Verify</Button>
+              <Button onClick={onVerify}>
+                Verify & Proceed to Payment
+              </Button>
             </DialogFooter>
           </DialogContent>
-        ) : (
+        )
+        // Complete Return Block - Part 2 of 5
+// This continues directly after Part 1 (after the photo verification view closing)
+
+        //* ✅ VIEW 2: DECLINED WAITING VIEW - Shows when status is "Declined (Waiting for Resubmission)" */}
+        : isDeclinedAwaitingResubmission ? (
+          <DialogContent className="w-[50vw]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-red-600" />
+                Waiting for Photo Resubmission
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="p-6 space-y-4">
+              {/* Status Banner */}
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-red-800">Status: Declined - Awaiting Resubmission</p>
+                    <p className="text-sm text-red-600 mt-1">
+                      The trainee has been notified via email to resubmit their photos.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Trainee Info */}
+              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                <Avatar className="h-16 w-16">
+                  <AvatarImage src={trainee.picture_2x2_url} />
+                </Avatar>
+                <div>
+                  <p className="font-semibold text-lg">{trainee.first_name} {trainee.last_name}</p>
+                  <p className="text-sm text-muted-foreground">{trainee.email}</p>
+                  <p className="text-sm text-muted-foreground">{trainee.phone_number}</p>
+                </div>
+              </div>
+
+              {/* Decline Details */}
+              {trainee.declined_photos && (
+                <div className="space-y-3">
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="font-semibold text-yellow-800 mb-2">Photos Requiring Resubmission:</p>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-yellow-700">
+                      {trainee.declined_photos.id_picture && <li>ID Picture</li>}
+                      {trainee.declined_photos.picture_2x2 && <li>2x2 Picture</li>}
+                    </ul>
+                  </div>
+
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p className="font-semibold text-gray-800 mb-1">Decline Reason:</p>
+                    <p className="text-sm text-gray-700">{trainee.declined_photos.reason}</p>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Declined on: {new Date(trainee.declined_photos.declined_at).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Current Photos Preview */}
+              <div className="p-4 border rounded-lg">
+                <p className="font-semibold mb-3">Current Submitted Photos:</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">ID Picture</p>
+                    <img 
+                      src={trainee.id_picture_url} 
+                      alt="ID" 
+                      className="w-full rounded border cursor-pointer hover:opacity-80"
+                      onClick={() => setShowIdViewModal(true)}
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-2">2x2 Photo</p>
+                    <img 
+                      src={trainee.picture_2x2_url} 
+                      alt="2x2" 
+                      className="w-full rounded border cursor-pointer hover:opacity-80"
+                      onClick={() => setShow2x2ViewModal(true)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Info Note */}
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> Once the trainee resubmits their photos, 
+                  their status will automatically change to "Resubmitted (Pending Verification)" 
+                  and you'll be able to review the new submissions.
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={handleFollowUp}
+                disabled={sendingFollowUp}
+              >
+                {sendingFollowUp ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Send Follow-Up Email
+                  </>
+                )}
+              </Button>
+              <Button onClick={() => onOpenChange(false)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )
+        
+    
+        //* ✅ VIEW 3: FULL DETAILS VIEW - For Pending Payment, Partially Paid, Payment Completed, etc. */}
+        : showFullDetailsView ? (
           <DialogContent className="w-[70vw] p-0">
             <ScrollArea className="h-[90vh] p-6">
               <DialogHeader>
@@ -827,7 +1042,6 @@ const handleDeclinePayment = async (paymentId: string) => {
               {/* Photo Section */}
               <div className="flex flex-col items-center gap-2 py-4">
                 <div className="flex gap-4 items-start">
-                  {/* 2x2 Photo */}
                   <div className="flex flex-col items-center gap-2">
                     <Label className="text-xs text-muted-foreground">2x2 Photo</Label>
                     <div className="relative cursor-pointer" onClick={() => setShow2x2ViewModal(true)}>
@@ -850,7 +1064,6 @@ const handleDeclinePayment = async (paymentId: string) => {
                     </div>
                   </div>
 
-                  {/* ID Picture */}
                   <div className="flex flex-col items-center gap-2">
                     <Label className="text-xs text-muted-foreground">ID Picture</Label>
                     <div className="relative cursor-pointer" onClick={() => setShowIdViewModal(true)}>
@@ -947,7 +1160,7 @@ const handleDeclinePayment = async (paymentId: string) => {
                         <Input value={newAddress.mailing_city} onChange={e => setNewAddress(prev => ({ ...prev, mailing_city: e.target.value }))} />
                         <Label className="mt-2">Province</Label>
                         <Input value={newAddress.mailing_province} onChange={e => setNewAddress(prev => ({ ...prev, mailing_province: e.target.value }))} />
-                        <Button onClick={handleSaveAddress} className="mt-2">💾 Save</Button>
+                        <Button onClick={handleSaveAddress} className="mt-2">Save</Button>
                       </>
                     ) : (
                       <>
@@ -957,9 +1170,9 @@ const handleDeclinePayment = async (paymentId: string) => {
                     )}
                   </div>
                 </section>
-
                 {/* Payment and Payment History Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Payment Details Section */}
                   <section className="border rounded overflow-hidden">
                     <div className="font-bold px-4 py-2 bg-green-100 dark:text-blue-950 rounded border border-green-300">
                       Payment Details
@@ -1048,185 +1261,179 @@ const handleDeclinePayment = async (paymentId: string) => {
                     </div>
                   </section>
 
+                  {/* Payment History Section */}
+                  <section className="border rounded overflow-hidden">
+                    <div className="bg-yellow-100 dark:text-blue-950 rounded border border-yellow-300 font-bold px-4 py-2 flex justify-between items-center">
+                      <span>Payment History</span>
+                      {(!hasPayments || !isCounterPayment) && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0"
+                          onClick={!isCounterPayment ? handleFileSelect : () => setShowPaidConfirm(true)}
+                          disabled={uploading}
+                        >
+                          {uploading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Plus className="h-4 w-4" />
+                          )}
+                        </Button>
+                      )}
+                      {hasPayments && isCounterPayment && (
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={() => setShowPaidConfirm(true)}
+                        >
+                          Add Payment
+                        </Button>
+                      )}
+                    </div>
+                    <div className="p-4 text-sm">
+                      {!hasPayments ? (
+                        <p className="italic text-muted-foreground">
+                          No Payment History Recorded.
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          {payments.map((payment) => (
+                            <div 
+                              key={payment.id} 
+                              className={`border rounded-lg p-3 ${
+                                payment.payment_status === 'pending' 
+                                  ? 'border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20' 
+                                  : 'border-gray-200 bg-white dark:bg-gray-900'
+                              }`}
+                            >
+                              {/* Payment Header */}
+                              <div className="flex justify-between items-start mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${
+                                    payment.payment_status === 'pending'
+                                      ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                                      : payment.payment_status?.toLowerCase().includes('completed')
+                                      ? 'bg-green-100 text-green-800 border border-green-300'
+                                      : 'bg-blue-100 text-blue-800 border border-blue-300'
+                                  }`}>
+                                    {payment.payment_status}
+                                  </span>
+                                  
+                                  {/* Uploaded By Badge */}
+                                  {payment.receipt_uploaded_by && (
+                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
+                                      payment.receipt_uploaded_by === 'client' 
+                                        ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                                        : 'bg-purple-100 text-purple-800 border border-purple-300'
+                                    }`}>
+                                      <User className="w-3 h-3" />
+                                      {payment.receipt_uploaded_by === 'client' ? 'Client Upload' : 'Admin Upload'}
+                                    </span>
+                                  )}
+                                </div>
 
-                  {/* Payment History - USE PART 3 CODE HERE */}
-                  <div className="space-y-4">
-                      {/* Payment History Section - UPDATED WITH CLIENT UPLOAD INDICATOR */}
-                      {/* Payment History Section - ENHANCED WITH APPROVE/DECLINE */}
-                        <section className="border rounded overflow-hidden">
-                          <div className="bg-yellow-100 dark:text-blue-950 rounded border border-yellow-300 font-bold px-4 py-2 flex justify-between items-center">
-                            <span>Payment History</span>
-                            {(!hasPayments || !isCounterPayment) && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 w-8 p-0"
-                                onClick={!isCounterPayment ? handleFileSelect : () => setShowPaidConfirm(true)}
-                                disabled={uploading}
-                              >
-                                {uploading ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Plus className="h-4 w-4" />
-                                )}
-                              </Button>
-                            )}
-                            {hasPayments && isCounterPayment && (
-                              <Button
-                                size="sm"
-                                variant="default"
-                                onClick={() => setShowPaidConfirm(true)}
-                              >
-                                Add Payment
-                              </Button>
-                            )}
-                          </div>
-                          <div className="p-4 text-sm">
-                            {!hasPayments ? (
-                              <p className="italic text-muted-foreground">
-                                No Payment History Recorded.
-                              </p>
-                            ) : (
-                              <div className="space-y-3">
-                                {payments.map((payment) => (
-                                  <div 
-                                    key={payment.id} 
-                                    className={`border rounded-lg p-3 ${
-                                      payment.payment_status === 'pending' 
-                                        ? 'border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20' 
-                                        : 'border-gray-200 bg-white dark:bg-gray-900'
-                                    }`}
-                                  >
-                                    {/* Payment Header */}
-                                    <div className="flex justify-between items-start mb-2">
-                                      <div className="flex items-center gap-2">
-                                        <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-semibold ${
-                                          payment.payment_status === 'pending'
-                                            ? 'bg-yellow-100 text-yellow-800 border border-yellow-300'
-                                            : payment.payment_status?.toLowerCase().includes('completed')
-                                            ? 'bg-green-100 text-green-800 border border-green-300'
-                                            : 'bg-blue-100 text-blue-800 border border-blue-300'
-                                        }`}>
-                                          {payment.payment_status}
-                                        </span>
-                                        
-                                        {/* Uploaded By Badge */}
-                                        {payment.receipt_uploaded_by && (
-                                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                                            payment.receipt_uploaded_by === 'client' 
-                                              ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                                              : 'bg-purple-100 text-purple-800 border border-purple-300'
-                                          }`}>
-                                            <User className="w-3 h-3" />
-                                            {payment.receipt_uploaded_by === 'client' ? 'Client Upload' : 'Admin Upload'}
-                                          </span>
-                                        )}
-                                      </div>
-
-                                      {/* Delete Button */}
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="h-6 w-6 p-0 text-red-600 hover:text-red-700 cursor-pointer"
-                                        onClick={() => {
-                                          setDeleteId(payment.id);
-                                          setShowDeleteConfirm(true);
-                                        }}
-                                      >
-                                        <Trash2 className="h-3 w-3" />
-                                      </Button>
-                                    </div>
-
-                                    {/* Payment Details Grid */}
-                                    <div className="grid grid-cols-2 gap-2 text-xs mb-2">
-                                      <div>
-                                        <span className="text-muted-foreground">Date:</span>
-                                        <span className="ml-1 font-medium">
-                                          {new Date(payment.payment_date).toLocaleDateString()}
-                                        </span>
-                                      </div>
-                                      <div>
-                                        <span className="text-muted-foreground">Method:</span>
-                                        <span className="ml-1 font-medium">{payment.payment_method}</span>
-                                      </div>
-                                      <div>
-                                        <span className="text-muted-foreground">Amount:</span>
-                                        <span className="ml-1 font-semibold text-green-700">
-                                          {payment.amount_paid > 0 
-                                            ? formatCurrency(payment.amount_paid)
-                                            : 'Not Set'
-                                          }
-                                        </span>
-                                      </div>
-                                      {payment.receipt_uploaded_at && (
-                                        <div>
-                                          <span className="text-muted-foreground">Uploaded:</span>
-                                          <span className="ml-1 text-xs">
-                                            {new Date(payment.receipt_uploaded_at).toLocaleDateString()}
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {/* Receipt Preview */}
-                                    {payment.receipt_link && (
-                                      <div className="mb-2">
-                                        <img 
-                                          src={payment.receipt_link} 
-                                          alt="Receipt" 
-                                          className="w-full h-32 object-cover rounded border cursor-pointer hover:opacity-80 transition"
-                                          onClick={() => payment.receipt_link && window.open(payment.receipt_link, '_blank')}
-                                        />
-                                      </div>
-                                    )}
-
-                                    {/* Action Buttons */}
-                                    <div className="flex gap-2 mt-2">
-                                      {payment.receipt_link && (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="flex-1 h-8 text-xs cursor-pointer"
-                                          onClick={() => payment.receipt_link && window.open(payment.receipt_link, '_blank')}
-                                        >
-                                          <Download className="h-3 w-3 mr-1" />
-                                          View Receipt
-                                        </Button>
-                                      )}
-
-                                      {/* Show Approve/Decline for pending payments */}
-                                      {payment.payment_status === 'pending' && (
-                                        <>
-                                          <Button
-                                            size="sm"
-                                            variant="default"
-                                            className="flex-1 h-8 text-xs bg-green-600 hover:bg-green-700 cursor-pointer"
-                                            onClick={() => {
-                                              setSelectedPaymentId(payment.id);
-                                              setShowApproveDialog(true);
-                                            }}
-                                          >
-                                            ✓ Approve
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="destructive"
-                                            className="flex-1 h-8 text-xs cursor-pointer"
-                                            onClick={() => handleDeclinePayment(payment.id)}
-                                          >
-                                            ✗ Decline
-                                          </Button>
-                                        </>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
+                                {/* Delete Button */}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 w-6 p-0 text-red-600 hover:text-red-700 cursor-pointer"
+                                  onClick={() => {
+                                    setDeleteId(payment.id);
+                                    setShowDeleteConfirm(true);
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
                               </div>
-                            )}
-                          </div>
-                        </section>
 
-                  </div>
+                              {/* Payment Details Grid */}
+                              <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                                <div>
+                                  <span className="text-muted-foreground">Date:</span>
+                                  <span className="ml-1 font-medium">
+                                    {new Date(payment.payment_date).toLocaleDateString()}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Method:</span>
+                                  <span className="ml-1 font-medium">{payment.payment_method}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Amount:</span>
+                                  <span className="ml-1 font-semibold text-green-700">
+                                    {payment.amount_paid > 0 
+                                      ? formatCurrency(payment.amount_paid)
+                                      : 'Not Set'
+                                    }
+                                  </span>
+                                </div>
+                                {payment.receipt_uploaded_at && (
+                                  <div>
+                                    <span className="text-muted-foreground">Uploaded:</span>
+                                    <span className="ml-1 text-xs">
+                                      {new Date(payment.receipt_uploaded_at).toLocaleDateString()}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Receipt Preview */}
+                              {payment.receipt_link && (
+                                <div className="mb-2">
+                                  <img 
+                                    src={payment.receipt_link} 
+                                    alt="Receipt" 
+                                    className="w-full h-32 object-cover rounded border cursor-pointer hover:opacity-80 transition"
+                                    onClick={() => payment.receipt_link && window.open(payment.receipt_link, '_blank')}
+                                  />
+                                </div>
+                              )}
+
+                              {/* Action Buttons */}
+                              <div className="flex gap-2 mt-2">
+                                {payment.receipt_link && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="flex-1 h-8 text-xs cursor-pointer"
+                                    onClick={() => payment.receipt_link && window.open(payment.receipt_link, '_blank')}
+                                  >
+                                    <Download className="h-3 w-3 mr-1" />
+                                    View Receipt
+                                  </Button>
+                                )}
+
+                                {/* Show Approve/Decline for pending payments */}
+                                {payment.payment_status === 'pending' && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="default"
+                                      className="flex-1 h-8 text-xs bg-green-600 hover:bg-green-700 cursor-pointer"
+                                      onClick={() => {
+                                        setSelectedPaymentId(payment.id);
+                                        setShowApproveDialog(true);
+                                      }}
+                                    >
+                                      ✓ Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="destructive"
+                                      className="flex-1 h-8 text-xs cursor-pointer"
+                                      onClick={() => handleDeclinePayment(payment.id)}
+                                    >
+                                      ✗ Decline
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </section>
                 </div>
               </div>
 
@@ -1240,9 +1447,10 @@ const handleDeclinePayment = async (paymentId: string) => {
               )}
             </ScrollArea>
           </DialogContent>
-        )}
+        ) : null}
       </Dialog>
-
+      {/* Supporting Dialogs - Photo Viewers */}
+      
       {/* 2x2 Photo Viewer Dialog */}
       <Dialog open={show2x2ViewModal} onOpenChange={setShow2x2ViewModal}>
         <DialogContent className="w-[50vw] max-w-3xl">
@@ -1391,7 +1599,7 @@ const handleDeclinePayment = async (paymentId: string) => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete Confirmation */}
+      {/* Delete Payment Confirmation */}
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1408,6 +1616,7 @@ const handleDeclinePayment = async (paymentId: string) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
       {/* Approve Payment Dialog */}
       <AlertDialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
         <AlertDialogContent>
@@ -1436,7 +1645,7 @@ const handleDeclinePayment = async (paymentId: string) => {
               <div className="flex justify-between border-t pt-1">
                 <span className="text-muted-foreground">Remaining:</span>
                 <span className="font-semibold text-red-600">
-                  {formatCurrency(discountApplied ?? (trainee?.training_fee || 0) - totalPaid)}
+                  {formatCurrency((discountApplied ?? (trainee?.training_fee || 0)) - totalPaid)}
                 </span>
               </div>
             </div>
@@ -1488,7 +1697,7 @@ const handleDeclinePayment = async (paymentId: string) => {
                     <div className="flex-1">
                       <div className="font-medium">Half Payment (50%)</div>
                       <div className="text-sm text-muted-foreground">
-                        {formatCurrency(discountApplied ?? (trainee?.training_fee || 0) / 2)}
+                        {formatCurrency((discountApplied ?? (trainee?.training_fee || 0)) / 2)}
                       </div>
                     </div>
                   </div>
@@ -1543,9 +1752,9 @@ const handleDeclinePayment = async (paymentId: string) => {
                   {formatCurrency(
                     totalPaid + (
                       approveType === 'full' 
-                        ? discountApplied ?? (trainee?.training_fee || 0)
+                        ? (discountApplied ?? (trainee?.training_fee || 0))
                         : approveType === 'half'
-                        ? discountApplied ?? (trainee?.training_fee || 0) / 2
+                        ? (discountApplied ?? (trainee?.training_fee || 0)) / 2
                         : Number(approveAmount) || 0
                     )
                   )}
@@ -1585,4 +1794,3 @@ const handleDeclinePayment = async (paymentId: string) => {
     </>
   );
 }
-

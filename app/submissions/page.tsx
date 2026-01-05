@@ -1,3 +1,4 @@
+//app\submissions\page.tsx
 "use client"
 
 import { useEffect, useState } from "react"
@@ -25,6 +26,8 @@ import {
   PieChart,
   ImageOff,
   ArrowLeft,
+  AlertCircle,
+  Upload,
 } from "lucide-react";
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -80,6 +83,27 @@ export default function SubmissionPage() {
           <Badge className="bg-orange-100 text-orange-800 border border-orange-300">
             <Clock className="w-4 h-4 mr-1" />
             Pending
+          </Badge>
+        );
+      case "awaiting receipt":
+        return (
+          <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-300">
+            <Clock className="w-4 h-4 mr-1" />
+            Awaiting Receipt
+          </Badge>
+        );
+      case "declined (waiting for resubmission)":
+        return (
+          <Badge className="bg-red-100 text-red-800 border border-red-300">
+            <AlertCircle className="w-4 h-4 mr-1" />
+            Declined - Awaiting Resubmission
+          </Badge>
+        );
+      case "resubmitted (pending verification)":
+        return (
+          <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
+            <Upload className="w-4 h-4 mr-1" />
+            Resubmitted - Pending Verification
           </Badge>
         );
       case "partially paid":
@@ -199,11 +223,23 @@ export default function SubmissionPage() {
     fetchTrainees();
   }, [scheduleId]);
 
+  // ✅ FIX: Update handleView to check status and open appropriate dialog
   const handleView = (trainee: any) => {
     if (bulkMode) return;
-    setSelectedTrainee(trainee)
-    setDialogOpen(true)
-  }
+    
+    const status = trainee.status?.toLowerCase();
+    
+    // If status is declined, open the decline dialog immediately for them to view/resubmit
+    // Otherwise, open the submission dialog
+    setSelectedTrainee(trainee);
+    setDialogOpen(true);
+  };
+
+   const handleDeclineFromSubmission = () => {
+    // Close submission dialog and open decline photo dialog
+    setDialogOpen(false);
+    setDeclineDialogOpen(true);
+  };
 
   const handleDeclinePhoto = (trainee: any) => {
     setSelectedTrainee(trainee)
@@ -211,105 +247,114 @@ export default function SubmissionPage() {
   }
 
   const handleDialogClose = async (open: boolean) => {
-    setDialogOpen(open);
-    if (!open && selectedTrainee) {
-      const updatedTrainee = await supabase
-        .from("trainings")
-        .select(`*, courses:course_id(training_fee)`)
-        .eq("id", selectedTrainee.id)
-        .single();
-
-      if (updatedTrainee.data) {
-        const updated = {
-          ...updatedTrainee.data,
-          training_fee: updatedTrainee.data.courses?.training_fee || 0,
-        };
-
-        setTrainees((prev) => {
-          const updatedList = prev.map((t) =>
-            t.id === updated.id ? { ...updated, rowIndex: t.rowIndex } : t
-          );
-          updatedList.sort((a, b) => a.rowIndex - b.rowIndex);
-          return updatedList;
-        });
-      }
-    }
-  };
-
-  const updateStatus = async (status: string) => {
-    if (!selectedTrainee || !scheduleId) return;
+  setDialogOpen(open);
   
-    let certNumber: string | null = null;
+  // Only refresh data when closing, don't trigger status updates
+  if (!open && selectedTrainee) {
+    const updatedTrainee = await supabase
+      .from("trainings")
+      .select(`*, courses:course_id(training_fee)`)
+      .eq("id", selectedTrainee.id)
+      .single();
 
-    try {
-      if (status === "Pending Payment" || status === "Payment Completed") {
-        const { data: scheduleData, error: scheduleError } = await supabase
-          .from("schedules")
-          .select("course_id")
-          .eq("id", scheduleId)
-          .single();
-    
-        if (scheduleError || !scheduleData) throw scheduleError;
-    
-        const { data: courseData, error: courseError } = await supabase
-          .from("courses")
-          .select("name, serial_number_pad")
-          .eq("id", scheduleData.course_id)
-          .single();
-    
-        if (courseError || !courseData) throw courseError;
-    
-        const courseName = courseData.name;
-        const padLength = courseData.serial_number_pad || 6;
-    
-        const { count, error: countError } = await supabase
-          .from("trainings")
-          .select("certificate_number", { count: "exact", head: true })
-          .eq("course_id", scheduleData.course_id)
-          .not("certificate_number", "is", null);
-    
-        if (countError) throw countError;
-    
-        const nextNumber = (count ?? 0) + 1;
-        const padded = nextNumber.toString().padStart(padLength, "0");
-        certNumber = `PSI-${courseName}-${padded}`;
-      }
-    
-      const { error: updateError } = await supabase
-        .from("trainings")
-        .update({
-          status,
-          ...(certNumber && { certificate_number: certNumber }),
-        })
-        .eq("id", selectedTrainee.id);
-    
-      if (updateError) throw updateError;
-    
-      setTrainees((prev) =>
-        prev.map((t) =>
-          t.id === selectedTrainee.id
-            ? { ...t, status, ...(certNumber && { certificate_number: certNumber }) }
-            : t
-        )
-      );
-    
-      setDialogOpen(false);
-    
-      toast.success(
-        status === "Declined"
-          ? "Trainee has been declined."
-          : status === "Pending Payment"
-          ? "Trainee has been verified and marked for payment."
-          : status === "Payment Completed"
-          ? "Trainee payment has been completed."
-          : `Trainee updated to ${status}.`
-      );
-      
-    } catch (err: any) {
-      console.error("Status update failed:", err);
-      toast.error(`Failed to update status: ${err.message || "Unknown error"}`);
+    if (updatedTrainee.data) {
+      const updated = {
+        ...updatedTrainee.data,
+        training_fee: updatedTrainee.data.courses?.training_fee || 0,
+      };
+
+      setTrainees((prev) => {
+        const updatedList = prev.map((t) =>
+          t.id === updated.id ? { ...updated, rowIndex: t.rowIndex } : t
+        );
+        updatedList.sort((a, b) => a.rowIndex - b.rowIndex);
+        return updatedList;
+      });
     }
-  };
+  }
+};
+const updateStatus = async (status: string) => {
+  if (!selectedTrainee || !scheduleId) return;
+
+  let certNumber: string | null = null;
+
+  try {
+    if (status === "Pending Payment" || status === "Payment Completed") {
+      const { data: scheduleData, error: scheduleError } = await supabase
+        .from("schedules")
+        .select("course_id")
+        .eq("id", scheduleId)
+        .single();
+  
+      if (scheduleError || !scheduleData) throw scheduleError;
+  
+      const { data: courseData, error: courseError } = await supabase
+        .from("courses")
+        .select("name, serial_number_pad")
+        .eq("id", scheduleData.course_id)
+        .single();
+  
+      if (courseError || !courseData) throw courseError;
+  
+      const courseName = courseData.name;
+      const padLength = courseData.serial_number_pad || 6;
+  
+      const { count, error: countError } = await supabase
+        .from("trainings")
+        .select("certificate_number", { count: "exact", head: true })
+        .eq("course_id", scheduleData.course_id)
+        .not("certificate_number", "is", null);
+  
+      if (countError) throw countError;
+  
+      const nextNumber = (count ?? 0) + 1;
+      const padded = nextNumber.toString().padStart(padLength, "0");
+      certNumber = `PSI-${courseName}-${padded}`;
+    }
+  
+    const updateData: any = {
+      status,
+      ...(certNumber && { certificate_number: certNumber }),
+    };
+
+    // ✅ Clear declined_photos when verified
+    if (status === "Pending Payment") {
+      updateData.declined_photos = null;
+    }
+
+    const { error: updateError } = await supabase
+      .from("trainings")
+      .update(updateData)
+      .eq("id", selectedTrainee.id);
+  
+    if (updateError) throw updateError;
+  
+    setTrainees((prev) =>
+      prev.map((t) =>
+        t.id === selectedTrainee.id
+          ? { ...t, status, ...(certNumber && { certificate_number: certNumber }) }
+          : t
+      )
+    );
+  
+    setDialogOpen(false);
+  
+    toast.success(
+      status === "Declined"
+        ? "Trainee has been declined."
+        : status === "Pending Payment"
+        ? "Trainee has been verified and marked for payment."
+        : status === "Payment Completed"
+        ? "Trainee payment has been completed."
+        : `Trainee updated to ${status}.`
+    );
+    
+  } catch (err: any) {
+    console.error("Status update failed:", err);
+    toast.error(`Failed to update status: ${err.message || "Unknown error"}`);
+  }
+};
+
 
   // Bulk action handlers
   const handleQuickAction = (action: "paid" | "room") => {
@@ -695,15 +740,16 @@ export default function SubmissionPage() {
         </DialogContent>
       </Dialog>
 
+       {/* ✅ UPDATED: Pass handleDeclineFromSubmission as onDecline */}
       <SubmissionDialog
         open={dialogOpen}
         onOpenChange={handleDialogClose}
         trainee={selectedTrainee}
         onVerify={() => updateStatus("Pending Payment")}
-        onDecline={() => updateStatus("Declined")}
+        onDecline={handleDeclineFromSubmission} // This opens decline photo dialog
       />
 
-      <DeclinePhotoDialog
+     <DeclinePhotoDialog
         open={declineDialogOpen}
         onOpenChange={setDeclineDialogOpen}
         trainee={selectedTrainee}
