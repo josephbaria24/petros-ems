@@ -1,4 +1,4 @@
-//components\participants-table.tsx - PART 1 OF 3
+// components/participants-table.tsx - PART 1 OF 3
 // Copy this entire file first
 
 "use client"
@@ -16,7 +16,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table"
-import { ArrowUpDown, FileText, FolderOpen, ClipboardCheck, MoreVertical, Eye, Edit, Trash2 } from "lucide-react"
+import { ArrowUpDown, FileText, FolderOpen, ClipboardCheck, MoreVertical, Eye, Edit, Trash2, Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -89,6 +89,24 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     })
   }
 
+  const handleCopyRegistrationLink = (participant: Participant) => {
+    // Build the registration link with schedule_id (matching the registration page parameter)
+    const baseUrl = window.location.origin
+    const registrationUrl = `${baseUrl}/guest-training-registration?schedule_id=${participant.id}`
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(registrationUrl).then(() => {
+      toast.success("Registration link copied!", {
+        description: "Share this link to allow trainees to register",
+      })
+    }).catch((err) => {
+      console.error("Failed to copy:", err)
+      toast.error("Failed to copy link", {
+        description: "Please try again",
+      })
+    })
+  }
+
   function formatScheduleDateRange(start: string, end: string) {
     const s = new Date(start)
     const e = new Date(end)
@@ -126,9 +144,6 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     setSelectedParticipant(participant)
     setDeleteDialogOpen(true)
   }
-
-// PART 2 OF 3 - Continue from Part 1
-// Paste this directly after Part 1
 
   const handleDeleteConfirm = async () => {
     if (!selectedParticipant) return
@@ -324,9 +339,6 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     fetchTrainings()
   }, [status, refreshTrigger, fetchTrainings])
 
-// PART 3 OF 3 - Continue from Part 2
-// Paste this directly after Part 2
-
   const columns: ColumnDef<Participant>[] = [
     {
       accessorKey: "course",
@@ -441,6 +453,10 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                 <Edit className="mr-2 h-4 w-4" />
                 Edit
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleCopyRegistrationLink(participant)} className="cursor-pointer">
+                <Link2 className="mr-2 h-4 w-4" />
+                Copy Registration Link
+              </DropdownMenuItem>
               <DropdownMenuItem 
                 onClick={() => handleDeleteClick(participant)} 
                 className="cursor-pointer text-destructive focus:text-destructive"
@@ -551,21 +567,6 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               </SelectContent>
             </Select>
 
-            {/* <Select
-              value={(table.getColumn("schedule")?.getFilterValue() as string) ?? "all"}
-              onValueChange={(value) => table.getColumn("schedule")?.setFilterValue(value === "all" ? "" : value)}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Filter by month" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Months</SelectItem>
-                {uniqueMonths.map((month) => (
-                  <SelectItem key={month} value={month}>{month}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select> */}
-
             <Select
               value={(table.getColumn("status")?.getFilterValue() as string) ?? "all"}
               onValueChange={(value) => table.getColumn("status")?.setFilterValue(value === "all" ? "" : value)}
@@ -650,6 +651,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           </div>
         </div>
       </Card>
+      // components/participants-table.tsx - PART 3 OF 3
+// Paste this directly after Part 2
 
       {/* View Dialog */}
       <AlertDialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>

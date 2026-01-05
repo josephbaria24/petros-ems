@@ -1,3 +1,4 @@
+//app\guest-training-registration\page.tsx
 "use client"
 
 import { useEffect, useState } from "react"
