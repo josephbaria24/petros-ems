@@ -253,7 +253,7 @@ export function SubmissionDialog({
   // const formatCurrency = (value: number) =>
   //   value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
   // const isPending = trainee.status?.toLowerCase() === "pending";
-  
+
   const isCounterPayment = trainee.payment_method?.toUpperCase() === "COUNTER";
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
   const hasPayments = payments.length > 0;
@@ -935,7 +935,7 @@ export function SubmissionDialog({
 
         //* ✅ VIEW 2: DECLINED WAITING VIEW - Shows when status is "Declined (Waiting for Resubmission)" */}
         : isDeclinedAwaitingResubmission ? (
-          <DialogContent className="w-[50vw]">
+          <DialogContent className="w-[50vw] max-h-[85vh] flex flex-col">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <AlertCircle className="h-5 w-5 text-red-600" />
@@ -943,89 +943,90 @@ export function SubmissionDialog({
               </DialogTitle>
             </DialogHeader>
 
-            <div className="p-6 space-y-4">
-              {/* Status Banner */}
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+            <div className="overflow-y-auto pr-4 flex-1">
+              <div className="space-y-4">
+                {/* Status Banner */}
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-red-800">Status: Declined - Awaiting Resubmission</p>
+                      <p className="text-sm text-red-600 mt-1">
+                        The trainee has been notified via email to resubmit their photos.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Trainee Info */}
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+                  <Avatar className="h-16 w-16">
+                    <AvatarImage src={trainee.picture_2x2_url} />
+                  </Avatar>
                   <div>
-                    <p className="font-semibold text-red-800">Status: Declined - Awaiting Resubmission</p>
-                    <p className="text-sm text-red-600 mt-1">
-                      The trainee has been notified via email to resubmit their photos.
-                    </p>
+                    <p className="font-semibold text-lg">{trainee.first_name} {trainee.last_name}</p>
+                    <p className="text-sm text-muted-foreground">{trainee.email}</p>
+                    <p className="text-sm text-muted-foreground">{trainee.phone_number}</p>
                   </div>
                 </div>
-              </div>
 
-              {/* Trainee Info */}
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                <Avatar className="h-16 w-16">
-                  <AvatarImage src={trainee.picture_2x2_url} />
-                </Avatar>
-                <div>
-                  <p className="font-semibold text-lg">{trainee.first_name} {trainee.last_name}</p>
-                  <p className="text-sm text-muted-foreground">{trainee.email}</p>
-                  <p className="text-sm text-muted-foreground">{trainee.phone_number}</p>
-                </div>
-              </div>
+                {/* Decline Details */}
+                {trainee.declined_photos && (
+                  <div className="space-y-3">
+                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="font-semibold text-yellow-800 mb-2">Photos Requiring Resubmission:</p>
+                      <ul className="list-disc list-inside space-y-1 text-sm text-yellow-700">
+                        {trainee.declined_photos.id_picture && <li>ID Picture</li>}
+                        {trainee.declined_photos.picture_2x2 && <li>2x2 Picture</li>}
+                      </ul>
+                    </div>
 
-              {/* Decline Details */}
-              {trainee.declined_photos && (
-                <div className="space-y-3">
-                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <p className="font-semibold text-yellow-800 mb-2">Photos Requiring Resubmission:</p>
-                    <ul className="list-disc list-inside space-y-1 text-sm text-yellow-700">
-                      {trainee.declined_photos.id_picture && <li>ID Picture</li>}
-                      {trainee.declined_photos.picture_2x2 && <li>2x2 Picture</li>}
-                    </ul>
+                    <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                      <p className="font-semibold text-gray-800 mb-1">Decline Reason:</p>
+                      <p className="text-sm text-gray-700">{trainee.declined_photos.reason}</p>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Declined on: {new Date(trainee.declined_photos.declined_at).toLocaleString()}
+                      </p>
+                    </div>
                   </div>
+                )}
 
-                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                    <p className="font-semibold text-gray-800 mb-1">Decline Reason:</p>
-                    <p className="text-sm text-gray-700">{trainee.declined_photos.reason}</p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Declined on: {new Date(trainee.declined_photos.declined_at).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Current Photos Preview */}
-              <div className="p-4 border rounded-lg">
-                <p className="font-semibold mb-3">Current Submitted Photos:</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-2">ID Picture</p>
-                    <img 
-                      src={trainee.id_picture_url} 
-                      alt="ID" 
-                      className="w-full rounded border cursor-pointer hover:opacity-80"
-                      onClick={() => setShowIdViewModal(true)}
-                    />
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-2">2x2 Photo</p>
-                    <img 
-                      src={trainee.picture_2x2_url} 
-                      alt="2x2" 
-                      className="w-full rounded border cursor-pointer hover:opacity-80"
-                      onClick={() => setShow2x2ViewModal(true)}
-                    />
+                {/* Current Photos Preview - Now with limited height */}
+                <div className="p-4 border rounded-lg">
+                  <p className="font-semibold mb-3">Current Submitted Photos:</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-2">ID Picture</p>
+                      <img 
+                        src={trainee.id_picture_url} 
+                        alt="ID" 
+                        className="w-full max-h-48 object-contain rounded border cursor-pointer hover:opacity-80"
+                        onClick={() => setShowIdViewModal(true)}
+                      />
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-2">2x2 Photo</p>
+                      <img 
+                        src={trainee.picture_2x2_url} 
+                        alt="2x2" 
+                        className="w-full max-h-48 object-contain rounded border cursor-pointer hover:opacity-80"
+                        onClick={() => setShow2x2ViewModal(true)}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Info Note */}
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> Once the trainee resubmits their photos, 
-                  their status will automatically change to "Resubmitted (Pending Verification)" 
-                  and you'll be able to review the new submissions.
-                </p>
+                {/* Info Note */}
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>Note:</strong> Once the trainee resubmits their photos, 
+                    their status will automatically change to "Resubmitted (Pending Verification)" 
+                    and you'll be able to review the new submissions.
+                  </p>
+                </div>
               </div>
             </div>
-
-            <DialogFooter>
+            <DialogFooter className="mt-4">
               <Button 
                 variant="outline" 
                 onClick={handleFollowUp}

@@ -132,7 +132,6 @@ export default function GuestTrainingRegistration() {
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [course, setCourse] = useState<any>(null)
   const [regions, setRegions] = useState<{ code: string; name: string }[]>([])
-  const [cities, setCities] = useState<{ code: string; name: string }[]>([])
   const [paymentMethod, setPaymentMethod] = useState("BPI")
   const [errors, setErrors] = useState<{ [key: string]: boolean }>({})
 
@@ -148,6 +147,16 @@ export default function GuestTrainingRegistration() {
     "mailing_province",
     "employment_status",
   ]
+
+  const requiredEmploymentFields: string[] = [
+  "company_name",
+  "company_position",
+  "company_industry",
+  "company_email",
+  "company_city",
+  "company_region",
+  "total_workers",
+]
 
   const validateStep3 = () => {
     if (!form.id_picture_url) {
@@ -206,6 +215,42 @@ export default function GuestTrainingRegistration() {
 
     return true
   }
+
+  const validateStep2 = () => {
+  if (form.employment_status !== "Employed") return true
+
+  const newErrors: any = {}
+  let firstErrorField: string | null = null
+
+  requiredEmploymentFields.forEach((field: string) => {
+    if (!form[field] || form[field].toString().trim() === "") {
+      newErrors[field] = true
+      if (!firstErrorField) firstErrorField = field
+    }
+  })
+
+  // Email format check
+  if (form.company_email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(form.company_email)) {
+      newErrors.company_email = true
+      firstErrorField ??= "company_email"
+      toast.error("Please enter a valid company email.")
+    }
+  }
+
+  setErrors((prev) => ({ ...prev, ...newErrors }))
+
+  if (firstErrorField) {
+    const el = document.getElementById(firstErrorField)
+    el?.scrollIntoView({ behavior: "smooth", block: "center" })
+    el?.focus()
+    toast.error("Please complete all required employment details.")
+    return false
+  }
+
+  return true
+}
 
   useEffect(() => {
     const fetchCourseAndSchedule = async () => {
@@ -292,14 +337,16 @@ export default function GuestTrainingRegistration() {
     setBookingReference(bookingRef)
   }, [])
 
-  useEffect(() => {
-    fetch("https://psgc.cloud/api/regions")
-      .then(res => res.json())
-      .then(data => {
-        setRegions(data)
-      })
-      .catch(err => console.error("Failed to fetch regions", err))
-  }, [])
+useEffect(() => {
+  fetch("/regions.json")
+    .then(res => {
+      if (!res.ok) throw new Error("Failed to load regions")
+      return res.json()
+    })
+    .then(setRegions)
+    .catch(err => console.error("Failed to load local regions", err))
+}, [])
+
 
   function formatDateRange(start: string, end: string) {
     const startDate = new Date(start)
@@ -333,24 +380,14 @@ export default function GuestTrainingRegistration() {
     pdf.save(`Booking-Summary-${bookingReference}.pdf`);
   };
 
-  const handleRegionChange = async (regionCode: string) => {
-    const selectedRegion = regions.find(r => r.code === regionCode)
-  
-    setForm({
-      ...form,
-      company_region: selectedRegion?.name || regionCode,
-      company_city: "",
-    })
-  
-    try {
-      const res = await fetch(`https://psgc.cloud/api/regions/${regionCode}/cities-municipalities`)
-      const data = await res.json()
-      setCities(data)
-    } catch (err) {
-      console.error("Failed to fetch cities", err)
-      setCities([])
-    }
-  }
+const handleRegionChange = (regionCode: string) => {
+  const selectedRegion = regions.find(r => r.code === regionCode)
+
+  setForm((prev: any) => ({
+    ...prev,
+    company_region: selectedRegion?.name || regionCode,
+  }))
+}
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -502,18 +539,27 @@ export default function GuestTrainingRegistration() {
 
       const trainingFee = courseData?.training_fee || 0;
 
-      const trainingPayload = {
-        ...form,
-        schedule_id: scheduleId,
-        course_id: courseId,
-        batch_number: batchNumber,
-        status: "pending",
-        payment_method: paymentMethod,
-        payment_status:
-          paymentMethod === "COUNTER" ? "pending" : "awaiting receipt",
-        amount_paid: 0,
-        courtesy_title: form.courtesy_title || null,
-      };
+const trainingPayload = {
+  ...form,
+  schedule_id: scheduleId,
+  course_id: courseId,
+  batch_number: batchNumber,
+  status: "pending",
+  payment_method: paymentMethod,
+  payment_status:
+    paymentMethod === "COUNTER" ? "pending" : "awaiting receipt",
+  amount_paid: 0,
+  courtesy_title: form.courtesy_title || null,
+
+  // normalize student fields
+  is_student:
+    form.employment_status === "Unemployed" ? !!form.is_student : false,
+  school_name:
+    form.employment_status === "Unemployed" && form.is_student
+      ? form.school_name
+      : null,
+}
+
 
       const { data: insertedTraining, error: insertError } = await supabase
         .from("trainings")
@@ -919,9 +965,15 @@ export default function GuestTrainingRegistration() {
                         <RadioGroup
                           value={form.employment_status || ""}
                           onValueChange={(val) => {
-                            setForm({ ...form, employment_status: val })
+                            setForm((prev: any) => ({
+                              ...prev,
+                              employment_status: val,
+                              is_student: val === "Unemployed" ? prev.is_student ?? false : false,
+                              school_name: val === "Unemployed" ? prev.school_name ?? "" : null,
+                            }))
                             setErrors((prev) => ({ ...prev, employment_status: false }))
                           }}
+
                           className="flex gap-6"
                         >
                           <div className="flex items-center gap-2">
@@ -934,6 +986,42 @@ export default function GuestTrainingRegistration() {
                           </div>
                         </RadioGroup>
                       </div>
+                      {form.employment_status === "Unemployed" && (
+                        <div className="space-y-3 pt-2">
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              id="is_student"
+                              checked={!!form.is_student}
+                              onCheckedChange={(checked) =>
+                                setForm((prev: any) => ({
+                                  ...prev,
+                                  is_student: Boolean(checked),
+                                  school_name: checked ? prev.school_name ?? "" : null,
+                                }))
+                              }
+                            />
+                            <Label htmlFor="is_student" className="cursor-pointer">
+                              I am currently a student
+                            </Label>
+                          </div>
+
+                          {form.is_student && (
+                            <div className="space-y-2">
+                              <Label htmlFor="school_name" className="text-sm font-medium">
+                                School / University Name *
+                              </Label>
+                              <Input
+                                id="school_name"
+                                name="school_name"
+                                value={form.school_name || ""}
+                                onChange={handleChange}
+                                placeholder="Enter school or university"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+
 
                       {errors.employment_status && (
                         <p className="text-red-500 text-xs">Employment status is required</p>
@@ -973,38 +1061,37 @@ export default function GuestTrainingRegistration() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="company_name" className="text-sm font-medium">Company Name</Label>
-                      <Input id="company_name" name="company_name" onChange={handleChange} placeholder="Enter company name" />
+                      <Input id="company_name" required={isEmployed} name="company_name" onChange={handleChange} placeholder="Enter company name" />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="company_position" className="text-sm font-medium">Position</Label>
-                      <Input id="company_position" name="company_position" onChange={handleChange} placeholder="Your position" />
+                      <Input id="company_position" required={isEmployed} name="company_position" onChange={handleChange} placeholder="Your position" />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="company_industry" className="text-sm font-medium">Industry</Label>
-                      <Input id="company_industry" name="company_industry" onChange={handleChange} placeholder="e.g., Technology, Finance" />
+                      <Input id="company_industry" required={isEmployed} name="company_industry" onChange={handleChange} placeholder="e.g., Technology, Finance" />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="company_email" className="text-sm font-medium">Company Email</Label>
-                      <Input id="company_email" name="company_email" type="email" onChange={handleChange} placeholder="company@example.com" />
+                      <Input id="company_email" required={isEmployed} name="company_email" type="email" onChange={handleChange} placeholder="company@example.com" />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="company_landline" className="text-sm font-medium">Company Landline</Label>
-                      <Input id="company_landline" name="company_landline" onChange={handleChange} placeholder="(02) 1234-5678" />
+                      <Input id="company_landline" required={isEmployed} name="company_landline" onChange={handleChange} placeholder="(02) 1234-5678" />
                     </div>
                       <div className="space-y-2">
-                        <Label htmlFor="city">City / Municipality</Label>
-                        <SearchableDropdown
-                          items={cities}
-                          value={form.company_city || ""}
-                          onChange={(cityCode) => {
-                            const selectedCity = cities.find((c) => c.code === cityCode)
-                            setForm({ ...form, company_city: selectedCity?.name || cityCode })
-                          }}
-                          placeholder="Select City or Municipality"
-                          disabled={cities.length === 0}
-                          className="w-full"
-                        />
-                      </div>
+                          <Label htmlFor="company_city"  className="text-sm font-medium">
+                            City / Municipality
+                          </Label>
+                          <Input
+                            id="company_city"
+                            name="company_city"
+                            value={form.company_city || ""}
+                            onChange={handleChange}
+                            placeholder="Enter city or municipality"
+                            required={isEmployed}
+                          />
+                        </div>
                         <div className="space-y-2">
                           <Label htmlFor="region">Region</Label>
                           <SearchableDropdown
@@ -1013,19 +1100,23 @@ export default function GuestTrainingRegistration() {
                             onChange={(regionCode) => handleRegionChange(regionCode)}
                             placeholder="Select Region"
                             className="w-full"
+                            
                           />
                         </div>
                     <div className="space-y-2">
                       <Label htmlFor="total_workers" className="text-sm font-medium">Total Number of Workers</Label>
-                      <Input id="total_workers" name="total_workers" type="number" onChange={handleChange} placeholder="e.g., 50" />
+                      <Input id="total_workers" required={isEmployed} name="total_workers" type="number" onChange={handleChange} placeholder="e.g., 50" />
                     </div>
                   </div>
                 </div>
 
                 <div className="flex justify-end pt-4">
-                  <Button 
-                    onClick={() => setStep(3)} 
-                    size="lg" 
+                  <Button
+                    onClick={() => {
+                      if (!validateStep2()) return
+                      setStep(3)
+                    }}
+                    size="lg"
                     className="bg-slate-900 hover:bg-slate-700 cursor-pointer"
                   >
                     Continue
