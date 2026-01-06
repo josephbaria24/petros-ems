@@ -273,6 +273,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       setData([])
     } else {
       console.log("Fetched schedules data:", data)
+      console.log("COSH schedules:", data?.filter(s => s.courses?.name?.includes("COSH")))
       const now = new Date()
       const mapped: Participant[] = (data ?? [])
         .map((schedule) => {
@@ -314,20 +315,39 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           }
         })
         .sort((a, b) => {
-          if (!a.sortDate && !b.sortDate) return 0
-          if (!a.sortDate) return 1
-          if (!b.sortDate) return -1
-          
-          const aFuture = a.sortDate >= now
-          const bFuture = b.sortDate >= now
-          
-          // Both future: sort ascending (nearest first)
-          if (aFuture && bFuture) return a.sortDate.getTime() - b.sortDate.getTime()
-          // Both past: sort descending (most recent first)
-          if (!aFuture && !bFuture) return b.sortDate.getTime() - a.sortDate.getTime()
-          // One future, one past: future comes first
-          return aFuture ? -1 : 1
-        })
+  // Priority 1: Sort by status (ongoing should always be first)
+  const statusPriority: Record<string, number> = {
+    ongoing: 0,
+    confirmed: 1,
+    planned: 2,
+    cancelled: 3,
+    finished: 4
+  }
+  
+  const aPriority = statusPriority[a.status] ?? 5
+  const bPriority = statusPriority[b.status] ?? 5
+  
+  // If different status priorities, sort by status
+  if (aPriority !== bPriority) {
+    return aPriority - bPriority
+  }
+  
+  // Priority 2: Within same status, sort by date
+  if (!a.sortDate && !b.sortDate) return 0
+  if (!a.sortDate) return 1
+  if (!b.sortDate) return -1
+  
+  const now = new Date()
+  const aFuture = a.sortDate >= now
+  const bFuture = b.sortDate >= now
+  
+  // Both future: sort ascending (nearest first)
+  if (aFuture && bFuture) return a.sortDate.getTime() - b.sortDate.getTime()
+  // Both past: sort descending (most recent first)
+  if (!aFuture && !bFuture) return b.sortDate.getTime() - a.sortDate.getTime()
+  // One future, one past: future comes first
+  return aFuture ? -1 : 1
+})
 
       setData(mapped)
     }

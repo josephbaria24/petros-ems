@@ -206,28 +206,54 @@ export function SubmissionDialog({
 
   if (!trainee) return null;
 
-  // ✅ FIXED: Determine which view to show
+   const normalizedStatus = trainee.status?.toLowerCase().trim();
+
   const needsPhotoVerification = 
-    trainee.status?.toLowerCase() === "pending" ||
-    trainee.status?.toLowerCase() === "awaiting receipt" ||
-    trainee.status?.toLowerCase() === "resubmitted (pending verification)";
+    normalizedStatus === "pending" ||
+    normalizedStatus === "awaiting receipt" ||
+    normalizedStatus === "resubmitted (pending verification)";
 
   const isInitialSubmission = 
-    trainee.status?.toLowerCase() === "pending" ||
-    trainee.status?.toLowerCase() === "awaiting receipt";
+    normalizedStatus === "pending" ||
+    normalizedStatus === "awaiting receipt";
 
   const isResubmission = 
-    trainee.status?.toLowerCase() === "resubmitted (pending verification)";
+    normalizedStatus === "resubmitted (pending verification)";
 
   const isDeclinedAwaitingResubmission = 
-    trainee.status?.toLowerCase() === "declined (waiting for resubmission)";
+    normalizedStatus === "declined (waiting for resubmission)";
 
-  // ✅ For all other statuses, show full details view
+  // ✅ For all other statuses (Pending Payment, Partially Paid, Payment Completed, etc.)
   const showFullDetailsView = !needsPhotoVerification && !isDeclinedAwaitingResubmission;
 
   const formatCurrency = (value: number) =>
     value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
   const isPending = trainee.status?.toLowerCase() === "pending";
+
+
+  // // ✅ FIXED: Determine which view to show
+  // const needsPhotoVerification = 
+  //   trainee.status?.toLowerCase() === "pending" ||
+  //   trainee.status?.toLowerCase() === "awaiting receipt" ||
+  //   trainee.status?.toLowerCase() === "resubmitted (pending verification)";
+
+  // const isInitialSubmission = 
+  //   trainee.status?.toLowerCase() === "pending" ||
+  //   trainee.status?.toLowerCase() === "awaiting receipt";
+
+  // const isResubmission = 
+  //   trainee.status?.toLowerCase() === "resubmitted (pending verification)";
+
+  // const isDeclinedAwaitingResubmission = 
+  //   trainee.status?.toLowerCase() === "declined (waiting for resubmission)";
+
+  // // ✅ For all other statuses, show full details view
+  // const showFullDetailsView = !needsPhotoVerification && !isDeclinedAwaitingResubmission;
+
+  // const formatCurrency = (value: number) =>
+  //   value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
+  // const isPending = trainee.status?.toLowerCase() === "pending";
+  
   const isCounterPayment = trainee.payment_method?.toUpperCase() === "COUNTER";
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
   const hasPayments = payments.length > 0;

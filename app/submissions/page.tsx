@@ -75,94 +75,91 @@ export default function SubmissionPage() {
   const [progressTotal, setProgressTotal] = useState(0)
   const [groupChatLink, setGroupChatLink] = useState("")
 
-  const getStatusBadge = (status: string) => {
-    const normalized = status.toLowerCase();
-    switch (normalized) {
-      case "pending":
-        return (
-          <Badge className="bg-orange-100 text-orange-800 border border-orange-300">
-            <Clock className="w-4 h-4 mr-1" />
-            Pending
-          </Badge>
-        );
-      case "awaiting receipt":
-        return (
-          <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-300">
-            <Clock className="w-4 h-4 mr-1" />
-            Awaiting Receipt
-          </Badge>
-        );
-      case "declined (waiting for resubmission)":
-        return (
-          <Badge className="bg-red-100 text-red-800 border border-red-300">
-            <AlertCircle className="w-4 h-4 mr-1" />
-            Declined - Awaiting Resubmission
-          </Badge>
-        );
-      case "resubmitted (pending verification)":
-        return (
-          <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
-            <Upload className="w-4 h-4 mr-1" />
-            Resubmitted - Pending Verification
-          </Badge>
-        );
-      case "partially paid":
-        return (
-          <Badge className="bg-blue-100 text-blue-800 border border-blue-300">
-            <PieChart className="w-4 h-4 mr-1" />
-            Partially Paid
-          </Badge>
-        );
-      case "payment completed":
-        return (
-          <Badge className="bg-green-100 text-green-800 border border-green-300">
-            <CheckCircle className="w-4 h-4 mr-1" />
-            Payment Completed
-          </Badge>
-        );
-      case "discounted":
-        return (
-          <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
-            <Wallet className="w-4 h-4 mr-1" />
-            Discounted
-          </Badge>
-        );
-      case "payment completed (discounted)":
-        return (
-          <Badge className="bg-green-100 text-green-800 border border-green-300">
-            <Wallet className="w-4 h-4 mr-1" />
-            Payment Completed (Discounted)
-          </Badge>
-        );
-      case "partially paid (discounted)":
-        return (
-          <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
-            <PieChart className="w-4 h-4 mr-1" />
-            Partially Paid (Discounted)
-          </Badge>
-        );
-      case "pending payment":
-        return (
-          <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-300">
-            <Wallet className="w-4 h-4 mr-1" />
-            Pending Payment
-          </Badge>
-        );
-      case "declined":
-        return (
-          <Badge className="bg-red-100 text-red-800 border border-red-300">
-            <XCircle className="w-4 h-4 mr-1" />
-            Declined
-          </Badge>
-        );
-      default:
-        return (
-          <Badge variant="outline" className="text-muted-foreground">
-            {status}
-          </Badge>
-        );
-    }
-  };
+
+const getStatusBadge = (status: string) => {
+  const normalized = status?.toLowerCase().trim() || "pending";
+  
+  switch (normalized) {
+    case "pending":
+      return (
+        <Badge className="bg-orange-100 text-orange-800 border border-orange-300">
+          <Clock className="w-4 h-4 mr-1" />
+          Pending
+        </Badge>
+      );
+    
+    case "awaiting receipt":
+      return (
+        <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-300">
+          <Clock className="w-4 h-4 mr-1" />
+          Awaiting Receipt
+        </Badge>
+      );
+    
+    case "declined (waiting for resubmission)":
+      return (
+        <Badge className="bg-red-100 text-red-800 border border-red-300">
+          <AlertCircle className="w-4 h-4 mr-1" />
+          Declined - Awaiting Resubmission
+        </Badge>
+      );
+    
+    case "resubmitted (pending verification)":
+      return (
+        <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
+          <Upload className="w-4 h-4 mr-1" />
+          Resubmitted - Pending Verification
+        </Badge>
+      );
+    
+    case "pending payment":
+      return (
+        <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-300">
+          <Wallet className="w-4 h-4 mr-1" />
+          Pending Payment
+        </Badge>
+      );
+    
+    case "partially paid":
+      return (
+        <Badge className="bg-blue-100 text-blue-800 border border-blue-300">
+          <PieChart className="w-4 h-4 mr-1" />
+          Partially Paid
+        </Badge>
+      );
+    
+    case "payment completed":
+      return (
+        <Badge className="bg-green-100 text-green-800 border border-green-300">
+          <CheckCircle className="w-4 h-4 mr-1" />
+          Payment Completed
+        </Badge>
+      );
+    
+    case "payment completed (discounted)":
+      return (
+        <Badge className="bg-green-100 text-green-800 border border-green-300">
+          <Wallet className="w-4 h-4 mr-1" />
+          Payment Completed (Discounted)
+        </Badge>
+      );
+    
+    case "partially paid (discounted)":
+      return (
+        <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
+          <PieChart className="w-4 h-4 mr-1" />
+          Partially Paid (Discounted)
+        </Badge>
+      );
+    
+    default:
+      return (
+        <Badge variant="outline" className="text-muted-foreground">
+          {status}
+        </Badge>
+      );
+  }
+};
   
   const fetchTrainees = async () => {
     if (!scheduleId) return;
@@ -279,6 +276,7 @@ const updateStatus = async (status: string) => {
   let certNumber: string | null = null;
 
   try {
+    // Generate certificate number only when moving to Pending Payment or Payment Completed
     if (status === "Pending Payment" || status === "Payment Completed") {
       const { data: scheduleData, error: scheduleError } = await supabase
         .from("schedules")
@@ -317,9 +315,23 @@ const updateStatus = async (status: string) => {
       ...(certNumber && { certificate_number: certNumber }),
     };
 
-    // ✅ Clear declined_photos when verified
-    if (status === "Pending Payment") {
+    // ✅ FIXED: Clear declined_photos when verifying (moving from any initial status to Pending Payment)
+    // Check if current status is pending, awaiting receipt, or resubmitted
+    const currentStatus = selectedTrainee.status?.toLowerCase();
+    const isVerifying = status === "Pending Payment" && (
+      currentStatus === "pending" ||
+      currentStatus === "awaiting receipt" ||
+      currentStatus === "resubmitted (pending verification)"
+    );
+    
+    if (isVerifying) {
       updateData.declined_photos = null;
+      updateData.payment_status = null; // Also clear payment_status when verifying
+    }
+
+    // ✅ When declining, set proper status
+    if (status === "Declined") {
+      updateData.status = "Declined (Waiting for Resubmission)";
     }
 
     const { error: updateError } = await supabase
@@ -329,10 +341,16 @@ const updateStatus = async (status: string) => {
   
     if (updateError) throw updateError;
   
+    // Update local state
     setTrainees((prev) =>
       prev.map((t) =>
         t.id === selectedTrainee.id
-          ? { ...t, status, ...(certNumber && { certificate_number: certNumber }) }
+          ? { 
+              ...t, 
+              status: updateData.status || status, 
+              ...(certNumber && { certificate_number: certNumber }),
+              ...(isVerifying && { declined_photos: null, payment_status: null })
+            }
           : t
       )
     );
@@ -341,12 +359,12 @@ const updateStatus = async (status: string) => {
   
     toast.success(
       status === "Declined"
-        ? "Trainee has been declined."
+        ? "Photos declined. Trainee will receive resubmission link via email."
         : status === "Pending Payment"
-        ? "Trainee has been verified and marked for payment."
+        ? "Trainee verified successfully! Now pending payment."
         : status === "Payment Completed"
-        ? "Trainee payment has been completed."
-        : `Trainee updated to ${status}.`
+        ? "Payment completed successfully!"
+        : `Status updated to ${status}.`
     );
     
   } catch (err: any) {
@@ -354,7 +372,6 @@ const updateStatus = async (status: string) => {
     toast.error(`Failed to update status: ${err.message || "Unknown error"}`);
   }
 };
-
 
   // Bulk action handlers
   const handleQuickAction = (action: "paid" | "room") => {
@@ -643,7 +660,7 @@ const updateStatus = async (status: string) => {
                   <TableCell>{trainee.phone_number || "N/A"}</TableCell>
                   <TableCell>
                     {getStatusBadge(
-                      trainee.payment_status || trainee.status || "Pending Payment"
+                      trainee.status || "Pending"  // ✅ Use status directly, default to "Pending"
                     )}
                   </TableCell>
                   <TableCell>

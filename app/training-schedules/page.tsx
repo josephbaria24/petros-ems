@@ -1,3 +1,4 @@
+//app\training-schedules\page.tsx
 "use client"
 
 import * as React from "react"
@@ -100,7 +101,7 @@ export default function TrainingSchedulesPage() {
 
       <Tabs value={currentTab} onValueChange={handleTabChange} className="space-y-4">
         <TabsList className="bg-transparent">
-          {["all", "planned", "ongoing", "confirmed", "cancelled", "finished"].map(key => (
+          {["all", "planned", "ongoing", "cancelled", "finished"].map(key => (
             <TabsTrigger
               key={key}
               value={key}
@@ -123,9 +124,9 @@ export default function TrainingSchedulesPage() {
           <ParticipantsTable status="ongoing" refreshTrigger={refreshTrigger} />
         </TabsContent>
 
-        <TabsContent value="confirmed" className="space-y-4">
+        {/* <TabsContent value="confirmed" className="space-y-4">
           <ParticipantsTable status="confirmed" refreshTrigger={refreshTrigger} />
-        </TabsContent>
+        </TabsContent> */}
 
         <TabsContent value="cancelled" className="space-y-4">
           <ParticipantsTable status="cancelled" refreshTrigger={refreshTrigger} />
