@@ -1,5 +1,4 @@
-// components/participants-table.tsx - PART 1 OF 3
-// Copy this entire file first
+// components/participants-table.tsx 
 
 "use client"
 
