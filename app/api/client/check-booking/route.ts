@@ -52,7 +52,8 @@ export async function POST(req: Request) {
         course_id,
         schedule_id,
         discounted_fee,
-        has_discount
+        has_discount,
+        status
       `)
       .eq('id', bookingSummary.training_id)
       .single();
@@ -132,12 +133,13 @@ export async function POST(req: Request) {
         courseName: course.name,
         scheduleRange,
         paymentMethod: training.payment_method || 'N/A',
-        paymentStatus: training.payment_status || 'Pending Payment',
+        paymentStatus: training.status || 'Pending Payment', // Use training.status for overall status
         trainingFee: actualFee,
         amountPaid: totalPaid,
         receiptLink: payments?.[0]?.receipt_link || training.receipt_link,
         receiptUploadedBy: payments?.[0]?.receipt_uploaded_by || null,
         bookingDate: new Date(bookingSummary.booking_date).toLocaleDateString(),
+        trainingId: training.id, // ✅ ADD training ID for payment history
       },
     });
 

@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
                 <p>We are pleased to confirm that we have received your payment.</p>
                 <div class="amount">₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
                 <p>Your payment has been successfully processed and recorded in our system.</p>
-                <p>If you have any questions or concerns regarding this payment, please don't hesitate to contact info@petros-global.com.</p>
+                <p>If you have any questions or concerns regarding this payment, please don't hesitate to contact training-department@petrosphere.com.ph</p>
                 <p>Thank you for choosing Petrosphere Training Center!</p>
                 <p>Best regards,<br><strong>Petrosphere Training Center</strong></p>
               </div>

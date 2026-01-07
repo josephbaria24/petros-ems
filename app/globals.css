@@ -179,3 +179,23 @@
     );
   }
 }
+
+
+
+/* Custom Scrollbar Styles */
+.custom-scrollbar [data-radix-scroll-area-scrollbar] {
+  width: 16px !important;
+  background-color: rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.custom-scrollbar [data-radix-scroll-area-thumb] {
+  background-color: rgba(0, 0, 0, 0.4);
+  border-radius: 10px;
+  transition: background-color 0.2s;
+}
+
+.custom-scrollbar [data-radix-scroll-area-thumb]:hover {
+  background-color: rgba(0, 0, 0, 0.6);
+}

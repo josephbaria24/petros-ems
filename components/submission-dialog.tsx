@@ -78,6 +78,15 @@ export function SubmissionDialog({
   const [discountApplied, setDiscountApplied] = useState<number | null>(null);
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [isEditingAddress, setIsEditingAddress] = useState(false);
+
+  // Add these new state variables after the existing ones (around line 85)
+  const [updatingPhoto, setUpdatingPhoto] = useState(false);
+  const [applyingDiscount, setApplyingDiscount] = useState(false);
+  const [updatingDetails, setUpdatingDetails] = useState(false);
+  const [updatingAddress, setUpdatingAddress] = useState(false);
+  const [decliningPayment, setDecliningPayment] = useState<string | null>(null);
+  const [deletingPayment, setDeletingPayment] = useState(false);
+
   const [newDetails, setNewDetails] = useState({
     company_name: trainee?.company_name || "",
     gender: trainee?.gender || "",
@@ -231,28 +240,6 @@ export function SubmissionDialog({
   const isPending = trainee.status?.toLowerCase() === "pending";
 
 
-  // // ✅ FIXED: Determine which view to show
-  // const needsPhotoVerification = 
-  //   trainee.status?.toLowerCase() === "pending" ||
-  //   trainee.status?.toLowerCase() === "awaiting receipt" ||
-  //   trainee.status?.toLowerCase() === "resubmitted (pending verification)";
-
-  // const isInitialSubmission = 
-  //   trainee.status?.toLowerCase() === "pending" ||
-  //   trainee.status?.toLowerCase() === "awaiting receipt";
-
-  // const isResubmission = 
-  //   trainee.status?.toLowerCase() === "resubmitted (pending verification)";
-
-  // const isDeclinedAwaitingResubmission = 
-  //   trainee.status?.toLowerCase() === "declined (waiting for resubmission)";
-
-  // // ✅ For all other statuses, show full details view
-  // const showFullDetailsView = !needsPhotoVerification && !isDeclinedAwaitingResubmission;
-
-  // const formatCurrency = (value: number) =>
-  //   value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
-  // const isPending = trainee.status?.toLowerCase() === "pending";
 
   const isCounterPayment = trainee.payment_method?.toUpperCase() === "COUNTER";
   const totalPaid = payments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
@@ -461,87 +448,95 @@ export function SubmissionDialog({
     }
   };
   
-  const handleApplyDiscount = async () => {
-    if (!discountPrice || Number(discountPrice) <= 0) {
-      alert("Please enter a valid discounted price.");
+const handleApplyDiscount = async () => {
+  if (!discountPrice || Number(discountPrice) <= 0) {
+    alert("Please enter a valid discounted price.");
+    return;
+  }
+
+  const originalFee = Number(trainee.training_fee);
+  const discounted = Number(discountPrice);
+
+  if (discounted > originalFee) {
+    alert("Discounted price cannot be higher than original fee.");
+    return;
+  }
+
+  setApplyingDiscount(true); // Add loading state
+  try {
+    const totalPaidNow = payments.reduce(
+      (sum, p) => sum + (p.amount_paid || 0),
+      0
+    );
+
+    if (totalPaidNow >= discounted) {
+      await supabase
+        .from("trainings")
+        .update({
+          status: "Payment Completed",
+          payment_status: "Payment Completed (Discounted)",
+          amount_paid: totalPaidNow,
+          discounted_fee: discounted,
+          has_discount: true,
+        })
+        .eq("id", trainee.id);
+    } else if (totalPaidNow > 0) {
+      await supabase
+        .from("trainings")
+        .update({
+          status: "Partially Paid",
+          payment_status: "Partially Paid (Discounted)",
+          amount_paid: totalPaidNow,
+          discounted_fee: discounted,
+          has_discount: true,
+        })
+        .eq("id", trainee.id);
+    } else {
+      await supabase
+        .from("trainings")
+        .update({
+          status: "Pending Payment",
+          payment_status: null,
+          amount_paid: 0,
+          discounted_fee: discounted,
+          has_discount: true,
+        })
+        .eq("id", trainee.id);
+    }
+
+    alert("Discount applied successfully!");
+    setDiscountApplied(discounted);
+    fetchPayments();
+  } catch (err) {
+    console.error("Error applying discount:", err);
+    alert("Failed to apply discount.");
+  } finally {
+    setApplyingDiscount(false); // Reset loading state
+  }
+};
+
+const handleApprovePayment = async () => {
+  if (!selectedPaymentId) return;
+
+  let finalAmount = 0;
+  const fee = discountApplied ?? Number(trainee.training_fee);
+  const remainingBalance = fee - totalPaid; // Calculate remaining balance
+
+  if (approveType === 'full') {
+    finalAmount = remainingBalance; // Use remaining balance instead of total fee
+  } else if (approveType === 'half') {
+    finalAmount = remainingBalance / 2; // Half of remaining balance
+  } else if (approveType === 'custom') {
+    finalAmount = Number(approveAmount);
+    if (isNaN(finalAmount) || finalAmount <= 0) {
+      alert('Please enter a valid amount');
       return;
     }
-
-    const originalFee = Number(trainee.training_fee);
-    const discounted = Number(discountPrice);
-
-    if (discounted > originalFee) {
-      alert("Discounted price cannot be higher than original fee.");
+    if (finalAmount > remainingBalance) {
+      alert(`Amount cannot exceed remaining balance of ${formatCurrency(remainingBalance)}`);
       return;
     }
-
-    try {
-      const totalPaidNow = payments.reduce(
-        (sum, p) => sum + (p.amount_paid || 0),
-        0
-      );
-
-      if (totalPaidNow >= discounted) {
-        await supabase
-          .from("trainings")
-          .update({
-            status: "Payment Completed",
-            payment_status: "Payment Completed (Discounted)",
-            amount_paid: totalPaidNow,
-            discounted_fee: discounted,
-            has_discount: true,
-          })
-          .eq("id", trainee.id);
-      } else if (totalPaidNow > 0) {
-        await supabase
-          .from("trainings")
-          .update({
-            status: "Partially Paid",
-            payment_status: "Partially Paid (Discounted)",
-            amount_paid: totalPaidNow,
-            discounted_fee: discounted,
-            has_discount: true,
-          })
-          .eq("id", trainee.id);
-      } else {
-        await supabase
-          .from("trainings")
-          .update({
-            status: "Pending Payment",
-            payment_status: null,
-            amount_paid: 0,
-            discounted_fee: discounted,
-            has_discount: true,
-          })
-          .eq("id", trainee.id);
-      }
-
-      alert("Discount applied successfully!");
-      setDiscountApplied(discounted);
-      fetchPayments();
-    } catch (err) {
-      console.error("Error applying discount:", err);
-      alert("Failed to apply discount.");
-    }
-  };
-
-  const handleApprovePayment = async () => {
-    if (!selectedPaymentId) return;
-
-    let finalAmount = 0;
-    const fee = discountApplied ?? Number(trainee.training_fee);
-
-    if (approveType === 'full') {
-      finalAmount = fee;
-    } else if (approveType === 'half') {
-      finalAmount = fee / 2;
-    } else if (approveType === 'custom') {
-      finalAmount = Number(approveAmount);
-      if (isNaN(finalAmount) || finalAmount <= 0) {
-        alert('Please enter a valid amount');
-        return;
-      }
-    }
+  }
 
     setSaving(true);
     try {
@@ -606,45 +601,45 @@ export function SubmissionDialog({
     }
   };
 
-  const handleDeclinePayment = async (paymentId: string) => {
-    const confirm = window.confirm(
-      'Are you sure you want to decline this payment? The client will be notified to upload a clearer receipt.'
-    );
-    
-    if (!confirm) return;
+ const handleDeclinePayment = async (paymentId: string) => {
+  const confirm = window.confirm(
+    'Are you sure you want to decline this payment? The client will be notified to upload a clearer receipt.'
+  );
+  
+  if (!confirm) return;
 
-    setSaving(true);
+  setDecliningPayment(paymentId); // Set loading state with payment ID
+  try {
+    const { error: deleteError } = await supabase
+      .from('payments')
+      .delete()
+      .eq('id', paymentId);
+
+    if (deleteError) throw deleteError;
+
     try {
-      const { error: deleteError } = await supabase
-        .from('payments')
-        .delete()
-        .eq('id', paymentId);
-
-      if (deleteError) throw deleteError;
-
-      try {
-        await fetch('/api/send-payment-rejection', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            traineeEmail: trainee.email,
-            traineeName: `${trainee.first_name} ${trainee.last_name}`,
-          }),
-        });
-      } catch (emailError) {
-        console.error('Email error:', emailError);
-      }
-
-      alert('Payment declined and client notified.');
-      fetchPayments();
-
-    } catch (error) {
-      console.error('Error declining payment:', error);
-      alert('Failed to decline payment. Please try again.');
-    } finally {
-      setSaving(false);
+      await fetch('/api/send-payment-rejection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          traineeEmail: trainee.email,
+          traineeName: `${trainee.first_name} ${trainee.last_name}`,
+        }),
+      });
+    } catch (emailError) {
+      console.error('Email error:', emailError);
     }
-  };
+
+    alert('Payment declined and client notified.');
+    fetchPayments();
+
+  } catch (error) {
+    console.error('Error declining payment:', error);
+    alert('Failed to decline payment. Please try again.');
+  } finally {
+    setDecliningPayment(null); // Reset loading state
+  }
+};
 
   const handleMarkAsPaid = async () => {
     if (!amountPaid || parseFloat(amountPaid) <= 0) {
@@ -683,49 +678,52 @@ export function SubmissionDialog({
   };
 
   const handleDeletePayment = async () => {
-    if (!deleteId) return;
+  if (!deleteId) return;
 
-    try {
-      const { error } = await supabase
-        .from("payments")
-        .delete()
-        .eq("id", deleteId);
+  setDeletingPayment(true); // Add loading state
+  try {
+    const { error } = await supabase
+      .from("payments")
+      .delete()
+      .eq("id", deleteId);
 
-      if (error) throw error;
+    if (error) throw error;
 
-      const { data: newPayments } = await supabase
-        .from("payments")
-        .select("*")
-        .eq("training_id", trainee.id);
+    const { data: newPayments } = await supabase
+      .from("payments")
+      .select("*")
+      .eq("training_id", trainee.id);
 
-      if (!newPayments || newPayments.length === 0) {
-        await supabase
-          .from("trainings")
-          .update({
-            status: "Pending Payment",
-            payment_status: null,
-            amount_paid: 0
-          })
-          .eq("id", trainee.id);
-      } else {
-        const newTotal = newPayments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
-        await supabase
-          .from("trainings")
-          .update({ amount_paid: newTotal })
-          .eq("id", trainee.id);
-        await checkAndUpdatePaymentStatus(newTotal);
-      }
-
-      alert("Payment deleted successfully!");
-      setShowDeleteConfirm(false);
-      setDeleteId(null);
-      fetchPayments();
-
-    } catch (error) {
-      console.error("Error deleting payment:", error);
-      alert("Failed to delete payment. Please try again.");
+    if (!newPayments || newPayments.length === 0) {
+      await supabase
+        .from("trainings")
+        .update({
+          status: "Pending Payment",
+          payment_status: null,
+          amount_paid: 0
+        })
+        .eq("id", trainee.id);
+    } else {
+      const newTotal = newPayments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+      await supabase
+        .from("trainings")
+        .update({ amount_paid: newTotal })
+        .eq("id", trainee.id);
+      await checkAndUpdatePaymentStatus(newTotal);
     }
-  };
+
+    alert("Payment deleted successfully!");
+    setShowDeleteConfirm(false);
+    setDeleteId(null);
+    fetchPayments();
+
+  } catch (error) {
+    console.error("Error deleting payment:", error);
+    alert("Failed to delete payment. Please try again.");
+  } finally {
+    setDeletingPayment(false); // Reset loading state
+  }
+};
 
   const generateCounterReceipt = (payment: Payment) => {
     const receiptHtml = `
@@ -765,34 +763,58 @@ export function SubmissionDialog({
     URL.revokeObjectURL(url);
   };
 
-  const handleSavePersonalDetails = async () => {
+const handleSavePersonalDetails = async () => {
+  setUpdatingDetails(true);
+  try {
     const { error } = await supabase
       .from("trainings")
       .update(newDetails)
       .eq("id", trainee.id);
-    if (error) return alert("Failed to update personal details.");
+    if (error) {
+      alert("Failed to update personal details.");
+      return;
+    }
     setIsEditingDetails(false);
     alert("Personal details updated.");
-  };
+  } catch (err) {
+    console.error("Error updating details:", err);
+    alert("Failed to update personal details.");
+  } finally {
+    setUpdatingDetails(false);
+  }
+};
 
-  const handleSaveAddress = async () => {
-    const { error } = await supabase
-      .from("trainings")
-      .update(newAddress)
-      .eq("id", trainee.id);
-    if (error) return alert("Failed to update address.");
-    setIsEditingAddress(false);
-    alert("Address updated.");
-  };
+    const handleSaveAddress = async () => {
+      setUpdatingAddress(true);
+      try {
+        const { error } = await supabase
+          .from("trainings")
+          .update(newAddress)
+          .eq("id", trainee.id);
+        if (error) {
+          alert("Failed to update address.");
+          return;
+        }
+        setIsEditingAddress(false);
+        alert("Address updated.");
+      } catch (err) {
+        console.error("Error updating address:", err);
+        alert("Failed to update address.");
+      } finally {
+        setUpdatingAddress(false);
+      }
+    };
 
-  const handleUpdate2x2Photo = async () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+const handleUpdate2x2Photo = async () => {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.onchange = async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
 
+    setUpdatingPhoto(true);
+    try {
       const formData = new FormData();
       formData.append("image", file);
 
@@ -809,18 +831,26 @@ export function SubmissionDialog({
       } else {
         alert("Upload failed.");
       }
-    };
-    input.click();
+    } catch (error) {
+      console.error("Error uploading photo:", error);
+      alert("Upload failed.");
+    } finally {
+      setUpdatingPhoto(false);
+    }
   };
+  input.click();
+};
 
-  const handleUpdateIdPhoto = async () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+const handleUpdateIdPhoto = async () => {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.onchange = async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
 
+    setUpdatingPhoto(true);
+    try {
       const formData = new FormData();
       formData.append("image", file);
 
@@ -837,9 +867,15 @@ export function SubmissionDialog({
       } else {
         alert("Upload failed.");
       }
-    };
-    input.click();
+    } catch (error) {
+      console.error("Error uploading photo:", error);
+      alert("Upload failed.");
+    } finally {
+      setUpdatingPhoto(false);
+    }
   };
+  input.click();
+};
 
   return (
     <>
@@ -909,23 +945,49 @@ export function SubmissionDialog({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="absolute top-2 right-2 text-sm"
+                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white shadow"
                   onClick={(e) => {
                     e.stopPropagation();
                     handleUpdate2x2Photo();
                   }}
+                  disabled={updatingPhoto}
                 >
-                  <Edit />
+                  {updatingPhoto ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Edit className="h-3 w-3" />
+                  )}
                 </Button>
               </div>
             </div>
             
             <DialogFooter className="pt-4">
-              <Button variant="destructive" onClick={onDecline}>
-                Decline
+              <Button 
+                variant="destructive" 
+                onClick={onDecline}
+                disabled={saving}
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  'Decline'
+                )}
               </Button>
-              <Button onClick={onVerify}>
-                Verify & Proceed to Payment
+              <Button 
+                onClick={onVerify}
+                disabled={saving}
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  'Verify & Proceed to Payment'
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1055,7 +1117,7 @@ export function SubmissionDialog({
         //* ✅ VIEW 3: FULL DETAILS VIEW - For Pending Payment, Partially Paid, Payment Completed, etc. */}
         : showFullDetailsView ? (
           <DialogContent className="w-[70vw] p-0">
-            <ScrollArea className="h-[90vh] p-6">
+            <ScrollArea className="h-[90vh] p-6 custom-scrollbar">
               <DialogHeader>
                 <DialogTitle className="text-indigo-900 text-sm">
                   Submission ID: {trainee?.id}
@@ -1109,8 +1171,13 @@ export function SubmissionDialog({
                           e.stopPropagation();
                           handleUpdateIdPhoto();
                         }}
+                        disabled={updatingPhoto}
                       >
-                        <Edit className="h-3 w-3" />
+                        {updatingPhoto ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Edit className="h-3 w-3" />
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -1156,7 +1223,20 @@ export function SubmissionDialog({
                           <Label>Food Restriction</Label>
                           <Input value={newDetails.food_restriction} onChange={e => setNewDetails(prev => ({ ...prev, food_restriction: e.target.value }))} />
                         </div>
-                        <Button onClick={handleSavePersonalDetails} className="col-span-6">💾 Save</Button>
+                        <Button 
+                            onClick={handleSavePersonalDetails} 
+                            className="col-span-6"
+                            disabled={updatingDetails}
+                          >
+                            {updatingDetails ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Saving...
+                              </>
+                            ) : (
+                              'Save'
+                            )}
+                          </Button>
                       </>
                     ) : (
                       <>
@@ -1187,7 +1267,20 @@ export function SubmissionDialog({
                         <Input value={newAddress.mailing_city} onChange={e => setNewAddress(prev => ({ ...prev, mailing_city: e.target.value }))} />
                         <Label className="mt-2">Province</Label>
                         <Input value={newAddress.mailing_province} onChange={e => setNewAddress(prev => ({ ...prev, mailing_province: e.target.value }))} />
-                        <Button onClick={handleSaveAddress} className="mt-2">Save</Button>
+                        <Button 
+                          onClick={handleSaveAddress} 
+                          className="mt-2"
+                          disabled={updatingAddress}
+                        >
+                          {updatingAddress ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            'Save'
+                          )}
+                        </Button>
                       </>
                     ) : (
                       <>
@@ -1266,9 +1359,16 @@ export function SubmissionDialog({
                         <Button
                           className="w-full mt-2"
                           onClick={handleApplyDiscount}
-                          disabled={!discountPrice || Number(discountPrice) <= 0}
+                          disabled={!discountPrice || Number(discountPrice) <= 0 || applyingDiscount}
                         >
-                          Apply Discount
+                          {applyingDiscount ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Applying...
+                            </>
+                          ) : (
+                            'Apply Discount'
+                          )}
                         </Button>
                       )}
 
@@ -1276,15 +1376,26 @@ export function SubmissionDialog({
                         <span>Total Amount Paid</span>
                         <span>{formatCurrency(totalPaid)}</span>
                       </div>
-                      <div className="flex justify-between font-semibold text-red-700">
-                        <span>Remaining Balance</span>
-                        <span>
-                          {discountApplied !== null
-                            ? formatCurrency(discountApplied - totalPaid)
-                            : formatCurrency((trainee?.training_fee || 0) - totalPaid)
-                          }
-                        </span>
-                      </div>
+                      {(() => {
+                        const requiredFee = discountApplied !== null ? discountApplied : (trainee?.training_fee || 0);
+                        const balance = requiredFee - totalPaid;
+                        
+                        if (balance < 0) {
+                          return (
+                            <div className="flex justify-between font-semibold text-blue-700">
+                              <span>Exceeded Amount</span>
+                              <span>{formatCurrency(Math.abs(balance))}</span>
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div className="flex justify-between font-semibold text-red-700">
+                              <span>Remaining Balance</span>
+                              <span>{formatCurrency(balance)}</span>
+                            </div>
+                          );
+                        }
+                      })()}
                     </div>
                   </section>
 
@@ -1368,8 +1479,13 @@ export function SubmissionDialog({
                                     setDeleteId(payment.id);
                                     setShowDeleteConfirm(true);
                                   }}
+                                  disabled={deletingPayment || saving || decliningPayment === payment.id}
                                 >
-                                  <Trash2 className="h-3 w-3" />
+                                  {deletingPayment && deleteId === payment.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-3 w-3" />
+                                  )}
                                 </Button>
                               </div>
 
@@ -1441,16 +1557,32 @@ export function SubmissionDialog({
                                         setSelectedPaymentId(payment.id);
                                         setShowApproveDialog(true);
                                       }}
+                                      disabled={saving || decliningPayment === payment.id}
                                     >
-                                      ✓ Approve
+                                      {saving && selectedPaymentId === payment.id ? (
+                                        <>
+                                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                          Approving...
+                                        </>
+                                      ) : (
+                                        '✓ Approve'
+                                      )}
                                     </Button>
                                     <Button
                                       size="sm"
                                       variant="destructive"
                                       className="flex-1 h-8 text-xs cursor-pointer"
                                       onClick={() => handleDeclinePayment(payment.id)}
+                                      disabled={decliningPayment === payment.id || saving}
                                     >
-                                      ✗ Decline
+                                      {decliningPayment === payment.id ? (
+                                        <>
+                                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                          Declining...
+                                        </>
+                                      ) : (
+                                        '✗ Decline'
+                                      )}
                                     </Button>
                                   </>
                                 )}
@@ -1466,10 +1598,33 @@ export function SubmissionDialog({
 
               {isPending && (
                 <DialogFooter className="pt-4">
-                  <Button variant="destructive" onClick={onDecline}>
-                    Decline
+                  <Button 
+                    variant="destructive" 
+                    onClick={onDecline}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      'Decline'
+                    )}
                   </Button>
-                  <Button onClick={onVerify}>Verify</Button>
+                  <Button 
+                    onClick={onVerify}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      'Verify'
+                    )}
+                  </Button>
                 </DialogFooter>
               )}
             </ScrollArea>
@@ -1626,23 +1781,39 @@ export function SubmissionDialog({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Delete Payment Confirmation */}
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Payment</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this payment record? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteId(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeletePayment} className="bg-red-600">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {/* Delete Payment Confirmation */}
+        <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Payment</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this payment record? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel 
+                onClick={() => setDeleteId(null)}
+                disabled={deletingPayment}
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={handleDeletePayment} 
+                className="bg-red-600"
+                disabled={deletingPayment}
+              >
+                {deletingPayment ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Delete'
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
       {/* Approve Payment Dialog */}
       <AlertDialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
@@ -1656,79 +1827,95 @@ export function SubmissionDialog({
           
           <div className="space-y-4 py-4">
             {/* Payment Info */}
-            <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Training Fee:</span>
-                <span className="font-semibold">
-                  {formatCurrency(discountApplied ?? (trainee?.training_fee || 0))}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Already Paid:</span>
-                <span className="font-semibold text-green-600">
-                  {formatCurrency(totalPaid)}
-                </span>
-              </div>
-              <div className="flex justify-between border-t pt-1">
-                <span className="text-muted-foreground">Remaining:</span>
-                <span className="font-semibold text-red-600">
-                  {formatCurrency((discountApplied ?? (trainee?.training_fee || 0)) - totalPaid)}
-                </span>
-              </div>
-            </div>
+              {(() => {
+                const totalFee = discountApplied ?? (trainee?.training_fee || 0);
+                const remainingBalance = totalFee - totalPaid;
+                
+                return (
+                  <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Training Fee:</span>
+                      <span className="font-semibold">
+                        {formatCurrency(totalFee)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Already Paid:</span>
+                      <span className="font-semibold text-green-600">
+                        {formatCurrency(totalPaid)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t pt-1">
+                      <span className="text-muted-foreground">Remaining Balance:</span>
+                      <span className="font-semibold text-red-600">
+                        {formatCurrency(remainingBalance)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
             {/* Payment Type Selection */}
             <div className="space-y-2">
               <Label>Payment Amount</Label>
               
               <div className="space-y-2">
-                {/* Full Payment Option */}
-                <div 
-                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                    approveType === 'full' 
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' 
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  onClick={() => setApproveType('full')}
-                >
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="radio" 
-                      checked={approveType === 'full'}
-                      onChange={() => setApproveType('full')}
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium">Full Payment</div>
-                      <div className="text-sm text-muted-foreground">
-                        {formatCurrency(discountApplied ?? (trainee?.training_fee || 0))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                {(() => {
+  const totalFee = discountApplied ?? (trainee?.training_fee || 0);
+  const remainingBalance = totalFee - totalPaid;
+  
+  return (
+    <>
+      {/* Full Payment Option */}
+      <div 
+        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+          approveType === 'full' 
+            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' 
+            : 'border-gray-200 hover:border-gray-300'
+        }`}
+        onClick={() => setApproveType('full')}
+      >
+        <div className="flex items-center gap-2">
+          <input 
+            type="radio" 
+            checked={approveType === 'full'}
+            onChange={() => setApproveType('full')}
+          />
+          <div className="flex-1">
+            <div className="font-medium">Full Remaining Payment</div>
+            <div className="text-sm text-muted-foreground">
+              {formatCurrency(remainingBalance)}
+            </div>
+          </div>
+        </div>
+      </div>
 
-                {/* Half Payment Option */}
-                <div 
-                  className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                    approveType === 'half' 
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' 
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                  onClick={() => setApproveType('half')}
-                >
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="radio" 
-                      checked={approveType === 'half'}
-                      onChange={() => setApproveType('half')}
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium">Half Payment (50%)</div>
-                      <div className="text-sm text-muted-foreground">
-                        {formatCurrency((discountApplied ?? (trainee?.training_fee || 0)) / 2)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+      {/* Half Payment Option */}
+      <div 
+        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+          approveType === 'half' 
+            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' 
+            : 'border-gray-200 hover:border-gray-300'
+        }`}
+        onClick={() => setApproveType('half')}
+      >
+        <div className="flex items-center gap-2">
+          <input 
+            type="radio" 
+            checked={approveType === 'half'}
+            onChange={() => setApproveType('half')}
+          />
+          <div className="flex-1">
+            <div className="font-medium">Half Remaining Payment (50%)</div>
+            <div className="text-sm text-muted-foreground">
+              {formatCurrency(remainingBalance / 2)}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+})()}
 
                 {/* Custom Amount Option */}
                 <div 
@@ -1770,24 +1957,47 @@ export function SubmissionDialog({
             </div>
 
             {/* Preview Total After Approval */}
-            <div className="p-3 bg-green-50 dark:bg-green-950/20 border border-green-300 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="font-medium text-green-800 dark:text-green-400">
-                  Total After Approval:
-                </span>
-                <span className="font-bold text-green-800 dark:text-green-400">
-                  {formatCurrency(
-                    totalPaid + (
-                      approveType === 'full' 
-                        ? (discountApplied ?? (trainee?.training_fee || 0))
-                        : approveType === 'half'
-                        ? (discountApplied ?? (trainee?.training_fee || 0)) / 2
-                        : Number(approveAmount) || 0
-                    )
-                  )}
-                </span>
-              </div>
-            </div>
+            {(() => {
+              const totalFee = discountApplied ?? (trainee?.training_fee || 0);
+              const remainingBalance = totalFee - totalPaid;
+              const approvalAmount = 
+                approveType === 'full' 
+                  ? remainingBalance
+                  : approveType === 'half'
+                  ? remainingBalance / 2
+                  : Number(approveAmount) || 0;
+              
+              return (
+                <div className="p-3 bg-green-50 dark:bg-green-950/20 border border-green-300 rounded-lg">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-green-700 dark:text-green-400">
+                        This Payment:
+                      </span>
+                      <span className="font-semibold text-green-700 dark:text-green-400">
+                        {formatCurrency(approvalAmount)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center border-t pt-2">
+                      <span className="font-medium text-green-800 dark:text-green-400">
+                        Total After Approval:
+                      </span>
+                      <span className="font-bold text-green-800 dark:text-green-400">
+                        {formatCurrency(totalPaid + approvalAmount)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-600 dark:text-gray-400">
+                        Remaining After:
+                      </span>
+                      <span className="font-medium text-gray-600 dark:text-gray-400">
+                        {formatCurrency(remainingBalance - approvalAmount)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <AlertDialogFooter>

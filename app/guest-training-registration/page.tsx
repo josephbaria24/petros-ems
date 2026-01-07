@@ -1368,7 +1368,7 @@ const trainingPayload = {
                               <strong>STANDARD TRAINING:</strong> Training sessions will be conducted at Petrosphere Inc. venues.
                             </li>
                             <li>
-                              <strong>INCLUSION:</strong> Certificate, ID, AM/PM Snacks, Lunch meal.
+                              <strong>INCLUSION:</strong> Certificate and ID.
                             </li>
                             <li>
                               <strong>CONFIRMATION:</strong> At least FIVE (5) WORKING DAYS before the training date.

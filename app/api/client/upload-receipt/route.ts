@@ -1,4 +1,4 @@
-// app/api/client/upload-receipt/route.ts - FIXED WITH FORMIDABLE
+// app/api/client/upload-receipt/route.ts - FIXED TO ALWAYS CREATE NEW PAYMENT
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { IncomingForm, Files, Fields } from 'formidable';
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
         // 2. Get training details
         const { data: training, error: trainingError } = await supabase
           .from('trainings')
-          .select('id, first_name, last_name, email, payment_method, course_id')
+          .select('id, first_name, last_name, email, payment_method, course_id, has_discount, discounted_fee')
           .eq('id', bookingSummary.training_id)
           .single();
 
@@ -134,7 +134,10 @@ export async function POST(req: NextRequest) {
           .eq('id', training.course_id)
           .single();
 
-        const trainingFee = course?.training_fee || 0;
+        // Determine the actual training fee (with discount if applicable)
+        const actualFee = training.has_discount && training.discounted_fee 
+          ? training.discounted_fee 
+          : (course?.training_fee || 0);
 
         // 3. Upload file to FTP
         console.log('📤 Uploading to FTP...');
@@ -160,53 +163,32 @@ export async function POST(req: NextRequest) {
           const publicUrl = `https://petrosphere.com.ph/uploads/trainees/receipts/${newFileName}`;
           console.log('✅ File uploaded to:', publicUrl);
 
-          // 4. Check if a payment record already exists for this training
-          const { data: existingPayment } = await supabase
+          // ✅ FIXED: Always create a NEW payment record (don't update existing)
+          const { error: paymentInsertError } = await supabase
             .from('payments')
-            .select('id')
-            .eq('training_id', bookingSummary.training_id)
-            .single();
+            .insert({
+              training_id: bookingSummary.training_id,
+              payment_method: training.payment_method || 'BPI',
+              payment_status: 'pending',
+              amount_paid: 0, // Will be set when admin approves
+              receipt_link: publicUrl,
+              receipt_uploaded_by: 'client',
+              receipt_uploaded_at: new Date().toISOString(),
+              total_due: actualFee,
+            });
 
-          if (existingPayment) {
-            // Update existing payment record
-            const { error: paymentUpdateError } = await supabase
-              .from('payments')
-              .update({
-                receipt_link: publicUrl,
-                receipt_uploaded_by: 'client',
-                receipt_uploaded_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', existingPayment.id);
-
-            if (paymentUpdateError) {
-              console.error('❌ Payment update error:', paymentUpdateError);
-            } else {
-              console.log('✅ Payment record updated with receipt');
-            }
-          } else {
-            // Create new payment record with pending status
-            const { error: paymentInsertError } = await supabase
-              .from('payments')
-              .insert({
-                training_id: bookingSummary.training_id,
-                payment_method: training.payment_method || 'BPI',
-                payment_status: 'pending',
-                amount_paid: 0,
-                receipt_link: publicUrl,
-                receipt_uploaded_by: 'client',
-                receipt_uploaded_at: new Date().toISOString(),
-                total_due: trainingFee,
-              });
-
-            if (paymentInsertError) {
-              console.error('❌ Payment insert error:', paymentInsertError);
-            } else {
-              console.log('✅ New payment record created with receipt');
-            }
+          if (paymentInsertError) {
+            console.error('❌ Payment insert error:', paymentInsertError);
+            resolve(NextResponse.json(
+              { error: 'Failed to create payment record' },
+              { status: 500 }
+            ));
+            return;
           }
 
-          // 5. Update trainings table
+          console.log('✅ New payment record created with receipt');
+
+          // 5. Update trainings table with latest receipt (for backward compatibility)
           await supabase
             .from('trainings')
             .update({
@@ -215,7 +197,7 @@ export async function POST(req: NextRequest) {
             })
             .eq('id', bookingSummary.training_id);
 
-          console.log('✅ Training record updated with receipt');
+          console.log('✅ Training record updated with latest receipt');
 
           // 6. Create notification for admin
           const { error: notificationError } = await supabase

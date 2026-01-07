@@ -42,7 +42,7 @@ export async function POST(req: Request) {
           </p>
 
           <p>
-            If you have any questions, feel free to email us info@petrosphere.com.ph
+            If you have any questions, feel free to email us training-department@petrosphere.com.ph
           </p>
 
           <p>Thank you,<br />Training Support Team</p>

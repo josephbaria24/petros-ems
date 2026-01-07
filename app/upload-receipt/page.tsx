@@ -1,8 +1,19 @@
-// app/upload-receipt/page.tsx - FIXED FOR VERCEL
+// app/upload-receipt/page.tsx - WITH PAYMENT HISTORY
 'use client';
 
-import { useState } from 'react';
-import { Upload, CheckCircle, AlertCircle, Search, Eye, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Upload, CheckCircle, AlertCircle, Search, Eye, X, Clock, Download, History } from 'lucide-react';
+
+interface Payment {
+  id: string;
+  payment_date: string;
+  payment_method: string;
+  payment_status: string;
+  amount_paid: number;
+  receipt_link: string | null;
+  receipt_uploaded_by: string | null;
+  receipt_uploaded_at: string | null;
+}
 
 interface BookingStatus {
   found: boolean;
@@ -17,6 +28,7 @@ interface BookingStatus {
     amountPaid: number;
     receiptLink: string | null;
     bookingDate: string;
+    trainingId: string;
   };
   error?: string;
 }
@@ -33,21 +45,45 @@ export default function UploadReceiptPage() {
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
   const [bookingStatus, setBookingStatus] = useState<BookingStatus | null>(null);
+  
+  // Payment history
+  const [paymentHistory, setPaymentHistory] = useState<Payment[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
-  // Max file size (same as your working upload API)
+  // Max file size
   const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+  const fetchPaymentHistory = async (trainingId: string) => {
+    setLoadingHistory(true);
+    try {
+      const response = await fetch('/api/client/payment-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trainingId }),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.payments) {
+        setPaymentHistory(data.payments);
+        setShowHistory(true);
+      }
+    } catch (error) {
+      console.error('Failed to fetch payment history:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      // Validate file type
       if (!selectedFile.type.startsWith('image/')) {
         setMessage('Please upload an image file (JPG, PNG, etc.)');
         setUploadStatus('error');
         return;
       }
 
-      // Validate file size (5MB max)
       if (selectedFile.size > MAX_FILE_SIZE) {
         setMessage('File size must be less than 5MB');
         setUploadStatus('error');
@@ -58,7 +94,6 @@ export default function UploadReceiptPage() {
       setUploadStatus('idle');
       setMessage('');
 
-      // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setPreview(reader.result as string);
@@ -77,6 +112,8 @@ export default function UploadReceiptPage() {
     setCheckingStatus(true);
     setShowStatus(false);
     setBookingStatus(null);
+    setShowHistory(false);
+    setPaymentHistory([]);
 
     try {
       const response = await fetch('/api/client/check-booking', {
@@ -95,6 +132,10 @@ export default function UploadReceiptPage() {
       } else {
         setUploadStatus('idle');
         setMessage('');
+        // Fetch payment history when booking is found
+        if (data.data?.trainingId) {
+          await fetchPaymentHistory(data.data.trainingId);
+        }
       }
     } catch (error) {
       console.error('Status check error:', error);
@@ -120,7 +161,6 @@ export default function UploadReceiptPage() {
       return;
     }
 
-    // Double-check file size before upload
     if (file.size > MAX_FILE_SIZE) {
       setMessage('File size must be less than 5MB');
       setUploadStatus('error');
@@ -132,50 +172,33 @@ export default function UploadReceiptPage() {
     setMessage('');
 
     try {
-      // Create FormData
       const formData = new FormData();
       formData.append('file', file);
       formData.append('referenceNumber', referenceNumber.trim().toUpperCase());
 
-      console.log('Uploading file:', {
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        referenceNumber: referenceNumber.trim().toUpperCase(),
-      });
-
-      // Upload receipt using client upload API
       const response = await fetch('/api/client/upload-receipt', {
         method: 'POST',
         body: formData,
       });
 
       const data = await response.json();
-      console.log('Upload response:', data);
 
       if (response.ok) {
         setUploadStatus('success');
         setMessage('Receipt uploaded successfully! Our team will verify your payment shortly.');
         setFile(null);
         setPreview(null);
-        setReferenceNumber('');
-        setShowStatus(false);
-        setBookingStatus(null);
         
-        // Reset file input
+        // Refresh payment history after successful upload
+        if (bookingStatus?.data?.trainingId) {
+          await fetchPaymentHistory(bookingStatus.data.trainingId);
+        }
+        
         const fileInput = document.getElementById('receipt-file') as HTMLInputElement;
         if (fileInput) fileInput.value = '';
       } else {
         setUploadStatus('error');
-        const errorMessage = data.error || 'Failed to upload receipt. Please try again.';
-        setMessage(errorMessage);
-        
-        // Log detailed error for debugging
-        console.error('Upload failed:', {
-          status: response.status,
-          error: data.error,
-          details: data.details,
-        });
+        setMessage(data.error || 'Failed to upload receipt. Please try again.');
       }
     } catch (error) {
       console.error('Upload error:', error);
@@ -195,6 +218,18 @@ export default function UploadReceiptPage() {
     const sizes = ['Bytes', 'KB', 'MB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  const getStatusBadgeClass = (status: string) => {
+    const normalized = status?.toLowerCase();
+    if (normalized?.includes('completed')) {
+      return 'bg-green-500/20 text-green-400 border-green-500/30';
+    } else if (normalized?.includes('partially')) {
+      return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+    } else if (normalized?.includes('pending')) {
+      return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
+    }
+    return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
   };
 
   return (
@@ -228,6 +263,7 @@ export default function UploadReceiptPage() {
                     setReferenceNumber(e.target.value.toUpperCase());
                     setShowStatus(false);
                     setBookingStatus(null);
+                    setShowHistory(false);
                   }}
                   placeholder="e.g., BK-2024-XXXXX"
                   className="w-full px-4 py-3 bg-slate-900/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -270,7 +306,7 @@ export default function UploadReceiptPage() {
                     onClick={() => setShowStatus(false)}
                     className="text-slate-400 hover:text-white"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="w-4 w-4" />
                   </button>
                 </div>
                 
@@ -311,29 +347,102 @@ export default function UploadReceiptPage() {
                   </div>
                   <div className="flex justify-between items-center border-t border-slate-600 pt-2 mt-2">
                     <span className="text-slate-400">Payment Status:</span>
-                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                      bookingStatus.data.paymentStatus?.includes('Completed') 
-                        ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                        : bookingStatus.data.paymentStatus?.includes('Partially')
-                        ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                        : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                    }`}>
+                    <span className={`px-2 py-1 rounded text-xs font-semibold border ${getStatusBadgeClass(bookingStatus.data.paymentStatus)}`}>
                       {bookingStatus.data.paymentStatus || 'Pending'}
                     </span>
                   </div>
-                  {bookingStatus.data.receiptLink && (
-                    <div className="flex justify-between items-center border-t border-slate-600 pt-2 mt-2">
-                      <span className="text-slate-400">Receipt:</span>
-                      <a
-                        href={bookingStatus.data.receiptLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-400 hover:text-blue-300 text-xs underline"
-                      >
-                        View Uploaded Receipt
-                      </a>
+                </div>
+              </div>
+            )}
+
+            {/* Payment History */}
+            {showHistory && paymentHistory.length > 0 && (
+              <div className="bg-slate-700/50 rounded-lg p-4 border border-slate-600">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                    <History className="w-4 h-4 text-blue-400" />
+                    Payment History ({paymentHistory.length})
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setShowHistory(false)}
+                    className="text-slate-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {paymentHistory.map((payment, index) => (
+                    <div 
+                      key={payment.id}
+                      className={`p-3 rounded-lg border ${
+                        payment.payment_status?.toLowerCase() === 'pending'
+                          ? 'bg-orange-500/10 border-orange-500/30'
+                          : payment.payment_status?.toLowerCase().includes('completed')
+                          ? 'bg-green-500/10 border-green-500/30'
+                          : 'bg-slate-600/30 border-slate-500/30'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-slate-400">
+                            #{paymentHistory.length - index}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${getStatusBadgeClass(payment.payment_status)}`}>
+                            {payment.payment_status}
+                          </span>
+                        </div>
+                        <span className="text-xs text-slate-400">
+                          {new Date(payment.payment_date).toLocaleDateString()}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+                        <div>
+                          <span className="text-slate-400">Method:</span>
+                          <span className="ml-1 text-white">{payment.payment_method}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400">Amount:</span>
+                          <span className="ml-1 text-green-400 font-semibold">
+                            {payment.amount_paid > 0 
+                              ? formatCurrency(payment.amount_paid)
+                              : 'Pending Approval'
+                            }
+                          </span>
+                        </div>
+                      </div>
+
+                      {payment.receipt_uploaded_at && (
+                        <div className="text-xs text-slate-400 mb-2">
+                          Uploaded: {new Date(payment.receipt_uploaded_at).toLocaleString()}
+                          {payment.receipt_uploaded_by === 'client' && (
+                            <span className="ml-1 text-blue-400">(by you)</span>
+                          )}
+                        </div>
+                      )}
+
+                      {payment.receipt_link && (
+                        <div className="mt-2">
+                          <img 
+                            src={payment.receipt_link}
+                            alt={`Receipt ${index + 1}`}
+                            className="w-full h-32 object-cover rounded border border-slate-500 cursor-pointer hover:opacity-80 transition"
+                            onClick={() => window.open(payment.receipt_link!, '_blank')}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => window.open(payment.receipt_link!, '_blank')}
+                            className="mt-2 w-full px-3 py-1.5 bg-slate-600 hover:bg-slate-500 text-white text-xs rounded flex items-center justify-center gap-2 transition-colors"
+                          >
+                            <Download className="w-3 h-3" />
+                            View Full Receipt
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ))}
                 </div>
               </div>
             )}
@@ -438,11 +547,12 @@ export default function UploadReceiptPage() {
 
           {/* Help Text */}
           <div className="mt-6 p-4 bg-blue-500/5 border border-blue-500/20 rounded-lg">
-            <h3 className="text-sm font-medium text-blue-400 mb-2">📌 Important Notes:</h3>
+            <h3 className="text-sm font-medium text-blue-400 mb-2">Important Notes:</h3>
             <ul className="text-xs text-slate-400 space-y-1">
               <li>• Make sure the receipt image is clear and readable</li>
               <li>• File size must be less than 5MB (compress large images if needed)</li>
               <li>• Include transaction details (amount, date, reference number)</li>
+              <li>• You can upload multiple receipts for partial payments</li>
               <li>• Payment verification typically takes 1-2 business days</li>
               <li>• You'll receive an email once your payment is confirmed</li>
             </ul>

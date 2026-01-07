@@ -60,6 +60,7 @@ export default function SubmissionPage() {
   const fromTab = searchParams.get("from") || "all"
 
   const [trainees, setTrainees] = useState<any[]>([])
+  const [courseName, setCourseName] = useState<string>("")
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedTrainee, setSelectedTrainee] = useState<any | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -164,6 +165,21 @@ const getStatusBadge = (status: string) => {
   const fetchTrainees = async () => {
     if (!scheduleId) return;
 
+    // Fetch schedule with course name
+    const { data: scheduleData, error: scheduleError } = await supabase
+      .from("schedules")
+      .select("course_id, courses(name)")
+      .eq("id", scheduleId)
+      .single();
+
+    if (scheduleError) {
+      console.error(scheduleError);
+      toast.error("Failed to fetch schedule details");
+    } else if (scheduleData?.courses) {
+      // @ts-ignore - Supabase types can be complex
+      setCourseName(scheduleData.courses.name || "");
+    }
+
     const { data, error } = await supabase
       .from("trainings")
       .select(`
@@ -220,20 +236,16 @@ const getStatusBadge = (status: string) => {
     fetchTrainees();
   }, [scheduleId]);
 
-  // ✅ FIX: Update handleView to check status and open appropriate dialog
   const handleView = (trainee: any) => {
     if (bulkMode) return;
     
     const status = trainee.status?.toLowerCase();
     
-    // If status is declined, open the decline dialog immediately for them to view/resubmit
-    // Otherwise, open the submission dialog
     setSelectedTrainee(trainee);
     setDialogOpen(true);
   };
 
    const handleDeclineFromSubmission = () => {
-    // Close submission dialog and open decline photo dialog
     setDialogOpen(false);
     setDeclineDialogOpen(true);
   };
@@ -246,7 +258,6 @@ const getStatusBadge = (status: string) => {
   const handleDialogClose = async (open: boolean) => {
   setDialogOpen(open);
   
-  // Only refresh data when closing, don't trigger status updates
   if (!open && selectedTrainee) {
     const updatedTrainee = await supabase
       .from("trainings")
@@ -270,13 +281,13 @@ const getStatusBadge = (status: string) => {
     }
   }
 };
+
 const updateStatus = async (status: string) => {
   if (!selectedTrainee || !scheduleId) return;
 
   let certNumber: string | null = null;
 
   try {
-    // Generate certificate number only when moving to Pending Payment or Payment Completed
     if (status === "Pending Payment" || status === "Payment Completed") {
       const { data: scheduleData, error: scheduleError } = await supabase
         .from("schedules")
@@ -315,8 +326,6 @@ const updateStatus = async (status: string) => {
       ...(certNumber && { certificate_number: certNumber }),
     };
 
-    // ✅ FIXED: Clear declined_photos when verifying (moving from any initial status to Pending Payment)
-    // Check if current status is pending, awaiting receipt, or resubmitted
     const currentStatus = selectedTrainee.status?.toLowerCase();
     const isVerifying = status === "Pending Payment" && (
       currentStatus === "pending" ||
@@ -326,10 +335,9 @@ const updateStatus = async (status: string) => {
     
     if (isVerifying) {
       updateData.declined_photos = null;
-      updateData.payment_status = null; // Also clear payment_status when verifying
+      updateData.payment_status = null;
     }
 
-    // ✅ When declining, set proper status
     if (status === "Declined") {
       updateData.status = "Declined (Waiting for Resubmission)";
     }
@@ -341,7 +349,6 @@ const updateStatus = async (status: string) => {
   
     if (updateError) throw updateError;
   
-    // Update local state
     setTrainees((prev) =>
       prev.map((t) =>
         t.id === selectedTrainee.id
@@ -373,7 +380,6 @@ const updateStatus = async (status: string) => {
   }
 };
 
-  // Bulk action handlers
   const handleQuickAction = (action: "paid" | "room") => {
     setBulkMode(action);
     setSelectedIds([]);
@@ -555,7 +561,14 @@ const updateStatus = async (status: string) => {
               Back
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold">Trainee Submissions</h1>
+          <div>
+            {courseName && (
+              <p className="text-sm text-muted-foreground font-medium">
+                {courseName}
+              </p>
+            )}
+            <h1 className="text-2xl font-bold">Trainee Submissions</h1>
+          </div>
         </div>
         
         {bulkMode ? (
@@ -660,7 +673,7 @@ const updateStatus = async (status: string) => {
                   <TableCell>{trainee.phone_number || "N/A"}</TableCell>
                   <TableCell>
                     {getStatusBadge(
-                      trainee.status || "Pending"  // ✅ Use status directly, default to "Pending"
+                      trainee.status || "Pending"
                     )}
                   </TableCell>
                   <TableCell>
@@ -757,13 +770,12 @@ const updateStatus = async (status: string) => {
         </DialogContent>
       </Dialog>
 
-       {/* ✅ UPDATED: Pass handleDeclineFromSubmission as onDecline */}
       <SubmissionDialog
         open={dialogOpen}
         onOpenChange={handleDialogClose}
         trainee={selectedTrainee}
         onVerify={() => updateStatus("Pending Payment")}
-        onDecline={handleDeclineFromSubmission} // This opens decline photo dialog
+        onDecline={handleDeclineFromSubmission}
       />
 
      <DeclinePhotoDialog
