@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Card, CardContent } from "@/components/ui/card"
-import { Check, User, Briefcase, Upload, ArrowLeft, CreditCard, Calendar, CheckCircle2, Crop, X } from "lucide-react"
+import { Check, User, Briefcase, Upload, ArrowLeft, CreditCard, Calendar, CheckCircle2, Crop, X, XCircle } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -134,6 +134,12 @@ export default function GuestTrainingRegistration() {
   const [regions, setRegions] = useState<{ code: string; name: string }[]>([])
   const [paymentMethod, setPaymentMethod] = useState("BPI")
   const [errors, setErrors] = useState<{ [key: string]: boolean }>({})
+
+
+  const [voucherCode, setVoucherCode] = useState("")
+  const [voucherDetails, setVoucherDetails] = useState<any>(null)
+  const [isVerifyingVoucher, setIsVerifyingVoucher] = useState(false)
+  const [voucherError, setVoucherError] = useState("")
 
   const requiredPersonalFields = [
     "first_name",
@@ -389,6 +395,89 @@ const handleRegionChange = (regionCode: string) => {
   }))
 }
 
+
+
+const handleVerifyVoucher = async () => {
+  if (!voucherCode.trim()) {
+    setVoucherError("Please enter a voucher code")
+    return
+  }
+
+  setIsVerifyingVoucher(true)
+  setVoucherError("")
+  setVoucherDetails(null)
+
+  try {
+    const { data, error } = await supabase
+      .from("vouchers")
+      .select("*")
+      .eq("code", voucherCode.trim().toUpperCase())
+      .single()
+
+    if (error || !data) {
+      setVoucherError("This voucher code does not exist.")
+      toast.error("Invalid voucher code")
+      setIsVerifyingVoucher(false)
+      return
+    }
+
+    const isExpired = data.expiry_date && new Date(data.expiry_date) < new Date()
+    const isUsed = data.is_used
+
+    if (isUsed) {
+      setVoucherError("This voucher has already been used.")
+      toast.error("Voucher already used")
+    } else if (isExpired) {
+      setVoucherError("This voucher has expired.")
+      toast.error("Voucher expired")
+    } else {
+      // Check if voucher is for the correct course
+      if (data.service_id && course?.id !== data.service_id) {
+        setVoucherError("This voucher is not valid for the selected course.")
+        toast.error("Invalid voucher for this course")
+      } else {
+        setVoucherDetails(data)
+        
+        // Calculate discount amount
+        let discountAmount = 0
+        if (data.voucher_type === "Free") {
+          discountAmount = course?.training_fee || 0
+        } else {
+          // Parse discount amount (e.g., "20%" or "500")
+          const amountStr = data.amount
+          if (amountStr.includes("%")) {
+            const percentage = parseFloat(amountStr.replace("%", ""))
+            discountAmount = ((course?.training_fee || 0) * percentage) / 100
+          } else {
+            discountAmount = parseFloat(amountStr) || 0
+          }
+        }
+        
+        setDiscount(discountAmount)
+        toast.success("Voucher applied successfully!", {
+          description: `You saved ₱${discountAmount.toLocaleString()}`
+        })
+      }
+    }
+  } catch (err) {
+    console.error("Voucher verification error:", err)
+    setVoucherError("Failed to verify voucher. Please try again.")
+    toast.error("Verification failed")
+  } finally {
+    setIsVerifyingVoucher(false)
+  }
+}
+
+const handleRemoveVoucher = () => {
+  setVoucherCode("")
+  setVoucherDetails(null)
+  setVoucherError("")
+  setDiscount(0)
+  toast.info("Voucher removed")
+}
+
+
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
 
@@ -550,6 +639,10 @@ const trainingPayload = {
     paymentMethod === "COUNTER" ? "pending" : "awaiting receipt",
   amount_paid: 0,
   courtesy_title: form.courtesy_title || null,
+  
+  // Add voucher fields
+  discounted_fee: discount > 0 ? (course?.training_fee || 0) - discount : null,
+  has_discount: discount > 0,
 
   // normalize student fields
   is_student:
@@ -584,11 +677,25 @@ const trainingPayload = {
           },
         ]);
 
-      if (bookingError) {
-        console.error("Booking summary insert error:", bookingError);
-        toast.error("Failed to create booking summary.");
-        return;
-      }
+     // After booking summary insert
+        if (bookingError) {
+          console.error("Booking summary insert error:", bookingError);
+          toast.error("Failed to create booking summary.");
+          return;
+        }
+
+        // Mark voucher as used if applied
+        if (voucherDetails) {
+          const { error: voucherUpdateError } = await supabase
+            .from("vouchers")
+            .update({ is_used: true })
+            .eq("code", voucherDetails.code)
+
+          if (voucherUpdateError) {
+            console.error("Failed to mark voucher as used:", voucherUpdateError)
+          }
+        }
+
 
       toast.dismiss();
       toast.success("Registration submitted successfully!", {
@@ -1275,13 +1382,92 @@ const trainingPayload = {
                             <strong>Training Fee:</strong> ₱{course?.training_fee?.toLocaleString() || "0.00"}
                           </p>
 
-                          <p className="text-sm text-gray-900">
-                            <strong>Discount:</strong> -₱{discount.toLocaleString()}
-                          </p>
+                          {/* Voucher Code Input */}
+                          <div className="space-y-2 mt-3">
+                            <Label htmlFor="voucher_code" className="text-sm font-medium">
+                              Have a voucher code?
+                            </Label>
+                            
+                            {!voucherDetails ? (
+                              <div className="flex gap-2">
+                                <Input
+                                  id="voucher_code"
+                                  placeholder="Enter voucher code"
+                                  value={voucherCode}
+                                  onChange={(e) => {
+                                    setVoucherCode(e.target.value.toUpperCase())
+                                    setVoucherError("")
+                                  }}
+                                  className="font-mono"
+                                  maxLength={14}
+                                  disabled={isVerifyingVoucher}
+                                />
+                                <Button
+                                  type="button"
+                                  onClick={handleVerifyVoucher}
+                                  disabled={isVerifyingVoucher || !voucherCode.trim()}
+                                  variant="outline"
+                                  className="whitespace-nowrap"
+                                >
+                                  {isVerifyingVoucher ? "Verifying..." : "Apply"}
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-md px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                                  <div>
+                                    <p className="text-sm font-medium text-emerald-900 dark:text-emerald-100">
+                                      {voucherDetails.code}
+                                    </p>
+                                    <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                                      {voucherDetails.service || voucherDetails.description}
+                                    </p>
+                                  </div>
+                                </div>
+                                <Button
+                                  type="button"
+                                  onClick={handleRemoveVoucher}
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-auto p-1 text-emerald-700 hover:text-emerald-900 dark:text-emerald-400 dark:hover:text-emerald-200"
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            )}
+                            
+                            {voucherError && (
+                              <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                                <XCircle className="w-3 h-3" />
+                                {voucherError}
+                              </p>
+                            )}
+                          </div>
 
-                          <p className="text-sm text-gray-900 font-semibold">
-                            Total Payable: ₱{((course?.training_fee || 0) - discount).toLocaleString()}
-                          </p>
+                          {/* Discount Display */}
+                          {discount > 0 && (
+                            <div className="mt-2">
+                              <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                                <CheckCircle2 className="w-4 h-4" />
+                                Discount Applied: -₱{discount.toLocaleString()}
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="border-t mt-3 pt-3">
+                            <p className="text-base text-gray-900 font-bold flex justify-between">
+                              <span>Total Payable:</span>
+                              <span className={discount > 0 ? "text-emerald-600" : ""}>
+                                ₱{((course?.training_fee || 0) - discount).toLocaleString()}
+                              </span>
+                            </p>
+                            {discount > 0 && (
+                              <p className="text-xs text-gray-500 line-through">
+                                Original: ₱{course?.training_fee?.toLocaleString() || "0.00"}
+                              </p>
+                            )}
+                          </div>
                         </fieldset>
                         
                         <fieldset className="border border-gray-300 rounded-md px-4 pt-4 pb-2 bg-slate-50 relative">

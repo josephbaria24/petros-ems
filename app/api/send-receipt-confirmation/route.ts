@@ -109,7 +109,7 @@ export async function POST(req: Request) {
             </p>
             <p style="color: #374151; line-height: 1.6; margin-bottom: 0;">
               Best regards,<br>
-              <strong>Petrosphere Training Team</strong>
+              <strong>Petrosphere Incorporated</strong>
             </p>
           </div>
 
@@ -134,10 +134,11 @@ export async function POST(req: Request) {
     const mailOptions = {
       from: `"${process.env.SMTP_FROM_NAME || 'Petrosphere Training'}" <${process.env.SMTP_USER}>`,
       to,
+      cc: "sales@petrosphere.com.ph, training-department@petrosphere.com.ph", // ✅ Added CC
       subject: `Receipt Received - ${referenceNumber}`,
       html: htmlContent,
     };
-
+    
     await transporter.sendMail(mailOptions);
 
     return NextResponse.json({ 

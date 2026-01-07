@@ -10,7 +10,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, message: "No trainees found." }, { status: 400 })
     }
 
-    // Setup Nodemailer transporter (same as your existing config)
+    // Setup Nodemailer transporter
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT),
@@ -50,8 +50,9 @@ export async function POST(req: Request) {
       `
 
       await transporter.sendMail({
-        from: `"${process.env.SMTP_FROM_NAME}" `,
+        from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_USER}>`,
         to: trainee.email,
+        cc: "sales@petrosphere.com.ph, training-department@petrosphere.com.ph", // ✅ Added CC
         subject: `📅 Updated Training Schedule – ${courseName}`,
         html: htmlMessage,
       })

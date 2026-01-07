@@ -76,7 +76,7 @@ export async function POST(req: Request) {
               </ol>
             </div>
 
-            <!-- Upload CTA -->}
+            <!-- Upload CTA -->
             <div style="text-align: center; margin: 2rem 0;">
               <a href="${process.env.NEXT_PUBLIC_APP_URL}/upload-receipt" 
                  style="display: inline-block; padding: 0.75rem 2rem; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 0.5rem; font-weight: 600;">
@@ -97,7 +97,7 @@ export async function POST(req: Request) {
               </ul>
             </div>
 
-            <!-- Contact Information -->}
+            <!-- Contact Information -->
             <div style="background-color: #f9fafb; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem;">
               <h3 style="color: #111827; margin: 0 0 0.75rem 0; font-size: 1rem;">📞 Need Help?</h3>
               <p style="margin: 0.25rem 0; color: #4b5563; font-size: 0.875rem;">
@@ -120,7 +120,7 @@ export async function POST(req: Request) {
             </p>
             <p style="color: #374151; line-height: 1.6; margin-bottom: 0;">
               Best regards,<br>
-              <strong>Petrosphere Training Team</strong>
+              <strong>Petrosphere Incorporated</strong>
             </p>
           </div>
 
@@ -141,6 +141,7 @@ export async function POST(req: Request) {
     const mailOptions = {
       from: `"${process.env.SMTP_FROM_NAME || 'Petrosphere Training'}" <${process.env.SMTP_USER}>`,
       to: traineeEmail,
+      cc: "sales@petrosphere.com.ph, training-department@petrosphere.com.ph", // ✅ Added CC
       subject: `Payment Verification Required - Please Upload Clear Receipt`,
       html: htmlContent,
     };

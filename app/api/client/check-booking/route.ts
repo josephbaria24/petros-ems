@@ -120,10 +120,11 @@ export async function POST(req: Request) {
     // Calculate total paid
     const totalPaid = payments?.reduce((sum, p) => sum + (p.amount_paid || 0), 0) || training.amount_paid || 0;
 
-    // Determine the training fee (discounted if applicable)
-    const actualFee = training.has_discount && training.discounted_fee 
-      ? training.discounted_fee 
-      : course.training_fee;
+    // ✅ Determine the training fee (discounted if applicable)
+    const originalFee = course.training_fee;
+    const hasDiscount = training.has_discount || false;
+    const discountedFee = training.discounted_fee || null;
+    const actualFee = hasDiscount && discountedFee ? discountedFee : originalFee;
 
     return NextResponse.json({
       found: true,
@@ -133,13 +134,19 @@ export async function POST(req: Request) {
         courseName: course.name,
         scheduleRange,
         paymentMethod: training.payment_method || 'N/A',
-        paymentStatus: training.status || 'Pending Payment', // Use training.status for overall status
-        trainingFee: actualFee,
+        paymentStatus: training.status || 'Pending Payment',
+        
+        // ✅ Add discount-related fields
+        originalFee: originalFee,
+        hasDiscount: hasDiscount,
+        discountedFee: discountedFee,
+        trainingFee: actualFee, // The actual fee to pay (discounted or original)
+        
         amountPaid: totalPaid,
         receiptLink: payments?.[0]?.receipt_link || training.receipt_link,
         receiptUploadedBy: payments?.[0]?.receipt_uploaded_by || null,
         bookingDate: new Date(bookingSummary.booking_date).toLocaleDateString(),
-        trainingId: training.id, // ✅ ADD training ID for payment history
+        trainingId: training.id,
       },
     });
 

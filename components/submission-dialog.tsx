@@ -30,7 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, AlertCircle } from "lucide-react";
+import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase-client";
 
 interface Payment {
@@ -87,6 +87,10 @@ export function SubmissionDialog({
   const [decliningPayment, setDecliningPayment] = useState<string | null>(null);
   const [deletingPayment, setDeletingPayment] = useState(false);
 
+
+  const [voucherInfo, setVoucherInfo] = useState<any>(null);
+
+
   const [newDetails, setNewDetails] = useState({
     company_name: trainee?.company_name || "",
     gender: trainee?.gender || "",
@@ -104,24 +108,63 @@ export function SubmissionDialog({
     mailing_province: trainee?.mailing_province || "",
   });
 
-  const fetchPayments = async () => {
-    if (!trainee?.id) return;
-    
-    const { data, error } = await supabase
-      .from("payments")
-      .select("*")
-      .eq("training_id", trainee.id)
-      .order("payment_date", { ascending: false });
+const fetchPayments = async () => {
+  if (!trainee?.id) return;
+  
+  const { data, error } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("training_id", trainee.id)
+    .order("payment_date", { ascending: false });
 
-    if (!error && data) {
-      setPayments(data);
-      const total = data.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
-      await supabase
-        .from("trainings")
-        .update({ amount_paid: total })
-        .eq("id", trainee.id);
+  if (!error && data) {
+    setPayments(data);
+    const total = data.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+    await supabase
+      .from("trainings")
+      .update({ amount_paid: total })
+      .eq("id", trainee.id);
+  }
+  
+  // Fetch voucher details if discount was applied
+  if (trainee.has_discount && trainee.discounted_fee) {
+    // Try to find the voucher that was used for this training
+    const { data: voucherData } = await supabase
+      .from("vouchers")
+      .select("*")
+      .eq("is_used", true)
+      .eq("service_id", trainee.course_id)
+      .order("created_at", { ascending: false })
+      .limit(10); // Get recent vouchers for this course
+    
+    // Store voucher info for display (we'll add this state next)
+    if (voucherData && voucherData.length > 0) {
+      // Find the most likely voucher based on discount amount
+      const originalFee = Number(trainee.training_fee);
+      const discountedFee = Number(trainee.discounted_fee);
+      const discountAmount = originalFee - discountedFee;
+      
+      const matchingVoucher = voucherData.find(v => {
+        if (v.voucher_type === "Free") {
+          return discountAmount === originalFee;
+        } else {
+          const vAmount = v.amount;
+          if (vAmount.includes("%")) {
+            const percent = parseFloat(vAmount.replace("%", ""));
+            const calculatedDiscount = (originalFee * percent) / 100;
+            return Math.abs(calculatedDiscount - discountAmount) < 1; // Allow small rounding differences
+          } else {
+            return Math.abs(parseFloat(vAmount) - discountAmount) < 1;
+          }
+        }
+      });
+      
+      if (matchingVoucher) {
+        setVoucherInfo(matchingVoucher);
+      }
     }
-  };
+  }
+};
 
   const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
     if (!trainee?.id || !trainee?.training_fee) return;
@@ -175,14 +218,25 @@ export function SubmissionDialog({
       .eq("id", trainee.id);
   };
 
-  useEffect(() => {
-    if (open && trainee) {
-      setIsDiscounted(trainee.has_discount ?? false);
-      setDiscountPrice("");
-      setDiscountPercent(null);
-      setDiscountApplied(trainee.discounted_fee ?? null);
+useEffect(() => {
+  if (open && trainee) {
+    setIsDiscounted(trainee.has_discount ?? false);
+    setDiscountPrice(trainee.discounted_fee ? String(trainee.discounted_fee) : "");
+    setDiscountPercent(null);
+    setDiscountApplied(trainee.discounted_fee ?? null);
+    setVoucherInfo(null); // Reset voucher info
+    
+    // If discount exists, calculate the percentage
+    if (trainee.has_discount && trainee.discounted_fee && trainee.training_fee) {
+      const original = Number(trainee.training_fee);
+      const discounted = Number(trainee.discounted_fee);
+      const discountAmount = original - discounted;
+      const percent = (discountAmount / original) * 100;
+      setDiscountPercent(Math.round(percent));
     }
-  }, [open, trainee?.id]);
+  }
+}, [open, trainee?.id]);
+
 
   useEffect(() => {
     if (!isDiscounted || !trainee?.training_fee) {
@@ -520,12 +574,12 @@ const handleApprovePayment = async () => {
 
   let finalAmount = 0;
   const fee = discountApplied ?? Number(trainee.training_fee);
-  const remainingBalance = fee - totalPaid; // Calculate remaining balance
+  const remainingBalance = fee - totalPaid;
 
   if (approveType === 'full') {
-    finalAmount = remainingBalance; // Use remaining balance instead of total fee
+    finalAmount = remainingBalance;
   } else if (approveType === 'half') {
-    finalAmount = remainingBalance / 2; // Half of remaining balance
+    finalAmount = remainingBalance / 2;
   } else if (approveType === 'custom') {
     finalAmount = Number(approveAmount);
     if (isNaN(finalAmount) || finalAmount <= 0) {
@@ -538,68 +592,223 @@ const handleApprovePayment = async () => {
     }
   }
 
-    setSaving(true);
-    try {
-      const newTotal = totalPaid + finalAmount;
-      const discountedFee = discountApplied ?? Number(trainee.training_fee);
-      
-      let finalStatus = 'completed';
-      if (newTotal >= discountedFee) {
-        finalStatus = isDiscounted ? 'Payment Completed (Discounted)' : 'Payment Completed';
-      } else if (newTotal > 0) {
-        finalStatus = isDiscounted ? 'Partially Paid (Discounted)' : 'Partially Paid';
-      }
-
-      const { error: updateError } = await supabase
-        .from('payments')
-        .update({
-          payment_status: finalStatus,
-          amount_paid: finalAmount,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', selectedPaymentId);
-
-      if (updateError) throw updateError;
-
-      await supabase
-        .from('trainings')
-        .update({
-          amount_paid: newTotal,
-          payment_status: finalStatus,
-          status: newTotal >= discountedFee ? 'Payment Completed' : 'Partially Paid',
-        })
-        .eq('id', trainee.id);
-
-      try {
-        await fetch('/api/send-payment-notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            traineeEmail: trainee.email,
-            traineeName: `${trainee.first_name} ${trainee.last_name}`,
-            amount: finalAmount,
-            sendConfirmation: true,
-            sendClassroom: false,
-          }),
-        });
-      } catch (emailError) {
-        console.error('Email error:', emailError);
-      }
-
-      alert('Payment approved and client notified!');
-      setShowApproveDialog(false);
-      setSelectedPaymentId(null);
-      setApproveAmount('');
-      setApproveType('full');
-      fetchPayments();
-
-    } catch (error) {
-      console.error('Error approving payment:', error);
-      alert('Failed to approve payment. Please try again.');
-    } finally {
-      setSaving(false);
+  setSaving(true);
+  try {
+    const newTotal = totalPaid + finalAmount;
+    const discountedFee = discountApplied ?? Number(trainee.training_fee);
+    
+    let finalStatus = 'completed';
+    if (newTotal >= discountedFee) {
+      finalStatus = isDiscounted ? 'Payment Completed (Discounted)' : 'Payment Completed';
+    } else if (newTotal > 0) {
+      finalStatus = isDiscounted ? 'Partially Paid (Discounted)' : 'Partially Paid';
     }
-  };
+
+    // Update payment status
+    const { error: updateError } = await supabase
+      .from('payments')
+      .update({
+        payment_status: finalStatus,
+        amount_paid: finalAmount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', selectedPaymentId);
+
+    if (updateError) throw updateError;
+
+    // Update training record
+    await supabase
+      .from('trainings')
+      .update({
+        amount_paid: newTotal,
+        payment_status: finalStatus,
+        status: newTotal >= discountedFee ? 'Payment Completed' : 'Partially Paid',
+      })
+      .eq('id', trainee.id);
+
+    // Get course details for email
+    const { data: courseData } = await supabase
+      .from('courses')
+      .select('name')
+      .eq('id', trainee.course_id)
+      .single();
+
+    // Send approval email to client
+    try {
+      const emailContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              line-height: 1.6; 
+              color: #333; 
+              background-color: #f4f4f4;
+            }
+            .container { 
+              max-width: 600px; 
+              margin: 20px auto; 
+              background: white;
+              border-radius: 8px;
+              overflow: hidden;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .header { 
+              background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+              color: white; 
+              padding: 30px 20px; 
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 28px;
+            }
+            .content { 
+              padding: 30px; 
+            }
+            .success-icon {
+              text-align: center;
+              font-size: 48px;
+              margin-bottom: 20px;
+            }
+            .info-box { 
+              background: #f0fdf4; 
+              padding: 20px; 
+              border-left: 4px solid #10b981; 
+              margin: 20px 0;
+              border-radius: 4px;
+            }
+            .info-row {
+              display: flex;
+              justify-content: space-between;
+              padding: 8px 0;
+              border-bottom: 1px solid #e5e7eb;
+            }
+            .info-row:last-child {
+              border-bottom: none;
+            }
+            .label {
+              color: #6b7280;
+              font-weight: 600;
+            }
+            .value {
+              color: #111827;
+              font-weight: 500;
+            }
+            .amount {
+              font-size: 24px;
+              color: #10b981;
+              font-weight: bold;
+              text-align: center;
+              margin: 20px 0;
+            }
+            .footer { 
+              background: #f9fafb; 
+              padding: 20px; 
+              text-align: center;
+              border-top: 1px solid #e5e7eb;
+            }
+            .footer p {
+              margin: 5px 0;
+              color: #6b7280;
+              font-size: 14px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✓ Payment Approved!</h1>
+            </div>
+            <div class="content">
+              <div class="success-icon">🎉</div>
+              
+              <p>Dear ${trainee.first_name} ${trainee.last_name},</p>
+              
+              <p>Great news! Your payment has been successfully verified and approved.</p>
+              
+              <div class="amount">
+                ₱${finalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              
+              <div class="info-box">
+                <div class="info-row">
+                  <span class="label">Course:</span>
+                  <span class="value">${courseData?.name || 'N/A'}</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Payment Amount:</span>
+                  <span class="value">₱${finalAmount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Total Paid:</span>
+                  <span class="value">₱${newTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Remaining Balance:</span>
+                  <span class="value">₱${(discountedFee - newTotal).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div class="info-row">
+                  <span class="label">Status:</span>
+                  <span class="value" style="color: #10b981; font-weight: bold;">${finalStatus}</span>
+                </div>
+              </div>
+              
+              ${newTotal >= discountedFee 
+                ? `<p style="color: #10b981; font-weight: bold; text-align: center; font-size: 18px;">
+                     🎊 Congratulations! Your payment is now complete!
+                   </p>`
+                : `<p style="color: #f59e0b; font-weight: 600;">
+                     Please note: You still have a remaining balance of ₱${(discountedFee - newTotal).toLocaleString('en-PH', { minimumFractionDigits: 2 })}.
+                   </p>`
+              }
+              
+              <p>If you have any questions, please don't hesitate to contact us.</p>
+              
+              <p>Best regards,<br><strong>Petrosphere Training Center</strong></p>
+            </div>
+            <div class="footer">
+              <p><strong>Petrosphere Incorporated</strong></p>
+              <p>Unit 305 3F, Trigold Business Park, Barangay San Pedro</p>
+              <p>Puerto Princesa City, 5300 Palawan, Philippines</p>
+              <p>📞 0917 708 7994 | 📧 sales@petrosphere.com.ph</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: trainee.email,
+          subject: '✓ Payment Approved - Petrosphere Training Center',
+          message: emailContent,
+        }),
+      });
+
+      console.log('Approval email sent successfully');
+    } catch (emailError) {
+      console.error('Failed to send approval email:', emailError);
+      // Don't fail the whole operation if email fails
+    }
+
+    alert('Payment approved and client notified!');
+    setShowApproveDialog(false);
+    setSelectedPaymentId(null);
+    setApproveAmount('');
+    setApproveType('full');
+    fetchPayments();
+
+  } catch (error) {
+    console.error('Error approving payment:', error);
+    alert('Failed to approve payment. Please try again.');
+  } finally {
+    setSaving(false);
+  }
+};
 
  const handleDeclinePayment = async (paymentId: string) => {
   const confirm = window.confirm(
@@ -1292,112 +1501,173 @@ const handleUpdateIdPhoto = async () => {
                 </section>
                 {/* Payment and Payment History Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Payment Details Section */}
-                  <section className="border rounded overflow-hidden">
-                    <div className="font-bold px-4 py-2 bg-green-100 dark:text-blue-950 rounded border border-green-300">
-                      Payment Details
-                    </div>
-                    <div className="p-4 text-sm space-y-2">
-                      <div className="flex justify-between">
-                        <span>Training Fee</span>
-                        <span>{formatCurrency(trainee?.training_fee || 0)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Payment Method</span>
-                        <span>{trainee?.payment_method || "N/A"}</span>
-                      </div>
-                      
-                      {/* Discount Toggle */}
-                      <div className="flex items-center gap-2 pt-2">
-                        <Label>Discounted?</Label>
-                        <input 
-                          type="checkbox" 
-                          checked={isDiscounted}
-                          onChange={async (e) => {
-                            const checked = e.target.checked;
-                            setIsDiscounted(checked);
-                            const { error } = await supabase
-                              .from("trainings")
-                              .update({ has_discount: checked })
-                              .eq("id", trainee.id);
-                            if (error) {
-                              alert("Failed to update discount status.");
-                              console.error("Update discount toggle error:", error);
-                            }
-                          }}
-                        />
-                      </div>
 
-                      {/* Discount Input */}
-                      {isDiscounted && (
-                        <div className="space-y-2 p-3 border rounded bg-background">
-                          <Label>Discounted Price</Label>
-                          <Input
-                            type="number"
-                            placeholder="Enter discounted price"
-                            value={discountPrice}
-                            onChange={(e) => setDiscountPrice(e.target.value)}
-                          />
-                          {discountPercent !== null && (
-                            <p className="text-sm text-green-700 font-semibold">
-                              Discount Applied: {discountPercent}% off
-                            </p>
-                          )}
+                 {/* Payment Details Section */}
+                    <section className="border rounded overflow-hidden">
+                      <div className="font-bold px-4 py-2 bg-green-100 dark:text-blue-950 rounded border border-green-300">
+                        Payment Details
+                      </div>
+                      <div className="p-4 text-sm space-y-2">
+                        <div className="flex justify-between">
+                          <span>Training Fee</span>
+                          <span>{formatCurrency(trainee?.training_fee || 0)}</span>
                         </div>
-                      )}
-
-                      {discountApplied !== null && (
-                        <div className="p-2 rounded bg-green-50 border border-green-300 text-green-800 text-sm">
-                          <strong>Discount Applied:</strong> {formatCurrency(discountApplied)}
-                          {discountPercent !== null && (
-                            <> ({discountPercent}% off)</>
-                          )}
+                        <div className="flex justify-between">
+                          <span>Payment Method</span>
+                          <span>{trainee?.payment_method || "N/A"}</span>
                         </div>
-                      )}
-
-                      {isDiscounted && (
-                        <Button
-                          className="w-full mt-2"
-                          onClick={handleApplyDiscount}
-                          disabled={!discountPrice || Number(discountPrice) <= 0 || applyingDiscount}
-                        >
-                          {applyingDiscount ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Applying...
-                            </>
-                          ) : (
-                            'Apply Discount'
-                          )}
-                        </Button>
-                      )}
-
-                      <div className="flex justify-between font-semibold text-green-700">
-                        <span>Total Amount Paid</span>
-                        <span>{formatCurrency(totalPaid)}</span>
-                      </div>
-                      {(() => {
-                        const requiredFee = discountApplied !== null ? discountApplied : (trainee?.training_fee || 0);
-                        const balance = requiredFee - totalPaid;
                         
-                        if (balance < 0) {
-                          return (
-                            <div className="flex justify-between font-semibold text-blue-700">
-                              <span>Exceeded Amount</span>
-                              <span>{formatCurrency(Math.abs(balance))}</span>
+                        {/* Voucher Info Banner - Show if voucher was applied */}
+                        {trainee.has_discount && voucherInfo && (
+                          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-300 rounded-lg space-y-2">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              <span className="font-semibold text-emerald-800 dark:text-emerald-200">
+                                Voucher Applied
+                              </span>
                             </div>
-                          );
-                        } else {
-                          return (
-                            <div className="flex justify-between font-semibold text-red-700">
-                              <span>Remaining Balance</span>
-                              <span>{formatCurrency(balance)}</span>
+                            <div className="text-xs space-y-1 text-emerald-700 dark:text-emerald-300">
+                              <div className="flex justify-between">
+                                <span>Code:</span>
+                                <span className="font-mono font-semibold">{voucherInfo.code}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Type:</span>
+                                <span>{voucherInfo.voucher_type}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Discount:</span>
+                                <span className="font-semibold">{voucherInfo.amount}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Course:</span>
+                                <span>{voucherInfo.service}</span>
+                              </div>
+                              {voucherInfo.expiry_date && (
+                                <div className="flex justify-between">
+                                  <span>Expires:</span>
+                                  <span>{new Date(voucherInfo.expiry_date).toLocaleDateString()}</span>
+                                </div>
+                              )}
                             </div>
-                          );
-                        }
-                      })()}
-                    </div>
-                  </section>
+                          </div>
+                        )}
+                        
+                        {/* Discount Toggle - Auto-checked if voucher applied */}
+                        <div className="flex items-center gap-2 pt-2">
+                          <Label>Discounted?</Label>
+                          <input 
+                            type="checkbox" 
+                            checked={isDiscounted}
+                            onChange={async (e) => {
+                              const checked = e.target.checked;
+                              setIsDiscounted(checked);
+                              const { error } = await supabase
+                                .from("trainings")
+                                .update({ has_discount: checked })
+                                .eq("id", trainee.id);
+                              if (error) {
+                                alert("Failed to update discount status.");
+                                console.error("Update discount toggle error:", error);
+                              }
+                            }}
+                            disabled={trainee.has_discount && voucherInfo} // Disable if voucher was applied
+                          />
+                          {trainee.has_discount && voucherInfo && (
+                            <span className="text-xs text-emerald-600 dark:text-emerald-400 ml-2">
+                              (Applied via voucher)
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Discount Input - Show current discount if voucher applied */}
+                        {isDiscounted && (
+                          <div className="space-y-2 p-3 border rounded bg-background">
+                            <Label>Discounted Price</Label>
+                            <Input
+                              type="number"
+                              placeholder="Enter discounted price"
+                              value={discountPrice}
+                              onChange={(e) => setDiscountPrice(e.target.value)}
+                              disabled={trainee.has_discount && voucherInfo} // Disable if voucher applied
+                            />
+                            {discountPercent !== null && (
+                              <p className="text-sm text-green-700 font-semibold">
+                                Discount Applied: {discountPercent}% off
+                                {voucherInfo && (
+                                  <span className="text-xs text-muted-foreground ml-2">
+                                    (from voucher code: {voucherInfo.code})
+                                  </span>
+                                )}
+                              </p>
+                            )}
+                            {trainee.has_discount && voucherInfo && (
+                              <p className="text-xs text-amber-600 dark:text-amber-400">
+                                This discount was applied via voucher and cannot be modified.
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {discountApplied !== null && (
+                          <div className="p-2 rounded bg-green-50 border border-green-300 text-green-800 text-sm">
+                            <strong>Discounted Fee:</strong> {formatCurrency(discountApplied)}
+                            {discountPercent !== null && (
+                              <> ({discountPercent}% off)</>
+                            )}
+                            {voucherInfo && (
+                              <div className="text-xs mt-1 text-green-700">
+                                Original: {formatCurrency(trainee.training_fee || 0)} - 
+                                Savings: {formatCurrency((trainee.training_fee || 0) - discountApplied)}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Manual discount apply button - hide if voucher applied */}
+                        {isDiscounted && !voucherInfo && (
+                          <Button
+                            className="w-full mt-2"
+                            onClick={handleApplyDiscount}
+                            disabled={!discountPrice || Number(discountPrice) <= 0 || applyingDiscount}
+                          >
+                            {applyingDiscount ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Applying...
+                              </>
+                            ) : (
+                              'Apply Discount'
+                            )}
+                          </Button>
+                        )}
+
+                        <div className="flex justify-between font-semibold text-green-700">
+                          <span>Total Amount Paid</span>
+                          <span>{formatCurrency(totalPaid)}</span>
+                        </div>
+                        {(() => {
+                          const requiredFee = discountApplied !== null ? discountApplied : (trainee?.training_fee || 0);
+                          const balance = requiredFee - totalPaid;
+                          
+                          if (balance < 0) {
+                            return (
+                              <div className="flex justify-between font-semibold text-blue-700">
+                                <span>Exceeded Amount</span>
+                                <span>{formatCurrency(Math.abs(balance))}</span>
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div className="flex justify-between font-semibold text-red-700">
+                                <span>Remaining Balance</span>
+                                <span>{formatCurrency(balance)}</span>
+                              </div>
+                            );
+                          }
+                        })()}
+                      </div>
+                    </section>
 
                   {/* Payment History Section */}
                   <section className="border rounded overflow-hidden">

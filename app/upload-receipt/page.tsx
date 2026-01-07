@@ -29,6 +29,10 @@ interface BookingStatus {
     receiptLink: string | null;
     bookingDate: string;
     trainingId: string;
+    // Add these discount fields
+    hasDiscount: boolean;
+    discountedFee: number | null;
+    originalFee: number;
   };
   error?: string;
 }
@@ -327,24 +331,75 @@ export default function UploadReceiptPage() {
                     <span className="text-slate-400">Payment Method:</span>
                     <span className="text-white">{bookingStatus.data.paymentMethod}</span>
                   </div>
+                  
+                  {/* Discount Display */}
+                  {bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 mt-2">
+                      <div className="flex items-center gap-2 mb-2">
+                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-semibold text-emerald-400">Discount Applied!</span>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-emerald-300">Original Price:</span>
+                          <span className="text-sm text-slate-400 line-through">
+                            {formatCurrency(bookingStatus.data.originalFee)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-emerald-300">Discounted Price:</span>
+                          <span className="text-sm text-emerald-400 font-bold">
+                            {formatCurrency(bookingStatus.data.discountedFee)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center pt-1 border-t border-emerald-500/20">
+                          <span className="text-xs text-emerald-300">You Save:</span>
+                          <span className="text-sm text-emerald-400 font-semibold">
+                            {formatCurrency(bookingStatus.data.originalFee - bookingStatus.data.discountedFee)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Training Fee Display */}
                   <div className="flex justify-between border-t border-slate-600 pt-2 mt-2">
                     <span className="text-slate-400">Training Fee:</span>
-                    <span className="text-white font-semibold">
-                      {formatCurrency(bookingStatus.data.trainingFee)}
-                    </span>
+                    {bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee ? (
+                      <div className="flex flex-col items-end">
+                        <span className="text-slate-500 text-xs line-through">
+                          {formatCurrency(bookingStatus.data.originalFee)}
+                        </span>
+                        <span className="text-emerald-400 font-semibold">
+                          {formatCurrency(bookingStatus.data.discountedFee)}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-white font-semibold">
+                        {formatCurrency(bookingStatus.data.trainingFee)}
+                      </span>
+                    )}
                   </div>
+                  
                   <div className="flex justify-between">
                     <span className="text-slate-400">Amount Paid:</span>
                     <span className="text-green-400 font-semibold">
                       {formatCurrency(bookingStatus.data.amountPaid)}
                     </span>
                   </div>
+                  
+                  {/* Balance Calculation with Discount */}
                   <div className="flex justify-between">
                     <span className="text-slate-400">Balance:</span>
                     <span className="text-red-400 font-semibold">
-                      {formatCurrency(bookingStatus.data.trainingFee - bookingStatus.data.amountPaid)}
+                      {formatCurrency(
+                        (bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee
+                          ? bookingStatus.data.discountedFee
+                          : bookingStatus.data.trainingFee) - bookingStatus.data.amountPaid
+                      )}
                     </span>
                   </div>
+                  
                   <div className="flex justify-between items-center border-t border-slate-600 pt-2 mt-2">
                     <span className="text-slate-400">Payment Status:</span>
                     <span className={`px-2 py-1 rounded text-xs font-semibold border ${getStatusBadgeClass(bookingStatus.data.paymentStatus)}`}>

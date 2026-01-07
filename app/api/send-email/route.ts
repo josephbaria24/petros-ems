@@ -19,6 +19,7 @@ export async function POST(req: Request) {
     const mailOptions: any = {
       from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_USER}>`,
       to,
+      cc: "sales@petrosphere.com.ph, training-department@petrosphere.com.ph",
       subject,
       html: message,
     };
