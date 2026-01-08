@@ -643,6 +643,7 @@ const trainingPayload = {
   // Add voucher fields
   discounted_fee: discount > 0 ? (course?.training_fee || 0) - discount : null,
   has_discount: discount > 0,
+  add_pvc_id: form.add_pvc_id || false, // ADD THIS LINE
 
   // normalize student fields
   is_student:
@@ -734,10 +735,11 @@ const trainingPayload = {
                     region: form.company_region,
                   }
                 : null,
-            paymentInfo: {
+              paymentInfo: {
               trainingFee: trainingFee,
               discount,
-              totalAmount: trainingFee - discount,
+              pvcIdFee: form.add_pvc_id ? 150 : 0, // ADD THIS LINE
+              totalAmount: trainingFee - discount + (form.add_pvc_id ? 150 : 0), // UPDATE THIS LINE
               paymentMethod,
               paymentStatus:
                 paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
@@ -780,10 +782,11 @@ const trainingPayload = {
                     region: form.company_region,
                   }
                 : null,
-            paymentInfo: {
+                paymentInfo: {
               trainingFee: trainingFee,
               discount,
-              totalAmount: trainingFee - discount,
+              pvcIdFee: form.add_pvc_id ? 150 : 0, // ADD THIS LINE
+              totalAmount: trainingFee - discount + (form.add_pvc_id ? 150 : 0), // UPDATE THIS LINE
               paymentMethod,
               paymentStatus:
                 paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
@@ -1445,6 +1448,34 @@ const trainingPayload = {
                             )}
                           </div>
 
+
+                          {/* PVC ID Add-on Option */}
+                            {discount > 0 && (
+                              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                                <p className="text-sm text-amber-900 font-medium mb-2">
+                                  ⚠️ Important: Discounted packages include Digital ID only
+                                </p>
+                                <p className="text-xs text-amber-700 mb-3">
+                                  Physical PVC ID is not included. If you wish to receive a Physical PVC ID, you can add it for an additional ₱150.
+                                </p>
+                                <div className="flex items-center gap-3">
+                                  <Checkbox
+                                    id="add_pvc"
+                                    checked={!!form.add_pvc_id}
+                                    onCheckedChange={(checked) =>
+                                      setForm((prev: any) => ({
+                                        ...prev,
+                                        add_pvc_id: Boolean(checked),
+                                      }))
+                                    }
+                                  />
+                                  <Label htmlFor="add_pvc" className="cursor-pointer text-sm font-medium">
+                                    Add Physical PVC ID (+₱150)
+                                  </Label>
+                                </div>
+                              </div>
+                            )}
+
                           {/* Discount Display */}
                           {discount > 0 && (
                             <div className="mt-2">
@@ -1456,14 +1487,26 @@ const trainingPayload = {
                           )}
 
                           <div className="border-t mt-3 pt-3">
-                            <p className="text-base text-gray-900 font-bold flex justify-between">
-                              <span>Total Payable:</span>
-                              <span className={discount > 0 ? "text-emerald-600" : ""}>
-                                ₱{((course?.training_fee || 0) - discount).toLocaleString()}
-                              </span>
-                            </p>
+                            <div className="space-y-1">
+                              <p className="text-sm text-gray-600 flex justify-between">
+                                <span>Subtotal:</span>
+                                <span>₱{((course?.training_fee || 0) - discount).toLocaleString()}</span>
+                              </p>
+                              {form.add_pvc_id && (
+                                <p className="text-sm text-gray-600 flex justify-between">
+                                  <span>Physical PVC ID:</span>
+                                  <span>₱150.00</span>
+                                </p>
+                              )}
+                              <p className="text-base text-gray-900 font-bold flex justify-between pt-2 border-t">
+                                <span>Total Payable:</span>
+                                <span className={discount > 0 ? "text-emerald-600" : ""}>
+                                  ₱{((course?.training_fee || 0) - discount + (form.add_pvc_id ? 150 : 0)).toLocaleString()}
+                                </span>
+                              </p>
+                            </div>
                             {discount > 0 && (
-                              <p className="text-xs text-gray-500 line-through">
+                              <p className="text-xs text-gray-500 line-through mt-1">
                                 Original: ₱{course?.training_fee?.toLocaleString() || "0.00"}
                               </p>
                             )}

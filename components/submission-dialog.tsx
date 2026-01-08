@@ -89,7 +89,8 @@ export function SubmissionDialog({
 
 
   const [voucherInfo, setVoucherInfo] = useState<any>(null);
-
+  
+  const [pvcIdFee, setPvcIdFee] = useState<number>(0);
 
   const [newDetails, setNewDetails] = useState({
     company_name: trainee?.company_name || "",
@@ -119,12 +120,18 @@ const fetchPayments = async () => {
 
   if (!error && data) {
     setPayments(data);
-    const total = data.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+    
+    // Calculate total including PVC fee if applicable
+    const paymentTotal = data.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+    const pvcFee = trainee.add_pvc_id ? 150 : 0;
+    setPvcIdFee(pvcFee);
+    
     await supabase
       .from("trainings")
-      .update({ amount_paid: total })
+      .update({ amount_paid: paymentTotal })
       .eq("id", trainee.id);
   }
+
   
   // Fetch voucher details if discount was applied
   if (trainee.has_discount && trainee.discounted_fee) {
@@ -166,57 +173,67 @@ const fetchPayments = async () => {
   }
 };
 
-  const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
-    if (!trainee?.id || !trainee?.training_fee) return;
+const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
+  if (!trainee?.id || !trainee?.training_fee) return;
 
-    const originalFee = Number(trainee.training_fee);
-    const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
+  const originalFee = Number(trainee.training_fee);
+  const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
+  const pvcFee = trainee.add_pvc_id ? 150 : 0;
 
-    const currentStatus = trainee.status?.toLowerCase();
-    if (
-      currentStatus === "pending" ||
-      currentStatus === "awaiting receipt" ||
-      currentStatus === "declined (waiting for resubmission)" ||
-      currentStatus === "resubmitted (pending verification)"
-    ) {
-      return;
-    }
+  const currentStatus = trainee.status?.toLowerCase();
+  if (
+    currentStatus === "pending" ||
+    currentStatus === "awaiting receipt" ||
+    currentStatus === "declined (waiting for resubmission)" ||
+    currentStatus === "resubmitted (pending verification)"
+  ) {
+    return;
+  }
 
-    let newStatus = "";
-    let newPaymentStatus: string | null = null;
+  let newStatus = "";
+  let newPaymentStatus: string | null = null;
+  const totalRequired = (discountedFee !== null ? discountedFee : originalFee) + pvcFee;
 
-    if (discountedFee !== null) {
-      if (totalPaid >= discountedFee) {
-        newStatus = "Payment Completed";
-        newPaymentStatus = "Payment Completed (Discounted)";
-      } else if (totalPaid > 0) {
-        newStatus = "Partially Paid";
-        newPaymentStatus = "Partially Paid (Discounted)";
-      } else {
-        newStatus = "Pending Payment";
-        newPaymentStatus = null;
-      }
+  if (discountedFee !== null) {
+    if (totalPaid >= totalRequired) {
+      newStatus = "Payment Completed";
+      newPaymentStatus = trainee.add_pvc_id 
+        ? "Payment Completed (Discounted + PVC)" 
+        : "Payment Completed (Discounted)";
+    } else if (totalPaid > 0) {
+      newStatus = "Partially Paid";
+      newPaymentStatus = trainee.add_pvc_id 
+        ? "Partially Paid (Discounted + PVC)" 
+        : "Partially Paid (Discounted)";
     } else {
-      if (totalPaid >= originalFee) {
-        newStatus = "Payment Completed";
-        newPaymentStatus = "Payment Completed";
-      } else if (totalPaid > 0) {
-        newStatus = "Partially Paid";
-        newPaymentStatus = "Partially Paid";
-      } else {
-        newStatus = "Pending Payment";
-        newPaymentStatus = null;
-      }
+      newStatus = "Pending Payment";
+      newPaymentStatus = null;
     }
+  } else {
+    if (totalPaid >= totalRequired) {
+      newStatus = "Payment Completed";
+      newPaymentStatus = trainee.add_pvc_id 
+        ? "Payment Completed (with PVC)" 
+        : "Payment Completed";
+    } else if (totalPaid > 0) {
+      newStatus = "Partially Paid";
+      newPaymentStatus = trainee.add_pvc_id 
+        ? "Partially Paid (with PVC)" 
+        : "Partially Paid";
+    } else {
+      newStatus = "Pending Payment";
+      newPaymentStatus = null;
+    }
+  }
 
-    await supabase
-      .from("trainings")
-      .update({
-        status: newStatus,
-        payment_status: newPaymentStatus,
-      })
-      .eq("id", trainee.id);
-  };
+  await supabase
+    .from("trainings")
+    .update({
+      status: newStatus,
+      payment_status: newPaymentStatus,
+    })
+    .eq("id", trainee.id);
+};
 
 useEffect(() => {
   if (open && trainee) {
@@ -1503,55 +1520,75 @@ const handleUpdateIdPhoto = async () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
                  {/* Payment Details Section */}
-                    <section className="border rounded overflow-hidden">
-                      <div className="font-bold px-4 py-2 bg-green-100 dark:text-blue-950 rounded border border-green-300">
-                        Payment Details
+                  <section className="border rounded overflow-hidden">
+                    <div className="font-bold px-4 py-2 bg-green-100 dark:text-blue-950 rounded border border-green-300">
+                      Payment Details
+                    </div>
+                    <div className="p-4 text-sm space-y-2">
+                      <div className="flex justify-between">
+                        <span>Training Fee</span>
+                        <span>{formatCurrency(trainee?.training_fee || 0)}</span>
                       </div>
-                      <div className="p-4 text-sm space-y-2">
-                        <div className="flex justify-between">
-                          <span>Training Fee</span>
-                          <span>{formatCurrency(trainee?.training_fee || 0)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Payment Method</span>
-                          <span>{trainee?.payment_method || "N/A"}</span>
-                        </div>
-                        
-                        {/* Voucher Info Banner - Show if voucher was applied */}
-                        {trainee.has_discount && voucherInfo && (
-                          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-300 rounded-lg space-y-2">
-                            <div className="flex items-center gap-2">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                              <span className="font-semibold text-emerald-800 dark:text-emerald-200">
-                                Voucher Applied
-                              </span>
-                            </div>
-                            <div className="text-xs space-y-1 text-emerald-700 dark:text-emerald-300">
-                              <div className="flex justify-between">
-                                <span>Code:</span>
-                                <span className="font-mono font-semibold">{voucherInfo.code}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Type:</span>
-                                <span>{voucherInfo.voucher_type}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Discount:</span>
-                                <span className="font-semibold">{voucherInfo.amount}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Course:</span>
-                                <span>{voucherInfo.service}</span>
-                              </div>
-                              {voucherInfo.expiry_date && (
-                                <div className="flex justify-between">
-                                  <span>Expires:</span>
-                                  <span>{new Date(voucherInfo.expiry_date).toLocaleDateString()}</span>
-                                </div>
-                              )}
-                            </div>
+                      
+                      {/* PVC ID Add-on Display */}
+                      {trainee.add_pvc_id && (
+                        <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-300 rounded-lg space-y-2">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                            <span className="font-semibold text-blue-800 dark:text-blue-200">
+                              Physical PVC ID Requested
+                            </span>
                           </div>
-                        )}
+                          <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                            <span>PVC ID Fee:</span>
+                            <span className="font-semibold">₱150.00</span>
+                          </div>
+                          <p className="text-xs text-blue-600 dark:text-blue-400">
+                            Client opted for Physical PVC ID card in addition to Digital ID
+                          </p>
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-between">
+                        <span>Payment Method</span>
+                        <span>{trainee?.payment_method || "N/A"}</span>
+                      </div>
+                      
+                      {/* Voucher Info Banner - Show if voucher was applied */}
+                      {trainee.has_discount && voucherInfo && (
+                        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-300 rounded-lg space-y-2">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span className="font-semibold text-emerald-800 dark:text-emerald-200">
+                              Voucher Applied
+                            </span>
+                          </div>
+                          <div className="text-xs space-y-1 text-emerald-700 dark:text-emerald-300">
+                            <div className="flex justify-between">
+                              <span>Code:</span>
+                              <span className="font-mono font-semibold">{voucherInfo.code}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Type:</span>
+                              <span>{voucherInfo.voucher_type}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Discount:</span>
+                              <span className="font-semibold">{voucherInfo.amount}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Course:</span>
+                              <span>{voucherInfo.service}</span>
+                            </div>
+                            {voucherInfo.expiry_date && (
+                              <div className="flex justify-between">
+                                <span>Expires:</span>
+                                <span>{new Date(voucherInfo.expiry_date).toLocaleDateString()}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                         
                         {/* Discount Toggle - Auto-checked if voucher applied */}
                         <div className="flex items-center gap-2 pt-2">
@@ -1609,7 +1646,7 @@ const handleUpdateIdPhoto = async () => {
                           </div>
                         )}
 
-                        {discountApplied !== null && (
+                       {discountApplied !== null && (
                           <div className="p-2 rounded bg-green-50 border border-green-300 text-green-800 text-sm">
                             <strong>Discounted Fee:</strong> {formatCurrency(discountApplied)}
                             {discountPercent !== null && (
@@ -1623,31 +1660,33 @@ const handleUpdateIdPhoto = async () => {
                             )}
                           </div>
                         )}
-
-                        {/* Manual discount apply button - hide if voucher applied */}
-                        {isDiscounted && !voucherInfo && (
-                          <Button
-                            className="w-full mt-2"
-                            onClick={handleApplyDiscount}
-                            disabled={!discountPrice || Number(discountPrice) <= 0 || applyingDiscount}
-                          >
-                            {applyingDiscount ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Applying...
-                              </>
-                            ) : (
-                              'Apply Discount'
-                            )}
-                          </Button>
-                        )}
-
+                        
+                        {/* Updated Total Calculation with PVC */}
+                        <div className="border-t pt-2 mt-2 space-y-1">
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>Course Fee:</span>
+                            <span>{formatCurrency(discountApplied !== null ? discountApplied : (trainee?.training_fee || 0))}</span>
+                          </div>
+                          {trainee.add_pvc_id && (
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                              <span>+ PVC ID:</span>
+                              <span>₱150.00</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between font-semibold text-base text-gray-900 dark:text-gray-100 pt-1 border-t">
+                            <span>Total Required:</span>
+                            <span>{formatCurrency((discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) + pvcIdFee)}</span>
+                          </div>
+                        </div>
+                        
                         <div className="flex justify-between font-semibold text-green-700">
                           <span>Total Amount Paid</span>
                           <span>{formatCurrency(totalPaid)}</span>
                         </div>
+                        
+                        {/* Updated Balance Calculation */}
                         {(() => {
-                          const requiredFee = discountApplied !== null ? discountApplied : (trainee?.training_fee || 0);
+                          const requiredFee = (discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) + pvcIdFee;
                           const balance = requiredFee - totalPaid;
                           
                           if (balance < 0) {
@@ -2098,14 +2137,30 @@ const handleUpdateIdPhoto = async () => {
           <div className="space-y-4 py-4">
             {/* Payment Info */}
               {(() => {
-                const totalFee = discountApplied ?? (trainee?.training_fee || 0);
+                const courseFee = discountApplied ?? (trainee?.training_fee || 0);
+                const pvcFee = trainee.add_pvc_id ? 150 : 0;
+                const totalFee = courseFee + pvcFee;
                 const remainingBalance = totalFee - totalPaid;
                 
                 return (
                   <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Training Fee:</span>
+                      <span className="text-muted-foreground">Course Fee:</span>
                       <span className="font-semibold">
+                        {formatCurrency(courseFee)}
+                      </span>
+                    </div>
+                    {trainee.add_pvc_id && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">PVC ID Fee:</span>
+                        <span className="font-semibold">
+                          ₱150.00
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t pt-1">
+                      <span className="text-muted-foreground">Total Fee:</span>
+                      <span className="font-semibold text-blue-600">
                         {formatCurrency(totalFee)}
                       </span>
                     </div>

@@ -76,8 +76,12 @@ export default function SubmissionPage() {
   const [progressTotal, setProgressTotal] = useState(0)
   const [groupChatLink, setGroupChatLink] = useState("")
 
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [traineeToDelete, setTraineeToDelete] = useState<any | null>(null)
+  const [deleteConfirmText, setDeleteConfirmText] = useState("")
+  const [isDeleting, setIsDeleting] = useState(false)
 
-const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string) => {
   const normalized = status?.toLowerCase().trim() || "pending";
   
   switch (normalized) {
@@ -281,6 +285,85 @@ const getStatusBadge = (status: string) => {
     }
   }
 };
+
+
+
+const handleDeleteTrainee = async () => {
+  if (!traineeToDelete) return;
+
+  const expectedText = `Delete ${traineeToDelete.first_name} ${traineeToDelete.last_name}`;
+  
+  if (deleteConfirmText !== expectedText) {
+    toast.error("Confirmation text doesn't match. Please type exactly as shown.");
+    return;
+  }
+
+  setIsDeleting(true);
+  
+  try {
+    // First, delete related records from payments table
+    const { error: paymentsError } = await supabase
+      .from("payments")
+      .delete()
+      .eq("training_id", traineeToDelete.id);
+
+    if (paymentsError) {
+      console.error("Error deleting payments:", paymentsError);
+      throw new Error("Failed to delete payment records");
+    }
+
+    // Delete from booking_summary if exists
+    const { error: bookingError } = await supabase
+      .from("booking_summary")
+      .delete()
+      .eq("training_id", traineeToDelete.id);
+
+    if (bookingError) {
+      console.error("Error deleting booking summary:", bookingError);
+      // Continue anyway as this might not exist
+    }
+
+    // Finally, delete the trainee record
+    const { error: traineeError } = await supabase
+      .from("trainings")
+      .delete()
+      .eq("id", traineeToDelete.id);
+
+    if (traineeError) {
+      console.error("Error deleting trainee:", traineeError);
+      throw new Error("Failed to delete trainee record");
+    }
+
+    // Update local state to remove the deleted trainee
+    setTrainees((prev) => prev.filter((t) => t.id !== traineeToDelete.id));
+
+    toast.success(`${traineeToDelete.first_name} ${traineeToDelete.last_name} has been deleted successfully`);
+    
+    // Reset and close dialog
+    setDeleteDialogOpen(false);
+    setTraineeToDelete(null);
+    setDeleteConfirmText("");
+
+  } catch (error: any) {
+    console.error("Delete trainee error:", error);
+    toast.error(error.message || "Failed to delete trainee. Please try again.");
+  } finally {
+    setIsDeleting(false);
+  }
+};
+
+const handleInitiateDelete = (trainee: any) => {
+  setTraineeToDelete(trainee);
+  setDeleteConfirmText("");
+  setDeleteDialogOpen(true);
+};
+
+const handleCancelDelete = () => {
+  setDeleteDialogOpen(false);
+  setTraineeToDelete(null);
+  setDeleteConfirmText("");
+};
+
 
 const updateStatus = async (status: string) => {
   if (!selectedTrainee || !scheduleId) return;
@@ -702,8 +785,11 @@ const updateStatus = async (status: string) => {
                             Decline Photos
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive">
-                            Delete
+                          <DropdownMenuItem 
+                            className="text-destructive cursor-pointer"
+                            onClick={() => handleInitiateDelete(trainee)}
+                          >
+                            Delete Trainee
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -784,6 +870,107 @@ const updateStatus = async (status: string) => {
         trainee={selectedTrainee}
         onSuccess={fetchTrainees}
       />
+
+      {/* Delete Confirmation Dialog */}
+<Dialog open={deleteDialogOpen} onOpenChange={handleCancelDelete}>
+  <DialogContent className="sm:max-w-md">
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2 text-red-600">
+        <AlertCircle className="h-5 w-5" />
+        Delete Trainee
+      </DialogTitle>
+      <DialogDescription className="pt-2">
+        This action cannot be undone. This will permanently delete the trainee record and all associated data including:
+      </DialogDescription>
+    </DialogHeader>
+
+    {traineeToDelete && (
+      <div className="space-y-4 py-4">
+        {/* Warning Banner */}
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-red-800">
+              <p className="font-semibold mb-1">You are about to delete:</p>
+              <p className="font-bold text-base">
+                {traineeToDelete.first_name} {traineeToDelete.last_name}
+              </p>
+              <p className="text-xs text-red-600 mt-1">{traineeToDelete.email}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* What will be deleted */}
+        <div className="p-3 bg-gray-50 border rounded-lg">
+          <p className="text-sm font-semibold mb-2">The following data will be permanently removed:</p>
+          <ul className="text-sm text-gray-700 space-y-1 ml-4 list-disc">
+            <li>Personal information and documents</li>
+            <li>Payment records ({trainees.find(t => t.id === traineeToDelete.id)?.amount_paid ? `₱${Number(trainees.find(t => t.id === traineeToDelete.id)?.amount_paid).toLocaleString()}` : '₱0'})</li>
+            <li>Booking summary</li>
+            <li>All associated records</li>
+          </ul>
+        </div>
+
+        {/* Confirmation Input */}
+        <div className="space-y-2">
+          <Label htmlFor="delete-confirm" className="text-sm font-medium">
+            To confirm deletion, type:{" "}
+            <span className="font-mono font-bold text-red-600">
+              Delete {traineeToDelete.first_name} {traineeToDelete.last_name}
+            </span>
+          </Label>
+          <Input
+            id="delete-confirm"
+            type="text"
+            placeholder={`Delete ${traineeToDelete.first_name} ${traineeToDelete.last_name}`}
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.target.value)}
+            className="font-mono"
+            autoComplete="off"
+          />
+          {deleteConfirmText && deleteConfirmText !== `Delete ${traineeToDelete.first_name} ${traineeToDelete.last_name}` && (
+            <p className="text-xs text-red-600">
+              Text doesn't match. Please type exactly as shown above.
+            </p>
+          )}
+        </div>
+      </div>
+    )}
+
+    <DialogFooter className="flex gap-2">
+      <Button
+        variant="outline"
+        onClick={handleCancelDelete}
+        disabled={isDeleting}
+      >
+        Cancel
+      </Button>
+      <Button
+        variant="destructive"
+        onClick={handleDeleteTrainee}
+        disabled={
+          isDeleting || 
+          !traineeToDelete || 
+          deleteConfirmText !== `Delete ${traineeToDelete.first_name} ${traineeToDelete.last_name}`
+        }
+      >
+        {isDeleting ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            Deleting...
+          </>
+        ) : (
+          <>
+            <AlertCircle className="h-4 w-4 mr-2" />
+            Delete Permanently
+          </>
+        )}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
+
     </div>
   )
 }
