@@ -134,8 +134,8 @@ export async function POST(req: Request) {
     const mailOptions = {
       from: `"${process.env.SMTP_FROM_NAME || 'Petrosphere Training'}" <${process.env.SMTP_USER}>`,
       to,
-      //cc: "sales@petrosphere.com.ph, training-department@petrosphere.com.ph",
-      cc: "jlb@petrosphere.com.ph",
+      cc: "sales@petrosphere.com.ph, training-department@petrosphere.com.ph",
+      //cc: "jlb@petrosphere.com.ph",
       subject: `Receipt Received - ${referenceNumber}`,
       html: htmlContent,
     };
