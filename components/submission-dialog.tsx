@@ -131,47 +131,154 @@ const fetchPayments = async () => {
       .update({ amount_paid: paymentTotal })
       .eq("id", trainee.id);
   }
+};
 
-  
-  // Fetch voucher details if discount was applied
-  if (trainee.has_discount && trainee.discounted_fee) {
-    // Try to find the voucher that was used for this training
-    const { data: voucherData } = await supabase
+
+// Separate function to fetch voucher details
+const fetchVoucherInfo = async () => {
+  console.log("fetchVoucherInfo called", { 
+    traineeId: trainee?.id,
+    hasDiscount: trainee?.has_discount,
+    discountedFee: trainee?.discounted_fee 
+  });
+
+  // Reset voucher info first
+  setVoucherInfo(null);
+
+  if (!trainee?.has_discount || !trainee?.discounted_fee) {
+    console.log("No discount applied, skipping voucher fetch");
+    return;
+  }
+
+  try {
+    // Method 1: Try to find via voucher_usage table (most accurate)
+    const { data: usageData, error: usageError } = await supabase
+      .from("voucher_usage")
+      .select(`
+        voucher_id,
+        vouchers (
+          id,
+          code,
+          amount,
+          service,
+          voucher_type,
+          expiry_date,
+          is_batch,
+          batch_count,
+          batch_remaining
+        )
+      `)
+      .eq("training_id", trainee.id)
+      .single();
+
+    if (!usageError && usageData?.vouchers) {
+      console.log("Found voucher via usage table:", usageData.vouchers);
+      setVoucherInfo(usageData.vouchers);
+      return;
+    }
+
+    // Method 2: Calculate and find matching voucher
+    console.log("Trying to find voucher by calculation...");
+    const originalFee = Number(trainee.training_fee);
+    const discountedFee = Number(trainee.discounted_fee);
+    const discountAmount = originalFee - discountedFee;
+
+    console.log("Discount calculation:", {
+      originalFee,
+      discountedFee,
+      discountAmount
+    });
+
+    // Get all vouchers for this course
+    const { data: vouchers, error: voucherError } = await supabase
       .from("vouchers")
       .select("*")
-      .eq("is_used", true)
       .eq("service_id", trainee.course_id)
-      .order("created_at", { ascending: false })
-      .limit(10); // Get recent vouchers for this course
-    
-    // Store voucher info for display (we'll add this state next)
-    if (voucherData && voucherData.length > 0) {
-      // Find the most likely voucher based on discount amount
-      const originalFee = Number(trainee.training_fee);
-      const discountedFee = Number(trainee.discounted_fee);
-      const discountAmount = originalFee - discountedFee;
-      
-      const matchingVoucher = voucherData.find(v => {
-        if (v.voucher_type === "Free") {
-          return discountAmount === originalFee;
+      .order("created_at", { ascending: false });
+
+    if (voucherError) {
+      console.error("Error fetching vouchers:", voucherError);
+      return;
+    }
+
+    console.log("Found vouchers:", vouchers?.length);
+
+    if (vouchers && vouchers.length > 0) {
+      // Find matching voucher
+      for (const voucher of vouchers) {
+        let matches = false;
+
+        if (voucher.voucher_type === "Free") {
+          matches = Math.abs(discountAmount - originalFee) < 1;
         } else {
-          const vAmount = v.amount;
+          const vAmount = voucher.amount.replace(/₱/g, "").replace(/,/g, "").trim();
+          
           if (vAmount.includes("%")) {
             const percent = parseFloat(vAmount.replace("%", ""));
             const calculatedDiscount = (originalFee * percent) / 100;
-            return Math.abs(calculatedDiscount - discountAmount) < 1; // Allow small rounding differences
+            matches = Math.abs(calculatedDiscount - discountAmount) < 1;
           } else {
-            return Math.abs(parseFloat(vAmount) - discountAmount) < 1;
+            matches = Math.abs(parseFloat(vAmount) - discountAmount) < 1;
           }
         }
-      });
-      
-      if (matchingVoucher) {
-        setVoucherInfo(matchingVoucher);
+
+        if (matches) {
+          console.log("Found matching voucher:", voucher);
+          setVoucherInfo(voucher);
+          return;
+        }
       }
     }
+
+    // Method 3: Create generic voucher display if no exact match
+    console.log("Creating generic voucher info");
+    const genericVoucher = {
+      code: "DISCOUNT",
+      voucher_type: discountAmount >= originalFee ? "Free" : "Discount",
+      amount: discountAmount >= originalFee 
+        ? "Free" 
+        : `₱${discountAmount.toLocaleString()}`,
+      service: trainee.courses?.name || "Applied Discount",
+      is_batch: false
+    };
+    
+    console.log("Setting generic voucher:", genericVoucher);
+    setVoucherInfo(genericVoucher);
+
+  } catch (err) {
+    console.error("Error fetching voucher info:", err);
   }
 };
+
+
+
+const fetchFreshTrainee = async () => {
+  if (!trainee?.id) return null;
+
+  const { data, error } = await supabase
+    .from("trainings")
+    .select(`
+      *,
+      courses:course_id (
+        training_fee,
+        name
+      )
+    `)
+    .eq("id", trainee.id)
+    .single();
+
+  if (error) {
+    console.error("Failed to refetch trainee:", error);
+    return null;
+  }
+
+  return {
+    ...data,
+    training_fee: data.courses?.training_fee || 0,
+    courses: data.courses,
+  };
+};
+
 
 const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
   if (!trainee?.id || !trainee?.training_fee) return;
@@ -236,23 +343,47 @@ const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
 };
 
 useEffect(() => {
-  if (open && trainee) {
-    setIsDiscounted(trainee.has_discount ?? false);
-    setDiscountPrice(trainee.discounted_fee ? String(trainee.discounted_fee) : "");
-    setDiscountPercent(null);
-    setDiscountApplied(trainee.discounted_fee ?? null);
-    setVoucherInfo(null); // Reset voucher info
-    
-    // If discount exists, calculate the percentage
-    if (trainee.has_discount && trainee.discounted_fee && trainee.training_fee) {
-      const original = Number(trainee.training_fee);
-      const discounted = Number(trainee.discounted_fee);
-      const discountAmount = original - discounted;
-      const percent = (discountAmount / original) * 100;
+  if (!open || !trainee?.id) return;
+
+  let cancelled = false;
+
+  const loadDialogData = async () => {
+    const fresh = await fetchFreshTrainee();
+    if (!fresh || cancelled) return;
+
+    const hasDiscount = fresh.has_discount ?? false;
+    const discountedFee = fresh.discounted_fee ?? null;
+
+    setIsDiscounted(hasDiscount);
+    setDiscountApplied(discountedFee);
+    setDiscountPrice(discountedFee ? String(discountedFee) : "");
+
+    if (hasDiscount && discountedFee && fresh.training_fee) {
+      const percent =
+        ((fresh.training_fee - discountedFee) / fresh.training_fee) * 100;
       setDiscountPercent(Math.round(percent));
+    } else {
+      setDiscountPercent(null);
     }
-  }
+
+    // Fetch payments FIRST
+    await fetchPayments();
+
+    // Fetch voucher LAST (now guaranteed to work)
+    if (hasDiscount && discountedFee) {
+      await fetchVoucherInfo();
+    }
+  };
+
+  loadDialogData();
+
+  return () => {
+    cancelled = true;
+  };
 }, [open, trainee?.id]);
+
+
+
 
 
   useEffect(() => {
@@ -278,6 +409,14 @@ useEffect(() => {
       fetchPayments();
     }
   }, [open, trainee?.id]);
+
+  useEffect(() => {
+  if (open && trainee?.has_discount && trainee?.discounted_fee && !voucherInfo) {
+    console.log("Discount detected but no voucher info, fetching...");
+    fetchVoucherInfo();
+  }
+}, [open, trainee?.has_discount, trainee?.discounted_fee, voucherInfo]);
+
 
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
   const [showApproveDialog, setShowApproveDialog] = useState(false);
@@ -1593,23 +1732,33 @@ const handleUpdateIdPhoto = async () => {
                         {/* Discount Toggle - Auto-checked if voucher applied */}
                         <div className="flex items-center gap-2 pt-2">
                           <Label>Discounted?</Label>
-                          <input 
-                            type="checkbox" 
-                            checked={isDiscounted}
-                            onChange={async (e) => {
-                              const checked = e.target.checked;
-                              setIsDiscounted(checked);
-                              const { error } = await supabase
-                                .from("trainings")
-                                .update({ has_discount: checked })
-                                .eq("id", trainee.id);
-                              if (error) {
-                                alert("Failed to update discount status.");
-                                console.error("Update discount toggle error:", error);
-                              }
-                            }}
-                            disabled={trainee.has_discount && voucherInfo} // Disable if voucher was applied
-                          />
+                         <input 
+                          type="checkbox" 
+                          checked={isDiscounted}
+                          onChange={async (e) => {
+                            const checked = e.target.checked;
+                            setIsDiscounted(checked);
+                            
+                            // Reset voucher info if discount is turned off
+                            if (!checked) {
+                              setVoucherInfo(null);
+                            }
+                            
+                            const { error } = await supabase
+                              .from("trainings")
+                              .update({ has_discount: checked })
+                              .eq("id", trainee.id);
+                              
+                            if (error) {
+                              alert("Failed to update discount status.");
+                              console.error("Update discount toggle error:", error);
+                            } else if (checked && trainee.discounted_fee) {
+                              // If turning on discount and there's a discounted fee, try to fetch voucher
+                              await fetchVoucherInfo();
+                            }
+                          }}
+                          disabled={trainee.has_discount && voucherInfo}
+                        />
                           {trainee.has_discount && voucherInfo && (
                             <span className="text-xs text-emerald-600 dark:text-emerald-400 ml-2">
                               (Applied via voucher)

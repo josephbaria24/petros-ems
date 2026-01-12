@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select"
 import { DateFilter, type DateRange, type FilterPreset } from "@/components/date-filter"
 import { isWithinInterval } from "date-fns"
+import { CourseDetailsModal } from "@/components/modals/course-details-modal"
 
 export default function DashboardPage() {
   const supabase = createClient()
@@ -55,6 +56,13 @@ export default function DashboardPage() {
   const [monthlyComparisonData, setMonthlyComparisonData] = useState<any[]>([])
   const [employmentStatusData, setEmploymentStatusData] = useState<any[]>([])
   
+
+
+
+const [selectedCourse, setSelectedCourse] = useState<string | null>(null)
+const [showCourseModal, setShowCourseModal] = useState(false)
+
+
   // Chart selection states
   const [chart1Type, setChart1Type] = useState("coursePopularity")
   const [chart2Type, setChart2Type] = useState("revenue")
@@ -114,6 +122,14 @@ export default function DashboardPage() {
     return isWithinInterval(checkDate, { start: dateRange.from, end: dateRange.to })
   }
   
+
+
+  const handleCourseClick = (courseName: string) => {
+  setSelectedCourse(courseName)
+  setShowCourseModal(true)
+}
+
+
   useEffect(() => {
     const fetchStats = async () => {
       const [trainingsRes, coursesRes, schedulesRes, scheduleDatesRes, scheduleRangesRes, paymentsRes] = await Promise.all([
@@ -374,7 +390,7 @@ export default function DashboardPage() {
       case "revenue":
         return <RevenueChart data={revenueData} />
       case "coursePopularity":
-        return <CoursePopularityChart data={coursePopularityData} />
+        return <CoursePopularityChart data={coursePopularityData} onBarClick={handleCourseClick} />
       case "paymentStatus":
         return <PaymentStatusChart data={paymentStatusData} />
       case "ageDistribution":
@@ -621,7 +637,15 @@ export default function DashboardPage() {
       </div>
     </CardContent>
   </Card>
-</div>
 
+{/* Course Details Modal */}
+      {selectedCourse && (
+        <CourseDetailsModal
+          isOpen={showCourseModal}
+          onClose={() => setShowCourseModal(false)}
+          courseName={selectedCourse}
+        />
+      )}
+    </div>
   )
 }

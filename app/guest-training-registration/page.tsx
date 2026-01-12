@@ -397,6 +397,7 @@ const handleRegionChange = (regionCode: string) => {
 
 
 
+// Complete handleVerifyVoucher function
 const handleVerifyVoucher = async () => {
   if (!voucherCode.trim()) {
     setVoucherError("Please enter a voucher code")
@@ -421,44 +422,67 @@ const handleVerifyVoucher = async () => {
       return
     }
 
+    // Check expiry
     const isExpired = data.expiry_date && new Date(data.expiry_date) < new Date()
-    const isUsed = data.is_used
+    
+    // Check if voucher is fully used (batch or single)
+    const isFullyUsed = data.is_batch 
+      ? data.batch_remaining <= 0 
+      : data.is_used
 
-    if (isUsed) {
-      setVoucherError("This voucher has already been used.")
-      toast.error("Voucher already used")
-    } else if (isExpired) {
+    if (isFullyUsed) {
+      setVoucherError(
+        data.is_batch 
+          ? "This batch voucher has no remaining uses." 
+          : "This voucher has already been used."
+      )
+      toast.error("Voucher fully used")
+      setIsVerifyingVoucher(false)
+      return
+    }
+
+    if (isExpired) {
       setVoucherError("This voucher has expired.")
       toast.error("Voucher expired")
+      setIsVerifyingVoucher(false)
+      return
+    }
+
+    // Check if voucher is for the correct course
+    if (data.service_id && course?.id !== data.service_id) {
+      setVoucherError("This voucher is not valid for the selected course.")
+      toast.error("Invalid voucher for this course")
+      setIsVerifyingVoucher(false)
+      return
+    }
+
+    // Voucher is valid
+    setVoucherDetails(data)
+    
+    // Calculate discount amount
+    let discountAmount = 0
+    if (data.voucher_type === "Free") {
+      discountAmount = course?.training_fee || 0
     } else {
-      // Check if voucher is for the correct course
-      if (data.service_id && course?.id !== data.service_id) {
-        setVoucherError("This voucher is not valid for the selected course.")
-        toast.error("Invalid voucher for this course")
+      // Parse discount amount (e.g., "20%" or "₱500")
+      const amountStr = data.amount.replace(/₱/g, "").trim()
+      if (amountStr.includes("%")) {
+        const percentage = parseFloat(amountStr.replace("%", ""))
+        discountAmount = ((course?.training_fee || 0) * percentage) / 100
       } else {
-        setVoucherDetails(data)
-        
-        // Calculate discount amount
-        let discountAmount = 0
-        if (data.voucher_type === "Free") {
-          discountAmount = course?.training_fee || 0
-        } else {
-          // Parse discount amount (e.g., "20%" or "500")
-          const amountStr = data.amount
-          if (amountStr.includes("%")) {
-            const percentage = parseFloat(amountStr.replace("%", ""))
-            discountAmount = ((course?.training_fee || 0) * percentage) / 100
-          } else {
-            discountAmount = parseFloat(amountStr) || 0
-          }
-        }
-        
-        setDiscount(discountAmount)
-        toast.success("Voucher applied successfully!", {
-          description: `You saved ₱${discountAmount.toLocaleString()}`
-        })
+        discountAmount = parseFloat(amountStr) || 0
       }
     }
+    
+    setDiscount(discountAmount)
+    
+    const remainingText = data.is_batch 
+      ? ` (${data.batch_remaining} uses remaining)` 
+      : ""
+    
+    toast.success(`Voucher applied successfully!${remainingText}`, {
+      description: `You saved ₱${discountAmount.toLocaleString()}`
+    })
   } catch (err) {
     console.error("Voucher verification error:", err)
     setVoucherError("Failed to verify voucher. Please try again.")
@@ -467,6 +491,9 @@ const handleVerifyVoucher = async () => {
     setIsVerifyingVoucher(false)
   }
 }
+
+
+
 
 const handleRemoveVoucher = () => {
   setVoucherCode("")
@@ -580,229 +607,263 @@ const handleRemoveVoucher = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = async () => {
-    toast.loading("Submitting registration...");
+// Complete handleSubmit function - REPLACE YOUR ENTIRE handleSubmit
+const handleSubmit = async () => {
+  toast.loading("Submitting registration...");
 
-    const searchParams = new URLSearchParams(window.location.search);
-    const scheduleId = searchParams.get("schedule_id");
+  const searchParams = new URLSearchParams(window.location.search);
+  const scheduleId = searchParams.get("schedule_id");
 
-    if (!scheduleId) {
-      toast.error("Missing schedule ID");
+  if (!scheduleId) {
+    toast.error("Missing schedule ID");
+    return;
+  }
+
+  try {
+    const { data: schedule, error: scheduleError } = await supabase
+      .from("schedules")
+      .select("course_id")
+      .eq("id", scheduleId)
+      .single();
+
+    if (scheduleError || !schedule) {
+      toast.error("Failed to retrieve course");
       return;
     }
 
-    try {
-      const { data: schedule, error: scheduleError } = await supabase
-        .from("schedules")
-        .select("course_id")
-        .eq("id", scheduleId)
-        .single();
+    const courseId = schedule.course_id;
 
-      if (scheduleError || !schedule) {
-        toast.error("Failed to retrieve course");
-        return;
-      }
+    const { data: scheduleDetails, error: scheduleDetailsError } = await supabase
+      .from("schedules")
+      .select("batch_number")
+      .eq("id", scheduleId)
+      .single()
 
-      const courseId = schedule.course_id;
+    if (scheduleDetailsError || !scheduleDetails?.batch_number) {
+      toast.error("Failed to get batch number from schedule.")
+      return
+    }
 
-      const { data: scheduleDetails, error: scheduleDetailsError } = await supabase
-        .from("schedules")
-        .select("batch_number")
-        .eq("id", scheduleId)
-        .single()
+    const batchNumber = scheduleDetails.batch_number
 
-      if (scheduleDetailsError || !scheduleDetails?.batch_number) {
-        toast.error("Failed to get batch number from schedule.")
-        return
-      }
+    const { data: courseData, error: feeError } = await supabase
+      .from("courses")
+      .select("training_fee, name")
+      .eq("id", courseId)
+      .single();
 
-      const batchNumber = scheduleDetails.batch_number
+    if (feeError) console.error("Error fetching course fee:", feeError);
 
-      const { data: courseData, error: feeError } = await supabase
-        .from("courses")
-        .select("training_fee, name")
-        .eq("id", courseId)
-        .single();
+    const trainingFee = courseData?.training_fee || 0;
 
-      if (feeError) console.error("Error fetching course fee:", feeError);
+    const trainingPayload = {
+      ...form,
+      schedule_id: scheduleId,
+      course_id: courseId,
+      batch_number: batchNumber,
+      status: "pending",
+      payment_method: paymentMethod,
+      payment_status:
+        paymentMethod === "COUNTER" ? "pending" : "awaiting receipt",
+      amount_paid: 0,
+      courtesy_title: form.courtesy_title || null,
+      
+      // Add voucher fields
+      discounted_fee: discount > 0 ? (course?.training_fee || 0) - discount : null,
+      has_discount: discount > 0,
+      add_pvc_id: form.add_pvc_id || false,
 
-      const trainingFee = courseData?.training_fee || 0;
+      // normalize student fields
+      is_student:
+        form.employment_status === "Unemployed" ? !!form.is_student : false,
+      school_name:
+        form.employment_status === "Unemployed" && form.is_student
+          ? form.school_name
+          : null,
+    }
 
-const trainingPayload = {
-  ...form,
-  schedule_id: scheduleId,
-  course_id: courseId,
-  batch_number: batchNumber,
-  status: "pending",
-  payment_method: paymentMethod,
-  payment_status:
-    paymentMethod === "COUNTER" ? "pending" : "awaiting receipt",
-  amount_paid: 0,
-  courtesy_title: form.courtesy_title || null,
-  
-  // Add voucher fields
-  discounted_fee: discount > 0 ? (course?.training_fee || 0) - discount : null,
-  has_discount: discount > 0,
-  add_pvc_id: form.add_pvc_id || false, // ADD THIS LINE
+    const { data: insertedTraining, error: insertError } = await supabase
+      .from("trainings")
+      .insert([trainingPayload])
+      .select("id")
+      .single();
 
-  // normalize student fields
-  is_student:
-    form.employment_status === "Unemployed" ? !!form.is_student : false,
-  school_name:
-    form.employment_status === "Unemployed" && form.is_student
-      ? form.school_name
-      : null,
-}
+    if (insertError || !insertedTraining) {
+      console.error("Insert training error:", insertError);
+      toast.error("Failed to submit registration.");
+      return;
+    }
 
+    const trainingId = insertedTraining.id;
 
-      const { data: insertedTraining, error: insertError } = await supabase
-        .from("trainings")
-        .insert([trainingPayload])
-        .select("id")
-        .single();
+    const { error: bookingError } = await supabase
+      .from("booking_summary")
+      .insert([
+        {
+          training_id: trainingId,
+          reference_number: bookingReference,
+        },
+      ]);
 
-      if (insertError || !insertedTraining) {
-        console.error("Insert training error:", insertError);
-        toast.error("Failed to submit registration.");
-        return;
-      }
+    if (bookingError) {
+      console.error("Booking summary insert error:", bookingError);
+      toast.error("Failed to create booking summary.");
+      return;
+    }
 
-      const trainingId = insertedTraining.id;
+    // Mark voucher as used if applied - UPDATED FOR BATCH SUPPORT
+    if (voucherDetails) {
+      if (voucherDetails.is_batch) {
+        // For batch vouchers: decrement remaining uses
+        const newRemaining = voucherDetails.batch_remaining - 1
+        const newUsed = voucherDetails.batch_used + 1
+        const isFullyUsed = newRemaining <= 0
 
-      const { error: bookingError } = await supabase
-        .from("booking_summary")
-        .insert([
-          {
-            training_id: trainingId,
-            reference_number: bookingReference,
-          },
-        ]);
+        const { error: voucherUpdateError } = await supabase
+          .from("vouchers")
+          .update({ 
+            batch_remaining: newRemaining,
+            batch_used: newUsed,
+            is_used: isFullyUsed // Mark as fully used when no remaining uses
+          })
+          .eq("code", voucherDetails.code)
 
-     // After booking summary insert
-        if (bookingError) {
-          console.error("Booking summary insert error:", bookingError);
-          toast.error("Failed to create booking summary.");
-          return;
-        }
-
-        // Mark voucher as used if applied
-        if (voucherDetails) {
-          const { error: voucherUpdateError } = await supabase
-            .from("vouchers")
-            .update({ is_used: true })
-            .eq("code", voucherDetails.code)
-
-          if (voucherUpdateError) {
-            console.error("Failed to mark voucher as used:", voucherUpdateError)
+        if (voucherUpdateError) {
+          console.error("Failed to update batch voucher:", voucherUpdateError)
+        } else {
+          // Log the usage in voucher_usage table
+          const { error: usageLogError } = await supabase
+            .from("voucher_usage")
+            .insert([{
+              voucher_id: voucherDetails.id,
+              used_by: `${form.first_name} ${form.last_name}`,
+              training_id: trainingId
+            }])
+          
+          if (usageLogError) {
+            console.error("Failed to log voucher usage:", usageLogError)
           }
         }
+      } else {
+        // For single-use vouchers: mark as used
+        const { error: voucherUpdateError } = await supabase
+          .from("vouchers")
+          .update({ is_used: true })
+          .eq("code", voucherDetails.code)
 
-
-      toast.dismiss();
-      toast.success("Registration submitted successfully!", {
-        duration: 3000,
-      });
-
-      setIsSubmitted(true);
-
-      try {
-        await fetch("/api/send-registration-email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            bookingReference,
-            courseName: courseData?.name || course?.name || "N/A",
-            scheduleRange: scheduleRange
-              ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
-              : "N/A",
-            traineeInfo: {
-              name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
-              email: form.email,
-              phone: form.phone_number,
-              gender: form.gender,
-              age: form.age,
-              address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
-              employmentStatus: form.employment_status,
-            },
-            employmentInfo:
-              form.employment_status === "Employed"
-                ? {
-                    companyName: form.company_name,
-                    position: form.company_position,
-                    industry: form.company_industry,
-                    companyEmail: form.company_email,
-                    city: form.company_city,
-                    region: form.company_region,
-                  }
-                : null,
-              paymentInfo: {
-              trainingFee: trainingFee,
-              discount,
-              pvcIdFee: form.add_pvc_id ? 150 : 0, // ADD THIS LINE
-              totalAmount: trainingFee - discount + (form.add_pvc_id ? 150 : 0), // UPDATE THIS LINE
-              paymentMethod,
-              paymentStatus:
-                paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
-            },
-          }),
-        })
-        console.log("Admin notification email sent")
-      } catch (emailErr) {
-        console.error("Admin email sending failed:", emailErr)
+        if (voucherUpdateError) {
+          console.error("Failed to mark voucher as used:", voucherUpdateError)
+        }
       }
-
-      try {
-        await fetch("/api/send-booking-summary", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: form.email,
-            bookingReference,
-            courseName: courseData?.name || course?.name || "N/A",
-            scheduleRange: scheduleRange
-              ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
-              : "N/A",
-            traineeInfo: {
-              name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
-              email: form.email,
-              phone: form.phone_number,
-              gender: form.gender,
-              age: form.age,
-              address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
-              employmentStatus: form.employment_status,
-            },
-            employmentInfo:
-              form.employment_status === "Employed"
-                ? {
-                    companyName: form.company_name,
-                    position: form.company_position,
-                    industry: form.company_industry,
-                    companyEmail: form.company_email,
-                    city: form.company_city,
-                    region: form.company_region,
-                  }
-                : null,
-                paymentInfo: {
-              trainingFee: trainingFee,
-              discount,
-              pvcIdFee: form.add_pvc_id ? 150 : 0, // ADD THIS LINE
-              totalAmount: trainingFee - discount + (form.add_pvc_id ? 150 : 0), // UPDATE THIS LINE
-              paymentMethod,
-              paymentStatus:
-                paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
-            },
-          }),
-        })
-        console.log("Booking summary email sent to trainee")
-      } catch (emailErr) {
-        console.error("Trainee email sending failed:", emailErr)
-      }
-
-    } catch (err) {
-      console.error("Unexpected error:", err);
-      toast.error("Something went wrong.");
     }
-  };
+
+    toast.dismiss();
+    toast.success("Registration submitted successfully!", {
+      duration: 3000,
+    });
+
+    setIsSubmitted(true);
+
+    // Send admin notification email
+    try {
+      await fetch("/api/send-registration-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingReference,
+          courseName: courseData?.name || course?.name || "N/A",
+          scheduleRange: scheduleRange
+            ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
+            : "N/A",
+          traineeInfo: {
+            name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
+            email: form.email,
+            phone: form.phone_number,
+            gender: form.gender,
+            age: form.age,
+            address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
+            employmentStatus: form.employment_status,
+          },
+          employmentInfo:
+            form.employment_status === "Employed"
+              ? {
+                  companyName: form.company_name,
+                  position: form.company_position,
+                  industry: form.company_industry,
+                  companyEmail: form.company_email,
+                  city: form.company_city,
+                  region: form.company_region,
+                }
+              : null,
+          paymentInfo: {
+            trainingFee: trainingFee,
+            discount,
+            pvcIdFee: form.add_pvc_id ? 150 : 0,
+            totalAmount: trainingFee - discount + (form.add_pvc_id ? 150 : 0),
+            paymentMethod,
+            paymentStatus:
+              paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+          },
+        }),
+      })
+      console.log("Admin notification email sent")
+    } catch (emailErr) {
+      console.error("Admin email sending failed:", emailErr)
+    }
+
+    // Send booking summary to trainee
+    try {
+      await fetch("/api/send-booking-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: form.email,
+          bookingReference,
+          courseName: courseData?.name || course?.name || "N/A",
+          scheduleRange: scheduleRange
+            ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
+            : "N/A",
+          traineeInfo: {
+            name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
+            email: form.email,
+            phone: form.phone_number,
+            gender: form.gender,
+            age: form.age,
+            address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
+            employmentStatus: form.employment_status,
+          },
+          employmentInfo:
+            form.employment_status === "Employed"
+              ? {
+                  companyName: form.company_name,
+                  position: form.company_position,
+                  industry: form.company_industry,
+                  companyEmail: form.company_email,
+                  city: form.company_city,
+                  region: form.company_region,
+                }
+              : null,
+          paymentInfo: {
+            trainingFee: trainingFee,
+            discount,
+            pvcIdFee: form.add_pvc_id ? 150 : 0,
+            totalAmount: trainingFee - discount + (form.add_pvc_id ? 150 : 0),
+            paymentMethod,
+            paymentStatus:
+              paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+          },
+        }),
+      })
+      console.log("Booking summary email sent to trainee")
+    } catch (emailErr) {
+      console.error("Trainee email sending failed:", emailErr)
+    }
+
+  } catch (err) {
+    console.error("Unexpected error:", err);
+    toast.error("Something went wrong.");
+  }
+};
 
   const isEmployed = form.employment_status === "Employed"
   

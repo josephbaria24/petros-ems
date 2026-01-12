@@ -20,7 +20,7 @@ export function VoucherImagePreview({ voucher }: { voucher: Voucher }) {
     if (ref.current === null) return
   
     const dataUrl = await toPng(ref.current, {
-      pixelRatio: 2, // 🔍 Higher quality (1 is default)
+      pixelRatio: 2, // Higher quality
     })
   
     const link = document.createElement("a")
@@ -29,20 +29,20 @@ export function VoucherImagePreview({ voucher }: { voucher: Voucher }) {
     link.click()
   }
   
-
   const template =
     voucher.voucherType === "Discount"
       ? "/discount-voucher-template.png"
       : "/free-voucher-template.png"
 
   return (
-    <div className="space-y-0">
-      {/* ✅ Responsive scaled preview */}
-      <div className="flex ">
-        <div className="origin-top-left scale-[0.4] sm:scale-[0.6] md:scale-[0.75] lg:scale-72">
+    <div className="space-y-3">
+      {/* Wrapper with overflow hidden to contain scaled content */}
+      <div className="w-full overflow-hidden rounded-lg border shadow-sm bg-muted/30 flex justify-center items-center p-4">
+        {/* Scaled container - adjust scale values as needed */}
+        <div className="scale-[0.35] sm:scale-[0.45] md:scale-[0.5] lg:scale-[0.55] xl:scale-[0.6] origin-center">
           <div
             ref={ref}
-            className="relative w-[1024px] h-[480px] rounded overflow-hidden border shadow"
+            className="relative w-[1024px] h-[480px] rounded overflow-hidden border shadow-lg"
           >
             <Image
               src={template}
@@ -71,10 +71,9 @@ export function VoucherImagePreview({ voucher }: { voucher: Voucher }) {
             )}
 
             {/* Expiry Disclaimer */}
-                <div className="absolute bottom-[60px] right-[100px] text-gray-300 text-sm font-[Montserrat]">
-                *Exclusive for {voucher.description} Training only.
-                </div>
-
+            <div className="absolute bottom-[60px] right-[100px] text-gray-300 text-sm font-[Montserrat]">
+              *Exclusive for {voucher.description} Training only.
+            </div>
 
             {/* Expiry */}
             <div className="absolute bottom-[35px] right-[100px] text-white text-base font-[Montserrat] font-normal">

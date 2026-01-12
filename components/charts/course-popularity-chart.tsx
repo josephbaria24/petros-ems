@@ -1,3 +1,4 @@
+//components\charts\course-popularity-chart.tsx
 "use client"
 
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from "recharts"
@@ -5,15 +6,16 @@ import { useEffect, useState } from "react"
 
 interface CoursePopularityChartProps {
   data: any[]
+  onBarClick?: (courseName: string) => void
 }
 
-export function CoursePopularityChart({ data }: CoursePopularityChartProps) {
+export function CoursePopularityChart({ data, onBarClick }: CoursePopularityChartProps) {
   const [colors, setColors] = useState({
-    chart1: '#4462d8',
+    chart1: '#3f90c5',
     chart2: '#5fc9cb',
-    chart3: '#a05bf9',
+    chart3: '#6c26ec',
     chart4: '#c8db3c',
-    chart5: '#d4438b',
+    chart5: '#dd9a1c',
     foreground: '#141454',
     border: '#e6e6f2',
     popover: '#ffffff',
@@ -52,6 +54,13 @@ export function CoursePopularityChart({ data }: CoursePopularityChartProps) {
 
   const COLORS = [colors.chart1, colors.chart2, colors.chart3, colors.chart4, colors.chart5]
 
+  const handleBarClick = (data: any) => {
+    if (onBarClick && data && data.name) {
+      console.log("Bar clicked:", data.name) // Debug log
+      onBarClick(data.name)
+    }
+  }
+
   return (
     <div className="h-[350px] w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -78,10 +87,21 @@ export function CoursePopularityChart({ data }: CoursePopularityChartProps) {
             }}
             labelStyle={{ color: colors.popoverForeground }}
             itemStyle={{ color: colors.popoverForeground }}
+            cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
           />
-          <Bar dataKey="value" name="Participants" radius={[0, 8, 8, 0]}>
+          <Bar 
+            dataKey="value" 
+            name="Participants" 
+            radius={[0, 8, 8, 0]} 
+            onClick={handleBarClick}
+            style={{ cursor: 'pointer' }}
+          >
             {data.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              <Cell 
+                key={`cell-${index}`} 
+                fill={COLORS[index % COLORS.length]}
+                style={{ cursor: 'pointer' }}
+              />
             ))}
           </Bar>
         </BarChart>

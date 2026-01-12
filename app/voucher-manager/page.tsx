@@ -1,3 +1,5 @@
+//app\voucher-manager\page.tsx
+
 "use client"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { VoucherGenerator } from "@/components/voucher-generator"
@@ -14,7 +16,7 @@ export default function Home() {
       <main className="container mx-auto lg:px-4 py-0 sm:px-8 md:px-3">
 
         <div className="flex justify-center pb-4">
-        <h1 className="text-lg sm:text-xl font-semibold">Voucher Manager System</h1>
+        <h1 className="text-lg sm:text-xl font-semibold">Voucher Manager</h1>
         </div>
         <Tabs defaultValue="generate" className="w-full">
           <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-8">

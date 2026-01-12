@@ -23,11 +23,11 @@
   --border: #e6e6f2;
   --input: #e6e6f2;
   --ring: #141454;
-  --chart-1: #4462d8;
-  --chart-2: #5fc9cb;
-  --chart-3: #a05bf9;
-  --chart-4: #c8db3c;
-  --chart-5: #d4438b;
+  --chart-1: #c4d9ff; /* pale yellow */
+  --chart-2: #ffd27d; /* light orange */
+  --chart-3: #ff9f43; /* orange */
+  --chart-4: #ff5e3a; /* red-orange */
+  --chart-5: #c81d11; /* deep red */
   --radius: 0.5rem;
   --sidebar: #ffffff;
   --sidebar-foreground: #484853;
@@ -60,12 +60,11 @@
   --border: #3b3b46;
   --input: #3b3b46;
   --ring: #ffcf14;
-  --chart-1: #4462d8;
-  --chart-2: #5fc9cb;
-  --chart-3: #a05bf9;
-  --chart-4: #cfda35;
-  --chart-5: #d4438b;
-  --sidebar: #161824;
+  --chart-1: #9fd6b3;
+  --chart-2: #6bc3b8;
+  --chart-3: #3fa3b0;
+  --chart-4: #3a82c4;
+  --chart-5: #0a4f82;
   --sidebar-foreground: #e6e6f7;
   --sidebar-primary: #daae02;
   --sidebar-primary-foreground: #f9f9ff;

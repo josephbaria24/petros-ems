@@ -240,14 +240,20 @@ export default function SubmissionPage() {
     fetchTrainees();
   }, [scheduleId]);
 
-  const handleView = (trainee: any) => {
-    if (bulkMode) return;
-    
-    const status = trainee.status?.toLowerCase();
-    
-    setSelectedTrainee(trainee);
-    setDialogOpen(true);
-  };
+const handleView = async (trainee: any) => {
+  if (bulkMode) return;
+
+  // Optional: eager refresh
+  const { data } = await supabase
+    .from("trainings")
+    .select(`*, courses:course_id(training_fee, name)`)
+    .eq("id", trainee.id)
+    .single();
+
+  setSelectedTrainee(data ?? trainee);
+  setDialogOpen(true);
+};
+
 
    const handleDeclineFromSubmission = () => {
     setDialogOpen(false);
