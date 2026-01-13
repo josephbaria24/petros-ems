@@ -38,25 +38,27 @@ export async function POST(req: Request) {
     }
 
     // 2. Get training details
-    const { data: training, error: trainingError } = await supabase
-      .from('trainings')
-      .select(`
-        id,
-        first_name,
-        last_name,
-        email,
-        payment_method,
-        payment_status,
-        receipt_link,
-        amount_paid,
-        course_id,
-        schedule_id,
-        discounted_fee,
-        has_discount,
-        status
-      `)
-      .eq('id', bookingSummary.training_id)
-      .single();
+   // 2. Get training details
+  const { data: training, error: trainingError } = await supabase
+    .from('trainings')
+    .select(`
+      id,
+      first_name,
+      last_name,
+      email,
+      payment_method,
+      payment_status,
+      receipt_link,
+      amount_paid,
+      course_id,
+      schedule_id,
+      discounted_fee,
+      has_discount,
+      add_pvc_id,
+      status
+    `)
+    .eq('id', bookingSummary.training_id)
+    .single();
 
     if (trainingError || !training) {
       return NextResponse.json(
@@ -121,12 +123,15 @@ export async function POST(req: Request) {
     const totalPaid = payments?.reduce((sum, p) => sum + (p.amount_paid || 0), 0) || training.amount_paid || 0;
 
     // ✅ Determine the training fee (discounted if applicable)
-    const originalFee = course.training_fee;
+    // ✅ Determine the training fee (discounted if applicable) - FIXED for free vouchers
+    const originalFee = Number(course.training_fee) || 0;
     const hasDiscount = training.has_discount || false;
-    const discountedFee = training.discounted_fee || null;
-    const actualFee = hasDiscount && discountedFee ? discountedFee : originalFee;
+    const discountedFee = training.discounted_fee !== null && training.discounted_fee !== undefined 
+      ? Number(training.discounted_fee) 
+      : null;
+    const actualFee = hasDiscount && discountedFee !== null ? discountedFee : originalFee;
 
-    return NextResponse.json({
+        return NextResponse.json({
       found: true,
       data: {
         referenceNumber: bookingSummary.reference_number,
@@ -147,6 +152,9 @@ export async function POST(req: Request) {
         receiptUploadedBy: payments?.[0]?.receipt_uploaded_by || null,
         bookingDate: new Date(bookingSummary.booking_date).toLocaleDateString(),
         trainingId: training.id,
+        
+        // ✅ ADD THIS LINE:
+        addPvcId: training.add_pvc_id || false,
       },
     });
 

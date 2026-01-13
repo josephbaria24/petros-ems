@@ -167,36 +167,38 @@ export function VoucherGenerator() {
       return
     }
 
-    const voucher: Voucher = {
-      code: generateVoucherCode(),
-      amount: voucherType === "Free" ? "Free" : amount,
-      description: services.find(s => s.id === selectedServiceId)?.name || "Unknown",
-      expiryDate: expiryDate || "No expiry",
-      generatedAt: new Date().toISOString(),
-      voucherType,
-      isBatch: isBatchVoucher,
-      batchCount: isBatchVoucher ? finalBatchCount : 1,
-    }
-    
+   const selectedService = services.find(s => s.id === selectedServiceId)
+
+  const voucher: Voucher = {
+    code: generateVoucherCode(),
+    amount: voucherType === "Free" ? "Free" : amount,
+    description: selectedService?.name || "Unknown",
+    expiryDate: expiryDate || "No expiry",
+    generatedAt: new Date().toISOString(),
+    voucherType,
+    isBatch: isBatchVoucher,
+    batchCount: isBatchVoucher ? finalBatchCount : 1,
+  }
+      
     setGeneratedVoucher(voucher)
     setLoading(true)
     
     const { error } = await supabase.from("vouchers").insert([
-      {
-        code: voucher.code,
-        amount: voucher.amount,
-        service: voucher.description,
-        service_id: selectedServiceId,
-        voucher_type: voucher.voucherType,
-        expiry_date: expiryDate ? expiryDate : null,
-        generated_at: voucher.generatedAt,
-        is_batch: isBatchVoucher,
-        batch_count: isBatchVoucher ? finalBatchCount : 1,
-        batch_used: 0,
-        batch_remaining: isBatchVoucher ? finalBatchCount : 1,
-        is_used: false,
-      },
-    ])
+    {
+      code: voucher.code,
+      amount: voucher.amount,
+      service: voucher.description,
+      service_id: selectedServiceId,
+      voucher_type: voucher.voucherType,
+      expiry_date: expiryDate ? expiryDate : null,
+      generated_at: voucher.generatedAt,
+      is_batch: isBatchVoucher,
+      batch_count: isBatchVoucher ? finalBatchCount : 1,
+      batch_used: 0,
+      batch_remaining: isBatchVoucher ? finalBatchCount : 1,
+      is_used: false,
+    },
+  ])
     
     setLoading(false)
 

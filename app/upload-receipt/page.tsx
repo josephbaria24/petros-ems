@@ -1,4 +1,4 @@
-// app/upload-receipt/page.tsx - WITH PAYMENT HISTORY
+// app/upload-receipt/page.tsx - WITH PVC ID FEE AND DISCOUNT DISPLAY
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -29,10 +29,12 @@ interface BookingStatus {
     receiptLink: string | null;
     bookingDate: string;
     trainingId: string;
-    // Add these discount fields
+    // Discount fields
     hasDiscount: boolean;
     discountedFee: number | null;
     originalFee: number;
+    // PVC ID field
+    addPvcId: boolean; // ✅ Add this
   };
   error?: string;
 }
@@ -45,18 +47,16 @@ export default function UploadReceiptPage() {
   const [message, setMessage] = useState('');
   const [preview, setPreview] = useState<string | null>(null);
   
-  // Booking status check
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [showStatus, setShowStatus] = useState(false);
   const [bookingStatus, setBookingStatus] = useState<BookingStatus | null>(null);
   
-  // Payment history
   const [paymentHistory, setPaymentHistory] = useState<Payment[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
 
-  // Max file size
   const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+  const PVC_ID_FEE = 150; // ✅ PVC ID fee constant
 
   const fetchPaymentHistory = async (trainingId: string) => {
     setLoadingHistory(true);
@@ -136,7 +136,6 @@ export default function UploadReceiptPage() {
       } else {
         setUploadStatus('idle');
         setMessage('');
-        // Fetch payment history when booking is found
         if (data.data?.trainingId) {
           await fetchPaymentHistory(data.data.trainingId);
         }
@@ -193,7 +192,6 @@ export default function UploadReceiptPage() {
         setFile(null);
         setPreview(null);
         
-        // Refresh payment history after successful upload
         if (bookingStatus?.data?.trainingId) {
           await fetchPaymentHistory(bookingStatus.data.trainingId);
         }
@@ -234,6 +232,26 @@ export default function UploadReceiptPage() {
       return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
     }
     return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
+  };
+
+  // ✅ Calculate total required amount (course fee + PVC fee)
+  const calculateTotalRequired = () => {
+  if (!bookingStatus?.data) return 0;
+  
+  // ✅ FIXED: Use !== null to properly handle free vouchers (discountedFee = 0)
+  const courseFee = bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee !== null
+    ? bookingStatus.data.discountedFee
+    : bookingStatus.data.trainingFee;
+  
+  const pvcFee = bookingStatus.data.addPvcId ? PVC_ID_FEE : 0;
+  
+  return courseFee + pvcFee;
+};
+  // ✅ Calculate remaining balance
+  const calculateBalance = () => {
+    if (!bookingStatus?.data) return 0;
+    const totalRequired = calculateTotalRequired();
+    return totalRequired - bookingStatus.data.amountPaid;
   };
 
   return (
@@ -332,9 +350,28 @@ export default function UploadReceiptPage() {
                     <span className="text-white">{bookingStatus.data.paymentMethod}</span>
                   </div>
                   
-                  {/* Discount Display */}
-                  {bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 mt-2">
+                  {/* ✅ PVC ID Display */}
+                  {bookingStatus.data.addPvcId && (
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mt-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CheckCircle className="w-4 h-4 text-blue-400" />
+                        <span className="text-xs font-semibold text-blue-400">Physical PVC ID Included</span>
+                      </div>
+                      <p className="text-xs text-blue-300">
+                        You've opted for a Physical PVC ID card in addition to your Digital ID
+                      </p>
+                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-blue-500/20">
+                        <span className="text-xs text-blue-300">PVC ID Fee:</span>
+                        <span className="text-sm text-blue-400 font-bold">
+                          {formatCurrency(PVC_ID_FEE)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+               {/* ✅ Discount Display - FIXED for Free vouchers */}
+{bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee !== null && (
+  <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 mt-2">
                       <div className="flex items-center gap-2 mb-2">
                         <CheckCircle className="w-4 h-4 text-emerald-400" />
                         <span className="text-xs font-semibold text-emerald-400">Discount Applied!</span>
@@ -362,23 +399,46 @@ export default function UploadReceiptPage() {
                     </div>
                   )}
                   
-                  {/* Training Fee Display */}
-                  <div className="flex justify-between border-t border-slate-600 pt-2 mt-2">
-                    <span className="text-slate-400">Training Fee:</span>
-                    {bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee ? (
-                      <div className="flex flex-col items-end">
-                        <span className="text-slate-500 text-xs line-through">
-                          {formatCurrency(bookingStatus.data.originalFee)}
+            
+                  {/* ✅ Training Fee Breakdown */}
+                 {/* ✅ Training Fee Breakdown */}
+<div className="border-t border-slate-600 pt-2 mt-2 space-y-2">
+  {/* Course Fee */}
+  <div className="flex justify-between text-xs">
+    <span className="text-slate-400">Course Fee:</span>
+    {bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee !== null ? (
+                        <div className="flex flex-col items-end">
+                          <span className="text-slate-500 line-through text-xs">
+                            {formatCurrency(bookingStatus.data.originalFee)}
+                          </span>
+                          <span className="text-emerald-400 font-semibold">
+                            {formatCurrency(bookingStatus.data.discountedFee)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-white font-semibold">
+                          {formatCurrency(bookingStatus.data.trainingFee)}
                         </span>
-                        <span className="text-emerald-400 font-semibold">
-                          {formatCurrency(bookingStatus.data.discountedFee)}
+                      )}
+                    </div>
+
+                    {/* PVC ID Fee Line Item */}
+                    {bookingStatus.data.addPvcId && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-400">+ PVC ID Fee:</span>
+                        <span className="text-blue-400 font-semibold">
+                          {formatCurrency(PVC_ID_FEE)}
                         </span>
                       </div>
-                    ) : (
-                      <span className="text-white font-semibold">
-                        {formatCurrency(bookingStatus.data.trainingFee)}
-                      </span>
                     )}
+
+                    {/* Total Required */}
+                    <div className="flex justify-between border-t border-slate-600 pt-2 font-semibold">
+                      <span className="text-slate-300">Total Required:</span>
+                      <span className="text-white text-base">
+                        {formatCurrency(calculateTotalRequired())}
+                      </span>
+                    </div>
                   </div>
                   
                   <div className="flex justify-between">
@@ -388,17 +448,22 @@ export default function UploadReceiptPage() {
                     </span>
                   </div>
                   
-                  {/* Balance Calculation with Discount */}
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Balance:</span>
-                    <span className="text-red-400 font-semibold">
-                      {formatCurrency(
-                        (bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee
-                          ? bookingStatus.data.discountedFee
-                          : bookingStatus.data.trainingFee) - bookingStatus.data.amountPaid
-                      )}
-                    </span>
-                  </div>
+                  {/* ✅ Balance Calculation - Hide if less than 1 peso */}
+                  {(() => {
+                    const balance = calculateBalance();
+                    if (Math.abs(balance) < 1) return null;
+                    
+                    return (
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">
+                          {balance < 0 ? 'Overpaid:' : 'Balance:'}
+                        </span>
+                        <span className={`font-semibold ${balance < 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                          {formatCurrency(Math.abs(balance))}
+                        </span>
+                      </div>
+                    );
+                  })()}
                   
                   <div className="flex justify-between items-center border-t border-slate-600 pt-2 mt-2">
                     <span className="text-slate-400">Payment Status:</span>

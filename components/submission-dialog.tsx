@@ -179,7 +179,7 @@ const fetchVoucherInfo = async () => {
 
     // Method 2: Calculate and find matching voucher
     console.log("Trying to find voucher by calculation...");
-    const originalFee = Number(trainee.training_fee);
+    const originalFee = Number(trainee.courses?.training_fee) || Number(trainee.training_fee) || 0;
     const discountedFee = Number(trainee.discounted_fee);
     const discountAmount = originalFee - discountedFee;
 
@@ -348,29 +348,33 @@ useEffect(() => {
   let cancelled = false;
 
   const loadDialogData = async () => {
-    const fresh = await fetchFreshTrainee();
-    if (!fresh || cancelled) return;
+    // ✅ FIXED: Use passed trainee prop instead of refetching to prevent flickering
+    const currentTrainee = trainee;
+    
+    if (!currentTrainee || cancelled) return;
 
-    const hasDiscount = fresh.has_discount ?? false;
-    const discountedFee = fresh.discounted_fee ?? null;
+    const hasDiscount = currentTrainee.has_discount ?? false;
+    const discountedFee = currentTrainee.discounted_fee ?? null;
 
     setIsDiscounted(hasDiscount);
     setDiscountApplied(discountedFee);
-    setDiscountPrice(discountedFee ? String(discountedFee) : "");
+    setDiscountPrice(discountedFee !== null ? String(discountedFee) : "");
 
-    if (hasDiscount && discountedFee && fresh.training_fee) {
-      const percent =
-        ((fresh.training_fee - discountedFee) / fresh.training_fee) * 100;
+    // ✅ Use courses.training_fee for percentage calculation
+    const originalFee = Number(currentTrainee.courses?.training_fee) || 0;
+    
+    if (hasDiscount && discountedFee !== null && originalFee > 0) {
+      const percent = ((originalFee - discountedFee) / originalFee) * 100;
       setDiscountPercent(Math.round(percent));
     } else {
       setDiscountPercent(null);
     }
 
-    // Fetch payments FIRST
+    // Fetch payments
     await fetchPayments();
 
-    // Fetch voucher LAST (now guaranteed to work)
-    if (hasDiscount && discountedFee) {
+    // Fetch voucher info if discount applied
+    if (hasDiscount && discountedFee !== null) {
       await fetchVoucherInfo();
     }
   };
@@ -922,7 +926,7 @@ const handleApprovePayment = async () => {
               
               <p>If you have any questions, please don't hesitate to contact us.</p>
               
-              <p>Best regards,<br><strong>Petrosphere Training Center</strong></p>
+              <p>Best regards,<br><strong>Petrosphere Incorporated</strong></p>
             </div>
             <div class="footer">
               <p><strong>Petrosphere Incorporated</strong></p>
@@ -940,7 +944,7 @@ const handleApprovePayment = async () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: trainee.email,
-          subject: '✓ Payment Approved - Petrosphere Training Center',
+          subject: '✓ Payment Approved - Petrosphere Incorporated',
           message: emailContent,
         }),
       });
@@ -1105,7 +1109,7 @@ const handleApprovePayment = async () => {
       <body>
         <div class="header">
           <h1>Payment Receipt</h1>
-          <p>Petrosphere Training Center</p>
+          <p>Petrosphere Incorporated</p>
         </div>
         <div class="content">
           <div class="row"><strong>Receipt ID:</strong> <span>${payment.id}</span></div>
@@ -1663,13 +1667,13 @@ const handleUpdateIdPhoto = async () => {
                     <div className="font-bold px-4 py-2 bg-green-100 dark:text-blue-950 rounded border border-green-300">
                       Payment Details
                     </div>
-                    <div className="p-4 text-sm space-y-2">
-                      <div className="flex justify-between">
-                        <span>Training Fee</span>
-                        <span>{formatCurrency(trainee?.training_fee || 0)}</span>
-                      </div>
+                   <div className="p-4 text-sm space-y-2">
+                    <div className="flex justify-between">
+                      <span>Training Fee</span>
+                      <span>{formatCurrency(Number(trainee?.courses?.training_fee) || 0)}</span>
+                    </div>
                       
-                      {/* PVC ID Add-on Display */}
+                      {/*useEffect(() => {PVC ID Add-on Display */}
                       {trainee.add_pvc_id && (
                         <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-300 rounded-lg space-y-2">
                           <div className="flex items-center gap-2">
@@ -1694,27 +1698,27 @@ const handleUpdateIdPhoto = async () => {
                       </div>
                       
                       {/* Voucher Info Banner - Show if voucher was applied */}
-                      {trainee.has_discount && voucherInfo && (
-                        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-300 rounded-lg space-y-2">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                            <span className="font-semibold text-emerald-800 dark:text-emerald-200">
-                              Voucher Applied
-                            </span>
-                          </div>
-                          <div className="text-xs space-y-1 text-emerald-700 dark:text-emerald-300">
-                            <div className="flex justify-between">
-                              <span>Code:</span>
-                              <span className="font-mono font-semibold">{voucherInfo.code}</span>
+                        {trainee.has_discount && voucherInfo && (
+                          <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-300 rounded-lg space-y-2">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              <span className="font-semibold text-emerald-800 dark:text-emerald-200">
+                                Voucher Applied
+                              </span>
                             </div>
-                            <div className="flex justify-between">
-                              <span>Type:</span>
-                              <span>{voucherInfo.voucher_type}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Discount:</span>
-                              <span className="font-semibold">{voucherInfo.amount}</span>
-                            </div>
+                            <div className="text-xs space-y-1 text-emerald-700 dark:text-emerald-300">
+                              <div className="flex justify-between">
+                                <span>Code:</span>
+                                <span className="font-mono font-semibold">{voucherInfo.code}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Type:</span>
+                                <span>{voucherInfo.voucher_type}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Discount:</span>
+                                <span className="font-semibold">{voucherInfo.amount}</span>
+                              </div>
                             <div className="flex justify-between">
                               <span>Course:</span>
                               <span>{voucherInfo.service}</span>
@@ -1795,21 +1799,28 @@ const handleUpdateIdPhoto = async () => {
                           </div>
                         )}
 
-                       {discountApplied !== null && (
+                      {discountApplied !== null && (() => {
+                        // ✅ FIXED: Always use courses.training_fee as the original fee
+                        const originalFee = Number(trainee.courses?.training_fee) || 0;
+                        const discounted = Number(discountApplied) || 0;
+                        const savings = originalFee - discounted;
+                        
+                        return (
                           <div className="p-2 rounded bg-green-50 border border-green-300 text-green-800 text-sm">
                             <strong>Discounted Fee:</strong> {formatCurrency(discountApplied)}
                             {discountPercent !== null && (
                               <> ({discountPercent}% off)</>
                             )}
-                            {voucherInfo && (
+                            {voucherInfo && originalFee > 0 && (
                               <div className="text-xs mt-1 text-green-700">
-                                Original: {formatCurrency(trainee.training_fee || 0)} - 
-                                Savings: {formatCurrency((trainee.training_fee || 0) - discountApplied)}
+                                Original: {formatCurrency(originalFee)} - 
+                                Savings: {formatCurrency(savings)}
                               </div>
                             )}
                           </div>
-                        )}
-                        
+                        );
+                      })()}
+                                                
                         {/* Updated Total Calculation with PVC */}
                         <div className="border-t pt-2 mt-2 space-y-1">
                           <div className="flex justify-between text-xs text-muted-foreground">
@@ -1833,27 +1844,35 @@ const handleUpdateIdPhoto = async () => {
                           <span>{formatCurrency(totalPaid)}</span>
                         </div>
                         
-                        {/* Updated Balance Calculation */}
-                        {(() => {
-                          const requiredFee = (discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) + pvcIdFee;
-                          const balance = requiredFee - totalPaid;
-                          
-                          if (balance < 0) {
-                            return (
-                              <div className="flex justify-between font-semibold text-blue-700">
-                                <span>Exceeded Amount</span>
-                                <span>{formatCurrency(Math.abs(balance))}</span>
-                              </div>
-                            );
-                          } else {
-                            return (
-                              <div className="flex justify-between font-semibold text-red-700">
-                                <span>Remaining Balance</span>
-                                <span>{formatCurrency(balance)}</span>
-                              </div>
-                            );
-                          }
-                        })()}
+                        {/* ✅ FIXED: Remaining Balance Calculation - No more NaN and conditionally hidden */}
+                          {(() => {
+                            const courseFee = discountApplied !== null ? Number(discountApplied) : Number(trainee?.training_fee || 0);
+                            const pvcFee = trainee.add_pvc_id ? 150 : 0;
+                            const requiredFee = courseFee + pvcFee;
+                            const currentPaid = Number(totalPaid) || 0;
+                            const balance = requiredFee - currentPaid;
+                            
+                            // Don't show if balance is 0 or less than 1 peso (accounting for rounding)
+                            if (Math.abs(balance) < 1) {
+                              return null;
+                            }
+                            
+                            if (balance < 0) {
+                              return (
+                                <div className="flex justify-between font-semibold text-blue-700">
+                                  <span>Exceeded Amount</span>
+                                  <span>{formatCurrency(Math.abs(balance))}</span>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div className="flex justify-between font-semibold text-red-700">
+                                  <span>Remaining Balance</span>
+                                  <span>{formatCurrency(balance)}</span>
+                                </div>
+                              );
+                            }
+                          })()}
                       </div>
                     </section>
 
@@ -2329,26 +2348,29 @@ const handleUpdateIdPhoto = async () => {
                 );
               })()}
 
-            {/* Payment Type Selection */}
+           {/* Payment Type Selection */}
+          <div className="space-y-2">
+            <Label>Payment Amount</Label>
+            
             <div className="space-y-2">
-              <Label>Payment Amount</Label>
-              
-              <div className="space-y-2">
-                {(() => {
-  const totalFee = discountApplied ?? (trainee?.training_fee || 0);
-  const remainingBalance = totalFee - totalPaid;
-  
-  return (
-    <>
-      {/* Full Payment Option */}
-      <div 
-        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-          approveType === 'full' 
-            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' 
-            : 'border-gray-200 hover:border-gray-300'
-        }`}
-        onClick={() => setApproveType('full')}
-      >
+              {(() => {
+                // ✅ FIXED: Include PVC fee in total calculation
+                const courseFee = discountApplied !== null ? discountApplied : (trainee?.training_fee || 0);
+                const pvcFee = trainee.add_pvc_id ? 150 : 0;
+                const totalFee = courseFee + pvcFee;
+                const remainingBalance = totalFee - totalPaid;
+                
+                return (
+                  <>
+                    {/* Full Payment Option */}
+                    <div 
+                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                        approveType === 'full' 
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' 
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => setApproveType('full')}
+                    >
         <div className="flex items-center gap-2">
           <input 
             type="radio" 
@@ -2432,7 +2454,10 @@ const handleUpdateIdPhoto = async () => {
 
             {/* Preview Total After Approval */}
             {(() => {
-              const totalFee = discountApplied ?? (trainee?.training_fee || 0);
+              // ✅ FIXED: Include PVC fee in preview calculation
+              const courseFee = discountApplied !== null ? discountApplied : (trainee?.training_fee || 0);
+              const pvcFee = trainee.add_pvc_id ? 150 : 0;
+              const totalFee = courseFee + pvcFee;
               const remainingBalance = totalFee - totalPaid;
               const approvalAmount = 
                 approveType === 'full' 
