@@ -3,6 +3,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import nodemailer from 'nodemailer'
 
+
+
+// Add this helper function at the top
+function formatDateRange(start: string, end: string) {
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  
+  // Check if same date
+  if (start === end) {
+    return startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
+  }
+  
+  // Check if same month and year
+  if (startDate.getMonth() === endDate.getMonth() && startDate.getFullYear() === endDate.getFullYear()) {
+    return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })}–${endDate.toLocaleDateString('en-US', { day: '2-digit' })}, ${endDate.getFullYear()}`
+  } 
+  
+  // Check if same year but different months
+  if (startDate.getFullYear() === endDate.getFullYear()) {
+    return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })} – ${endDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })}, ${endDate.getFullYear()}`
+  }
+  
+  // Different years
+  return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })} – ${endDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })}`
+}
+
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -14,6 +41,9 @@ export async function POST(request: NextRequest) {
       employmentInfo,
       paymentInfo,
     } = body
+const formattedSchedule = scheduleRange 
+      ? formatDateRange(scheduleRange.startDate, scheduleRange.endDate)
+      : "N/A";
 
     // Configure email transporter using your SendLayer SMTP settings
     const transporter = nodemailer.createTransport({
@@ -122,7 +152,7 @@ export async function POST(request: NextRequest) {
                 </div>
                 <div class="info-row">
                   <span class="info-label">Schedule:</span>
-                  <span class="info-value">${scheduleRange}</span>
+                  <span class="info-value">${formattedSchedule}</span>
                 </div>
               </div>
 

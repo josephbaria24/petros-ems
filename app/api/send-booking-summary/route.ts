@@ -2,6 +2,34 @@
 import nodemailer from "nodemailer";
 import { NextResponse } from "next/server";
 
+
+
+
+// Add this helper function at the top
+function formatDateRange(start: string, end: string) {
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  
+  // Check if same date
+  if (start === end) {
+    return startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
+  }
+  
+  // Check if same month and year
+  if (startDate.getMonth() === endDate.getMonth() && startDate.getFullYear() === endDate.getFullYear()) {
+    return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })}–${endDate.toLocaleDateString('en-US', { day: '2-digit' })}, ${endDate.getFullYear()}`
+  } 
+  
+  // Check if same year but different months
+  if (startDate.getFullYear() === endDate.getFullYear()) {
+    return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })} – ${endDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })}, ${endDate.getFullYear()}`
+  }
+  
+  // Different years
+  return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })} – ${endDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })}`
+}
+
+
 export async function POST(req: Request) {
   try {
     const {
@@ -13,6 +41,11 @@ export async function POST(req: Request) {
       employmentInfo,
       paymentInfo,
     } = await req.json();
+
+
+      const formattedSchedule = scheduleRange 
+      ? formatDateRange(scheduleRange.startDate, scheduleRange.endDate)
+      : "N/A";
 
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
@@ -142,7 +175,7 @@ export async function POST(req: Request) {
                 </tr>
                 <tr>
                   <td style="padding: 0.5rem 0; color: #6b7280; font-weight: 600;">Schedule:</td>
-                  <td style="padding: 0.5rem 0; color: #111827;">${scheduleRange}</td>
+                  <td style="padding: 0.5rem 0; color: #111827;">${formattedSchedule}</td>
                 </tr>
                 <tr>
                   <td style="padding: 0.5rem 0; color: #6b7280; font-weight: 600;">Booking Date:</td>

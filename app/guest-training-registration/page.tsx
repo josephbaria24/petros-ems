@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Card, CardContent } from "@/components/ui/card"
-import { Check, User, Briefcase, Upload, ArrowLeft, CreditCard, Calendar, CheckCircle2, Crop, X, XCircle } from "lucide-react"
+import { Check, User, Briefcase, Upload, ArrowLeft, CreditCard, Calendar, CheckCircle2, Crop, X, XCircle, AlertTriangle } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -353,17 +353,28 @@ useEffect(() => {
     .catch(err => console.error("Failed to load local regions", err))
 }, [])
 
-
-  function formatDateRange(start: string, end: string) {
-    const startDate = new Date(start)
-    const endDate = new Date(end)
+function formatDateRange(start: string, end: string) {
+  const startDate = new Date(start)
+  const endDate = new Date(end)
   
-    if (startDate.getMonth() === endDate.getMonth()) {
-      return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })}–${endDate.toLocaleDateString('en-US', { day: '2-digit', year: 'numeric' })}`
-    } else {
-      return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })} – ${endDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })}`
-    }
+  // Check if same date
+  if (start === end) {
+    return startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })
   }
+  
+  // Check if same month and year
+  if (startDate.getMonth() === endDate.getMonth() && startDate.getFullYear() === endDate.getFullYear()) {
+    return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })}–${endDate.toLocaleDateString('en-US', { day: '2-digit' })}, ${endDate.getFullYear()}`
+  } 
+  
+  // Check if same year but different months
+  if (startDate.getFullYear() === endDate.getFullYear()) {
+    return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })} – ${endDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit' })}, ${endDate.getFullYear()}`
+  }
+  
+  // Different years
+  return `${startDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })} – ${endDate.toLocaleDateString('en-US', { month: 'long', day: '2-digit', year: 'numeric' })}`
+}
   const handleDownloadSummary = async () => {
     const element = document.getElementById("summary-download");
     if (!element) {
@@ -773,8 +784,11 @@ const handleSubmit = async () => {
           bookingReference,
           courseName: courseData?.name || course?.name || "N/A",
           scheduleRange: scheduleRange
-            ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
-            : "N/A",
+            ? {
+                startDate: scheduleRange.start_date,
+                endDate: scheduleRange.end_date
+              }
+            : null,
           traineeInfo: {
             name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
             email: form.email,
@@ -821,8 +835,11 @@ const handleSubmit = async () => {
           bookingReference,
           courseName: courseData?.name || course?.name || "N/A",
           scheduleRange: scheduleRange
-            ? `${formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}`
-            : "N/A",
+            ? {
+                startDate: scheduleRange.start_date,
+                endDate: scheduleRange.end_date
+              }
+            : null,
           traineeInfo: {
             name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
             email: form.email,
@@ -1296,104 +1313,128 @@ const handleSubmit = async () => {
               </div>
             )}
 
-            {step === 3 && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-3xl font-bold text-gray-900 mb-2">Verification Details</h2>
-                  <p className="text-gray-600">Upload your identification documents</p>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-3">
-                    <Label htmlFor="id_picture" className="text-sm font-medium">Valid ID *</Label>
-                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 transition-colors">
-                      <Input 
-                        id="id_picture"
-                        type="file" 
-                        accept="image/*" 
-                        onChange={(e) => handleFileChange(e, "id_picture_url")}
-                        className="hidden"
-                        required
-                      />
-                      <label htmlFor="id_picture" className="cursor-pointer block">
-                        {idPreview ? (
-                          <div className="space-y-3">
-                            <img src={idPreview} alt="ID Preview" className="w-full h-40 object-cover rounded-lg" />
-                            <div className="flex items-center justify-center gap-2 text-emerald-600">
-                              <Check className="w-4 h-4" />
-                              <span className="text-sm font-medium">Uploaded</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="py-8">
-                            <div className="w-12 h-12 bg-gray-100 rounded-lg mx-auto mb-3 flex items-center justify-center">
-                              <Upload className="w-6 h-6 text-gray-400" />
-                            </div>
-                            <p className="text-sm font-medium text-gray-900">Click to upload</p>
-                            <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 10MB</p>
-                          </div>
-                        )}
-                      </label>
-                    </div>
-                  </div>
+          {step === 3 && (
+  <div className="space-y-6">
+    <div>
+      <h2 className="text-3xl font-bold text-gray-900 mb-2">Verification Details</h2>
+      <p className="text-gray-600">Upload your identification documents</p>
+    </div>
 
-                  <div className="space-y-3">
-                    <Label htmlFor="picture_2x2" className="text-sm font-medium">2x2 Photo *</Label>
-                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 transition-colors">
-                      <Input 
-                        id="picture_2x2"
-                        type="file" 
-                        accept="image/*" 
-                        onChange={(e) => handleFileChange(e, "picture_2x2_url")}
-                        className="hidden"
-                        required
-                      />
-                      <label htmlFor="picture_2x2" className="cursor-pointer block">
-                        {photoPreview ? (
-                          <div className="space-y-3">
-                            <div className="relative w-full aspect-[1/1] rounded-lg overflow-hidden">
-                                <img 
-                                  src={photoPreview} 
-                                  alt="Photo Preview" 
-                                  className="w-full h-full object-cover rounded-lg" 
-                                />
-                              </div>
-
-                            <div className="flex items-center justify-center gap-2 text-emerald-600">
-                              <Check className="w-4 h-4" />
-                              <span className="text-sm font-medium">Uploaded</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="py-8">
-                            <div className="w-12 h-12 bg-gray-100 rounded-lg mx-auto mb-3 flex items-center justify-center">
-                              <Upload className="w-6 h-6 text-gray-400" />
-                            </div>
-                            <p className="text-sm font-medium text-gray-900">Click to upload</p>
-                            <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 10MB</p>
-                          </div>
-                        )}
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-4">
-                  <Button 
-                    onClick={() => {
-                      if (!validateStep3()) return
-                      setStep(4)
-                    }}
-                    size="lg"
-                    className="bg-slate-900 hover:bg-slate-700 cursor-pointer"
-                    disabled={uploading}
-                  >
-                    {uploading ? "Uploading..." : "Continue"}
-                  </Button>
-
+    {/* Important Notice */}
+    <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-lg">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <h4 className="font-semibold text-amber-900">Important: Photo Requirements</h4>
+          <p className="text-sm text-amber-800 leading-relaxed">
+            Please ensure your <strong>2x2 photo is digital and properly sized</strong>. This photo will be used for your <strong>Training Certificate and ID Card</strong>. Make sure it is:
+          </p>
+          <ul className="text-sm text-amber-800 list-disc list-inside space-y-1 mt-2">
+            <li>Clear and high-quality (not blurry)</li>
+            <li>Recent photo with white or light-colored background</li>
+            <li>Formal attire (business casual or professional)</li>
+            <li>Face clearly visible (no sunglasses or face coverings)</li>
+            <li>Proper 2x2 dimensions (passport-style photo)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="space-y-3">
+        <Label htmlFor="id_picture" className="text-sm font-medium">Valid ID *</Label>
+        <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 transition-colors">
+          <Input 
+            id="id_picture"
+            type="file" 
+            accept="image/*" 
+            onChange={(e) => handleFileChange(e, "id_picture_url")}
+            className="hidden"
+            required
+          />
+          <label htmlFor="id_picture" className="cursor-pointer block">
+            {idPreview ? (
+              <div className="space-y-3">
+                <img src={idPreview} alt="ID Preview" className="w-full h-40 object-cover rounded-lg" />
+                <div className="flex items-center justify-center gap-2 text-emerald-600">
+                  <Check className="w-4 h-4" />
+                  <span className="text-sm font-medium">Uploaded</span>
                 </div>
               </div>
+            ) : (
+              <div className="py-8">
+                <div className="w-12 h-12 bg-gray-100 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                  <Upload className="w-6 h-6 text-gray-400" />
+                </div>
+                <p className="text-sm font-medium text-gray-900">Click to upload</p>
+                <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 10MB</p>
+              </div>
             )}
+          </label>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <Label htmlFor="picture_2x2" className="text-sm font-medium">
+          2x2 Photo * 
+          <span className="text-amber-600 ml-1">(For Certificate & ID)</span>
+        </Label>
+        <div className="border-2 border-dashed border-amber-300 rounded-xl p-6 text-center hover:border-amber-500 transition-colors bg-amber-50/30">
+          <Input 
+            id="picture_2x2"
+            type="file" 
+            accept="image/*" 
+            onChange={(e) => handleFileChange(e, "picture_2x2_url")}
+            className="hidden"
+            required
+          />
+          <label htmlFor="picture_2x2" className="cursor-pointer block">
+            {photoPreview ? (
+              <div className="space-y-3">
+                <div className="relative w-full aspect-[1/1] rounded-lg overflow-hidden">
+                  <img 
+                    src={photoPreview} 
+                    alt="Photo Preview" 
+                    className="w-full h-full object-cover rounded-lg" 
+                  />
+                </div>
+                <div className="flex items-center justify-center gap-2 text-emerald-600">
+                  <Check className="w-4 h-4" />
+                  <span className="text-sm font-medium">Uploaded</span>
+                </div>
+              </div>
+            ) : (
+              <div className="py-8">
+                <div className="w-12 h-12 bg-amber-100 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                  <Upload className="w-6 h-6 text-amber-600" />
+                </div>
+                <p className="text-sm font-medium text-gray-900">Click to upload your 2x2 photo</p>
+                <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 10MB</p>
+                <p className="text-xs text-amber-600 mt-2 font-medium">
+                  ⚠️ This will appear on your certificate
+                </p>
+              </div>
+            )}
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div className="flex justify-end pt-4">
+      <Button 
+        onClick={() => {
+          if (!validateStep3()) return
+          setStep(4)
+        }}
+        size="lg"
+        className="bg-slate-900 hover:bg-slate-700 cursor-pointer"
+        disabled={uploading}
+      >
+        {uploading ? "Uploading..." : "Continue"}
+      </Button>
+    </div>
+  </div>
+)}
 
             {step === 4 && (
               <div className="space-y-3">
