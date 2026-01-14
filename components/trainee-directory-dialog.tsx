@@ -25,6 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import EmailComposeDialog from "./email-composed-dialog"
 
 
 interface ParticipantDirectoryDialogProps {
@@ -135,6 +136,55 @@ async function downloadFromServer(
   }
 }
 
+
+// Default email content generator
+function generateDefaultEmailContent(
+  courseName: string,
+  courseTitle: string,
+  scheduleRange: string
+): { subject: string; message: string } {
+  const subject = `Your ${courseName} Certificate - Petrosphere Training Center`
+  
+  const message = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #f9f9f9; }
+        .header { background: #4F46E5; color: white; padding: 30px 20px; text-align: center; border-radius: 5px 5px 0 0; }
+        .content { background: white; padding: 30px; border-radius: 0 0 5px 5px; }
+        .certificate-info { background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; border-radius: 3px; }
+        .certificate-info strong { color: #92400E; }
+        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header"><h1>🎓 Certificate of Completion</h1></div>
+        <div class="content">
+          <p>Dear Participant,</p>
+          <p>Congratulations on successfully completing your training!</p>
+          <div class="certificate-info">
+            <strong>Course:</strong> ${courseTitle}<br>
+            <strong>Training Dates:</strong> ${scheduleRange}
+          </div>
+          <p>Your official certificate is attached as a PDF.</p>
+          <p><strong>Note:</strong> Keep this certificate for your professional records.</p>
+          <p>Thank you for choosing Petrosphere Training Center!</p>
+        </div>
+        <div class="footer">
+          <p>© ${new Date().getFullYear()} Petrosphere Training Center. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+  
+  return { subject, message }
+}
+
+
 export default function ParticipantDirectoryDialog({
   open,
   onOpenChange,
@@ -158,11 +208,20 @@ export default function ParticipantDirectoryDialog({
   const [databaseStats, setDatabaseStats] = useState<any>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
   const [isDownloadingDirectory, setIsDownloadingDirectory] = useState(false)
-  
+
+
+    
   // ✅ NEW: Checkbox selection state
   const [selectedTraineeIds, setSelectedTraineeIds] = useState<Set<string>>(new Set())
   const [selectAll, setSelectAll] = useState(false)
 
+    // ✅ NEW: Email compose dialog state
+  const [emailComposeOpen, setEmailComposeOpen] = useState(false)
+  const [emailSubject, setEmailSubject] = useState("")
+  const [emailMessage, setEmailMessage] = useState("")
+
+
+  
   // ✅ NEW: Checkbox handlers
   const handleSelectAll = (checked: boolean) => {
     setSelectAll(checked)
@@ -606,137 +665,131 @@ const handleDownloadCertificates = async () => {
     }
   }
 
-  const handleSendCertificates = async () => {
-    if (!scheduleId) return
 
-    const selectedTrainees = getSelectedTrainees()
-    if (selectedTrainees.length === 0) {
-      setAlertTitle("No Selection")
-      setAlertMessage("Please select at least one participant to send certificates.")
-      setAlertOpen(true)
+  // ✅ NEW: Open email compose dialog
+const handleOpenEmailCompose = async () => {
+  const selectedTrainees = getSelectedTrainees()
+  if (selectedTrainees.length === 0) {
+    setAlertTitle("No Selection")
+    setAlertMessage("Please select at least one participant to send certificates.")
+    setAlertOpen(true)
+    return
+  }
+
+  await ensureCertificateNumbers()
+
+  // Fetch course title for email
+  if (scheduleId) {
+    const { data: scheduleData } = await supabase
+      .from("schedules")
+      .select("course_id")
+      .eq("id", scheduleId)
+      .single()
+
+    if (scheduleData) {
+      const { data: courseData } = await supabase
+        .from("courses")
+        .select("title, name")
+        .eq("id", scheduleData.course_id)
+        .single()
+
+      if (courseData) {
+        const courseTitle = courseData.title || courseData.name
+        const { subject, message } = generateDefaultEmailContent(
+          courseData.name,
+          courseTitle,
+          scheduleRange
+        )
+        setEmailSubject(subject)
+        setEmailMessage(message)
+      }
+    }
+  }
+
+  setEmailComposeOpen(true)
+}
+
+const handleSendCertificatesWithEmail = async (customSubject: string, customMessage: string) => {
+  setEmailComposeOpen(false)
+  setIsSendingEmails(true)
+  setProgress(0)
+
+  startLongOperation(
+    "Sending Certificates",
+    `Preparing to send ${selectedTemplateType} certificates...`
+  )
+
+  try {
+    const selectedIds = Array.from(selectedTraineeIds)
+
+    const response = await fetch("/api/send-certificates", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scheduleId,
+        templateType: selectedTemplateType,
+        selectedTraineeIds: selectedIds,
+        customEmailSubject: customSubject,
+        customEmailMessage: customMessage,
+      }),
+    })
+
+    if (!response.ok) {
+      const result = await response.json()
+      setAlertTitle("Error")
+      setAlertMessage(result.error || "Failed to send certificates.")
+      setIsSendingEmails(false)
       return
     }
 
-    await ensureCertificateNumbers()
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
 
-    setIsSendingEmails(true)
-    setProgress(0)
+    if (!reader) throw new Error("Failed to get response reader")
 
-    startLongOperation(
-      "Sending Certificates",
-      `Preparing to send ${selectedTemplateType} certificates to ${selectedTrainees.length} participant(s)...`
-    )
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
 
-    try {
-      const { data: scheduleData } = await supabase
-        .from("schedules")
-        .select("course_id")
-        .eq("id", scheduleId)
-        .single()
+      const chunk = decoder.decode(value)
+      const lines = chunk.split("\n")
 
-      let courseTitle = courseName
-      let courseId = ""
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(line.substring(6))
 
-      if (scheduleData) {
-        const { data: courseData } = await supabase
-          .from("courses")
-          .select("id, title, name")
-          .eq("id", scheduleData.course_id)
-          .single()
-
-        if (courseData) {
-          courseId = courseData.id
-          courseTitle = courseData.title || courseData.name
-          console.log("📚 Using course title for emails:", courseTitle)
-        }
-      }
-
-      const { data: templateCheck } = await supabase
-        .from("certificate_templates")
-        .select("template_type")
-        .eq("course_id", courseId)
-        .eq("template_type", selectedTemplateType)
-        .maybeSingle()
-
-      if (!templateCheck) {
-        setAlertTitle("Template Not Found")
-        setAlertMessage(
-          `No ${selectedTemplateType} template found for this course.\n\n` +
-          `Please create a ${selectedTemplateType} template first in the template editor.`
-        )
-        setIsSendingEmails(false)
-        return
-      }
-
-      const selectedIds = Array.from(selectedTraineeIds)
-
-      const response = await fetch("/api/send-certificates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          scheduleId,
-          templateType: selectedTemplateType,
-          courseTitle,
-          selectedTraineeIds: selectedIds
-        }),
-      })
-
-      if (!response.ok) {
-        const result = await response.json()
-        setAlertTitle("Error")
-        setAlertMessage(result.error || "Failed to send certificates.")
-        setIsSendingEmails(false)
-        return
-      }
-
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-
-      if (!reader) throw new Error("Failed to get response reader")
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const chunk = decoder.decode(value)
-        const lines = chunk.split("\n")
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.substring(6))
-
-              if (data.type === "progress") {
-                const progressPercent = Math.floor((data.current / data.total) * 100)
-                setProgress(progressPercent)
-                setAlertMessage(
-                  `${data.message}${data.lastSent ? `\nLast sent: ${data.lastSent}` : ""}${
-                    data.lastError ? `\nError: ${data.lastError}` : ""
-                  }`
-                )
-              } else if (data.type === "complete") {
-                setProgress(100)
-                setAlertTitle("Done")
-                setAlertMessage(
-                  `Successfully sent ${data.successCount} certificate(s). ${
-                    data.failCount > 0 ? `${data.failCount} failed.` : ""
-                  }`
-                )
-                setIsSendingEmails(false)
-              }
-            } catch (parseError) {
-              console.error("Failed to parse SSE data:", parseError)
+            if (data.type === "progress") {
+              const progressPercent = Math.floor((data.current / data.total) * 100)
+              setProgress(progressPercent)
+              setAlertMessage(
+                `${data.message}${data.lastSent ? `\nLast sent: ${data.lastSent}` : ""}${
+                  data.lastError ? `\nError: ${data.lastError}` : ""
+                }`
+              )
+            } else if (data.type === "complete") {
+              setProgress(100)
+              setAlertTitle("Done")
+              setAlertMessage(
+                `Successfully sent ${data.successCount} certificate(s). ${
+                  data.failCount > 0 ? `${data.failCount} failed.` : ""
+                }`
+              )
+              setIsSendingEmails(false)
             }
+          } catch (parseError) {
+            console.error("Failed to parse SSE data:", parseError)
           }
         }
       }
-    } catch (error) {
-      console.error("Error sending certificates:", error)
-      setAlertTitle("Error")
-      setAlertMessage("An error occurred while sending certificates.")
-      setIsSendingEmails(false)
     }
+  } catch (error) {
+    console.error("Error sending certificates:", error)
+    setAlertTitle("Error")
+    setAlertMessage("An error occurred while sending certificates.")
+    setIsSendingEmails(false)
   }
+}
 
   const handleSaveTrainee = async () => {
     if (!selectedTrainee) return
@@ -1034,7 +1087,7 @@ const handleDownloadCertificates = async () => {
               <><Download className="mr-2 h-4 w-4" />{selectedTemplateType === "excellence" ? "Download IDs" : "Download Certificates"}</>
             )}
           </Button>
-          <Button variant="secondary" onClick={handleSendCertificates} disabled={isSendingEmails || trainees.length === 0 || selectedTraineeIds.size === 0}>
+          <Button variant="secondary" onClick={handleOpenEmailCompose} disabled={isSendingEmails || trainees.length === 0 || selectedTraineeIds.size === 0}>
             {isSendingEmails ? (
               <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending...</>
             ) : (
@@ -1083,6 +1136,16 @@ const handleDownloadCertificates = async () => {
           </DialogContent>
         </Dialog>
       </DialogContent>
+      {/* ✅ NEW: Email Compose Dialog */}
+      <EmailComposeDialog
+        open={emailComposeOpen}
+        onOpenChange={setEmailComposeOpen}
+        onSend={handleSendCertificatesWithEmail}
+        defaultSubject={emailSubject}
+        defaultMessage={emailMessage}
+        recipientCount={getSelectedTrainees().length}
+      />
     </Dialog>
+    
   )
 }
