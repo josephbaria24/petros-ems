@@ -88,7 +88,7 @@ export async function POST(req: Request) {
                 <strong>Phone:</strong> Globe/TM 0917-708-7994
               </p>
               <p style="margin: 0.25rem 0; color: #4b5563; font-size: 0.875rem;">
-                <strong>Email:</strong> training-department@petrosphere.com.ph
+                <strong>Email:</strong> training@petrosphere.com.ph
               </p>
               <p style="margin: 0.25rem 0; color: #4b5563; font-size: 0.875rem;">
                 <strong>Office Hours:</strong> Monday - Friday, 8:00 AM - 5:00 PM
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
     const mailOptions = {
       from: `"${process.env.SMTP_FROM_NAME || 'Petrosphere Training'}" <${process.env.SMTP_USER}>`,
       to,
-      cc: "sales@petrosphere.com.ph, training-department@petrosphere.com.ph",
+      cc: "sales@petrosphere.com.ph, training@petrosphere.com.ph",
       //cc: "jlb@petrosphere.com.ph",
       subject: `Receipt Received - ${referenceNumber}`,
       html: htmlContent,

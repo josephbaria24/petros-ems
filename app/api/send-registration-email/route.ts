@@ -222,7 +222,7 @@ export async function POST(request: NextRequest) {
     // Send email
       const mailOptions = {
       from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_USER}>`,
-      to: 'training-department@petrosphere.com.ph',
+      to: 'training@petrosphere.com.ph',
       cc: "sales@petrosphere.com.ph", // ✅ Added CC
       subject: `New Training Registration - ${bookingReference}`,
       html: emailHtml,

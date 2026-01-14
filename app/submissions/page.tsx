@@ -28,6 +28,7 @@ import {
   ArrowLeft,
   AlertCircle,
   Upload,
+  RefreshCw,
 } from "lucide-react";
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -166,9 +167,10 @@ export default function SubmissionPage() {
   }
 };
   
-  const fetchTrainees = async () => {
-    if (!scheduleId) return;
+const fetchTrainees = async () => {
+  if (!scheduleId) return;
 
+  try {
     // Fetch schedule with course name
     const { data: scheduleData, error: scheduleError } = await supabase
       .from("schedules")
@@ -180,10 +182,11 @@ export default function SubmissionPage() {
       console.error(scheduleError);
       toast.error("Failed to fetch schedule details");
     } else if (scheduleData?.courses) {
-      // @ts-ignore - Supabase types can be complex
+      // @ts-ignore
       setCourseName(scheduleData.courses.name || "");
     }
 
+    // Fetch trainings data
     const { data, error } = await supabase
       .from("trainings")
       .select(`
@@ -217,8 +220,24 @@ export default function SubmissionPage() {
         food_restriction,
         course_id,
         declined_photos,
+        has_discount,
+        discounted_fee,
+        add_pvc_id,
         courses:course_id (
+          id,
+          name,
           training_fee
+        ),
+        payments (
+          id,
+          payment_date,
+          payment_method,
+          payment_status,
+          amount_paid,
+          receipt_link,
+          online_classroom_url,
+          receipt_uploaded_by,
+          receipt_uploaded_at
         )
       `)
       .eq("schedule_id", scheduleId);
@@ -226,31 +245,116 @@ export default function SubmissionPage() {
     if (error) {
       console.error(error);
       toast.error("Failed to fetch trainees");
-    } else {
-      const formattedData = (data || []).map((trainee: any, index: number) => ({
+      return;
+    }
+
+    // ✅ COMPLETELY NEW APPROACH - No nested selects
+    const traineeIds = (data || [])
+      .filter(t => t.has_discount && t.discounted_fee)
+      .map(t => t.id);
+
+    let voucherMap = new Map();
+
+    if (traineeIds.length > 0) {
+      console.log("🔍 Fetching vouchers for trainee IDs:", traineeIds);
+      
+      // Query 1: Get voucher_usage records WITHOUT nested select
+      const { data: usageRecords, error: usageError } = await supabase
+        .from("voucher_usage")
+        .select("*")
+        .in("training_id", traineeIds);
+
+      console.log("📋 Voucher usage records:", usageRecords);
+      console.log("📋 Usage error (if any):", usageError);
+
+      if (usageError) {
+        console.error("❌ Error fetching voucher usage:", usageError);
+      } else if (usageRecords && usageRecords.length > 0) {
+        // Query 2: Get all voucher IDs from usage records
+        const voucherIds = [...new Set(usageRecords.map(u => u.voucher_id))];
+        
+        console.log("🎫 Fetching voucher details for IDs:", voucherIds);
+        
+        // Query 3: Fetch actual voucher details
+        const { data: voucherRecords, error: voucherError } = await supabase
+          .from("vouchers")
+          .select("*")
+          .in("id", voucherIds);
+
+        console.log("🎟️ Voucher records:", voucherRecords);
+        console.log("🎟️ Voucher error (if any):", voucherError);
+
+        if (voucherError) {
+          console.error("❌ Error fetching vouchers:", voucherError);
+        } else if (voucherRecords) {
+          // Create a map of voucher_id -> voucher data
+          const voucherById = new Map(
+            voucherRecords.map(v => [v.id, v])
+          );
+
+          // Map vouchers to training IDs
+          usageRecords.forEach((usage) => {
+            const voucher = voucherById.get(usage.voucher_id);
+            if (voucher) {
+              console.log(`✅ Mapping voucher ${voucher.code} to training ${usage.training_id}`);
+              voucherMap.set(usage.training_id, voucher);
+            } else {
+              console.log(`⚠️ No voucher found for voucher_id ${usage.voucher_id}`);
+            }
+          });
+        }
+      } else {
+        console.log("ℹ️ No voucher usage records found for these trainees");
+      }
+    }
+
+    console.log("🗺️ Final voucher map size:", voucherMap.size);
+    console.log("🗺️ Voucher map entries:", Array.from(voucherMap.entries()));
+
+    // Format data with all nested info
+    const formattedData = (data || []).map((trainee: any, index: number) => {
+      const voucherInfo = voucherMap.get(trainee.id) || null;
+      
+      console.log(`👤 Processing trainee ${trainee.first_name} ${trainee.last_name}:`, {
+        id: trainee.id,
+        hasDiscount: trainee.has_discount,
+        discountedFee: trainee.discounted_fee,
+        voucherInfo: voucherInfo ? {
+          code: voucherInfo.code,
+          amount: voucherInfo.amount,
+          type: voucherInfo.voucher_type
+        } : null
+      });
+      
+      return {
         ...trainee,
         training_fee: trainee.courses?.training_fee || 0,
+        payments: trainee.payments || [],
+        voucherInfo,
         rowIndex: index,
-      }));
-      setTrainees(formattedData);
-    }
-  };
+      };
+    });
+
+    console.log("📊 Total trainees:", formattedData.length);
+    console.log("📊 Trainees with discounts:", formattedData.filter(t => t.has_discount).length);
+    console.log("📊 Trainees with vouchers:", formattedData.filter(t => t.voucherInfo).length);
+    
+    setTrainees(formattedData);
+  } catch (err) {
+    console.error("💥 Unexpected error:", err);
+    toast.error("An error occurred while loading trainees");
+  }
+};
 
   useEffect(() => {
     fetchTrainees();
   }, [scheduleId]);
 
-const handleView = async (trainee: any) => {
+const handleView = (trainee: any) => {
   if (bulkMode) return;
-
-  // Optional: eager refresh
-  const { data } = await supabase
-    .from("trainings")
-    .select(`*, courses:course_id(training_fee, name)`)
-    .eq("id", trainee.id)
-    .single();
-
-  setSelectedTrainee(data ?? trainee);
+  
+  // ✅ No refetching needed - all data is already loaded
+  setSelectedTrainee(trainee);
   setDialogOpen(true);
 };
 
@@ -265,20 +369,64 @@ const handleView = async (trainee: any) => {
     setDeclineDialogOpen(true)
   }
 
-  const handleDialogClose = async (open: boolean) => {
+const handleDialogClose = async (open: boolean) => {
   setDialogOpen(open);
   
   if (!open && selectedTrainee) {
-    const updatedTrainee = await supabase
+    // ✅ Only refetch the specific trainee that was updated
+    const { data: updatedTrainee } = await supabase
       .from("trainings")
-      .select(`*, courses:course_id(training_fee)`)
+      .select(`
+        *,
+        courses:course_id(id, name, training_fee),
+        payments (
+          id,
+          payment_date,
+          payment_method,
+          payment_status,
+          amount_paid,
+          receipt_link,
+          online_classroom_url,
+          receipt_uploaded_by,
+          receipt_uploaded_at
+        )
+      `)
       .eq("id", selectedTrainee.id)
       .single();
 
-    if (updatedTrainee.data) {
+    if (updatedTrainee) {
+      // Check for voucher if has discount
+      let voucherInfo = null;
+      if (updatedTrainee.has_discount && updatedTrainee.discounted_fee) {
+        const { data: voucherUsage } = await supabase
+          .from("voucher_usage")
+          .select(`
+            voucher_id,
+            vouchers (
+              id,
+              code,
+              amount,
+              service,
+              voucher_type,
+              expiry_date,
+              is_batch,
+              batch_count,
+              batch_remaining
+            )
+          `)
+          .eq("training_id", updatedTrainee.id)
+          .single();
+
+        if (voucherUsage?.vouchers) {
+          voucherInfo = voucherUsage.vouchers;
+        }
+      }
+
       const updated = {
-        ...updatedTrainee.data,
-        training_fee: updatedTrainee.data.courses?.training_fee || 0,
+        ...updatedTrainee,
+        training_fee: updatedTrainee.courses?.training_fee || 0,
+        payments: updatedTrainee.payments || [],
+        voucherInfo,
       };
 
       setTrainees((prev) => {
@@ -291,7 +439,6 @@ const handleView = async (trainee: any) => {
     }
   }
 };
-
 
 
 const handleDeleteTrainee = async () => {
@@ -650,6 +797,9 @@ const updateStatus = async (status: string) => {
               Back
             </Button>
           </Link>
+           {/* ✅ ADD THIS REFRESH BUTTON */}
+   
+    
           <div>
             {courseName && (
               <p className="text-sm text-muted-foreground font-medium">
@@ -659,6 +809,15 @@ const updateStatus = async (status: string) => {
             <h1 className="text-2xl font-bold">Trainee Submissions</h1>
           </div>
         </div>
+         {/* <Button 
+      variant="ghost" 
+      size="sm" 
+      onClick={fetchTrainees}
+      className="gap-2"
+    >
+      <RefreshCw className="h-4 w-4" />
+      Refresh
+    </Button> */}
         
         {bulkMode ? (
           <div className="flex gap-2">

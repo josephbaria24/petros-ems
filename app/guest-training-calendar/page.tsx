@@ -621,8 +621,8 @@ const fetchSchedules = async () => {
               
               <div className="space-y-2 text-sm">
                 <p className="font-medium">Petrosphere Public Relations Office</p>
-                <a href="mailto:training-department@petrosphere.com.ph" className="block text-blue-600 dark:text-blue-400 hover:underline">
-                  training-department@petrosphere.com.ph
+                <a href="mailto:training@petrosphere.com.ph" className="block text-blue-600 dark:text-blue-400 hover:underline">
+                  training@petrosphere.com.ph
                 </a>
                 <a href="tel:+639177087994" className="block text-blue-600 dark:text-blue-400 hover:underline">
                   0917-708-7994 - GLOBE

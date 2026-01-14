@@ -42,7 +42,7 @@ export async function POST(req: Request) {
           </p>
 
           <p>
-            If you have any questions, feel free to email us training-department@petrosphere.com.ph
+            If you have any questions, feel free to email us training@petrosphere.com.ph
           </p>
 
           <p>Thank you,<br />Training Support Team</p>
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
       await transporter.sendMail({
         from: `"${process.env.SMTP_FROM_NAME}" <${process.env.SMTP_USER}>`,
         to: trainee.email,
-        //cc: "sales@petrosphere.com.ph, training-department@petrosphere.com.ph",
+        //cc: "sales@petrosphere.com.ph, training@petrosphere.com.ph",
         cc: "jlb@petrosphere.com.ph",
         subject: `📅 Updated Training Schedule – ${courseName}`,
         html: htmlMessage,
