@@ -15,7 +15,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table"
-import { ArrowUpDown, FileText, FolderOpen, ClipboardCheck, MoreVertical, Eye, Edit, Trash2, Link2 } from "lucide-react"
+import { ArrowUpDown, FileText, FolderOpen, ClipboardCheck, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -359,52 +359,56 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   }, [status, refreshTrigger, fetchTrainings])
 
   const columns: ColumnDef<Participant>[] = [
-    {
-      accessorKey: "course",
-      header: "Course",
-      cell: ({ row }) => {
-        const submissionCount = row.original.submissionCount
-        return (
-          <div className="space-y-2">
-            <div className="font-medium text-card-foreground">{row.getValue("course")}</div>
-            <div className="flex gap-2">
-              <Link
-                href={`/submissions?scheduleId=${row.original.id}&from=${status}`}
-                className="flex items-center gap-1 text-xs hover:bg-muted rounded-md px-2 py-1.5 cursor-pointer"
-              >
-                <FileText className="h-3 w-3" />
-                Submission
-                {submissionCount > 0 && (
-                  <Badge variant="destructive" className="ml-1 h-4 px-1 text-xs">
-                    {submissionCount}
-                  </Badge>
-                )}
-              </Link>
+   {
+  accessorKey: "course",
+  header: "Course",
+  cell: ({ row }) => {
+    const submissionCount = row.original.submissionCount
+    const isCancelled = row.original.status === 'cancelled'
+    
+    return (
+      <div className="space-y-2">
+        <div className={`font-medium text-card-foreground ${isCancelled ? 'line-through text-muted-foreground' : ''}`}>
+          {row.getValue("course")}
+        </div>
+        <div className="flex gap-2">
+          <Link
+            href={`/submissions?scheduleId=${row.original.id}&from=${status}`}
+            className="flex items-center gap-1 text-xs hover:bg-muted rounded-md px-2 py-1.5 cursor-pointer"
+          >
+            <FileText className="h-3 w-3" />
+            Submission
+            {submissionCount > 0 && (
+              <Badge variant="destructive" className="ml-1 h-4 px-1 text-xs">
+                {submissionCount}
+              </Badge>
+            )}
+          </Link>
 
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
-                onClick={() => {
-                  setDirectoryScheduleId(row.original.id)
-                  setDirectoryCourseName(row.original.course)
-                  setDirectoryRange(row.original.schedule)
-                  setDirectoryOpen(true)
-                }}
-              >
-                <FolderOpen className="h-3 w-3" />
-                Directory
-              </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
+            onClick={() => {
+              setDirectoryScheduleId(row.original.id)
+              setDirectoryCourseName(row.original.course)
+              setDirectoryRange(row.original.schedule)
+              setDirectoryOpen(true)
+            }}
+          >
+            <FolderOpen className="h-3 w-3" />
+            Directory
+          </Button>
 
-              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer">
-                <ClipboardCheck className="h-3 w-3" />
-                Exam Result
-              </Button>
-            </div>
-          </div>
-        )
-      },
-    },
+          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer">
+            <ClipboardCheck className="h-3 w-3" />
+            Exam Result
+          </Button>
+        </div>
+      </div>
+    )
+  },
+},
     {
       accessorKey: "branch",
       header: "Branch",
@@ -452,42 +456,57 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       },
     },
     {
-      id: "actions",
-      header: "Actions",
-      cell: ({ row }) => {
-        const participant = row.original
-        return (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleView(participant)} className="cursor-pointer">
-                <Eye className="mr-2 h-4 w-4" />
-                View
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleEdit(participant)} className="cursor-pointer">
-                <Edit className="mr-2 h-4 w-4" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleCopyRegistrationLink(participant)} className="cursor-pointer">
-                <Link2 className="mr-2 h-4 w-4" />
-                Copy Registration Link
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => handleDeleteClick(participant)} 
-                className="cursor-pointer text-destructive focus:text-destructive"
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )
-      },
-    },
+  id: "actions",
+  header: "Actions",
+  cell: ({ row }) => {
+    const participant = row.original
+    const isCancelled = participant.status === 'cancelled'
+    
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => handleView(participant)} className="cursor-pointer">
+            <Eye className="mr-2 h-4 w-4" />
+            View
+          </DropdownMenuItem>
+          
+          {!isCancelled && (
+            <DropdownMenuItem onClick={() => handleEdit(participant)} className="cursor-pointer">
+              <Edit className="mr-2 h-4 w-4" />
+              Edit
+            </DropdownMenuItem>
+          )}
+          
+          <DropdownMenuItem onClick={() => handleCopyRegistrationLink(participant)} className="cursor-pointer">
+            <Link2 className="mr-2 h-4 w-4" />
+            Copy Registration Link
+          </DropdownMenuItem>
+          
+          <DropdownMenuItem 
+            onClick={() => handleCancelSchedule(participant)} 
+            className={`cursor-pointer ${isCancelled ? 'text-green-600 focus:text-green-600' : 'text-orange-600 focus:text-orange-600'}`}
+          >
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            {isCancelled ? 'Restore Schedule' : 'Cancel Schedule'}
+          </DropdownMenuItem>
+          
+          <DropdownMenuItem 
+            onClick={() => handleDeleteClick(participant)} 
+            className="cursor-pointer text-destructive focus:text-destructive"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete Permanently
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+  },
+},
   ]
 
   const table = useReactTable({
@@ -538,6 +557,84 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   if (loading) {
     return <Card className="p-6">Loading {status === "all" ? "all" : status} schedules...</Card>
   }
+
+
+
+
+  const handleCancelSchedule = async (participant: Participant) => {
+  const confirmMessage = participant.status === 'cancelled' 
+    ? 'Are you sure you want to restore this schedule?' 
+    : 'Are you sure you want to cancel this schedule? Trainees will be notified.'
+  
+  if (!window.confirm(confirmMessage)) return
+
+  const toastId = toast.loading(
+    participant.status === 'cancelled' ? "Restoring schedule..." : "Cancelling schedule...",
+    { description: "Updating status..." }
+  )
+
+  try {
+    const newStatus = participant.status === 'cancelled' ? 'planned' : 'cancelled'
+    
+    const { error } = await supabase
+      .from("schedules")
+      .update({ status: newStatus })
+      .eq("id", participant.id)
+
+    if (error) {
+      toast.error("Failed to update schedule", {
+        id: toastId,
+        description: error.message,
+      })
+      return
+    }
+
+    // Optionally: Send email notifications to trainees
+    if (newStatus === 'cancelled') {
+      try {
+        // Get all trainees for this schedule
+        const { data: trainees } = await supabase
+          .from("trainings")
+          .select("email, first_name, last_name")
+          .eq("schedule_id", participant.id)
+
+        // Send cancellation emails
+        if (trainees && trainees.length > 0) {
+          await fetch("/api/send-cancellation-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              trainees,
+              courseName: participant.course,
+              scheduleRange: participant.schedule,
+            }),
+          })
+        }
+      } catch (emailError) {
+        console.error("Failed to send cancellation emails:", emailError)
+      }
+    }
+
+    toast.success(
+      newStatus === 'cancelled' ? "Schedule cancelled successfully" : "Schedule restored successfully",
+      {
+        id: toastId,
+        description: newStatus === 'cancelled' 
+          ? "Trainees have been notified" 
+          : "Schedule is now active again",
+      }
+    )
+
+    // Refresh data
+    fetchTrainings()
+  } catch (error) {
+    console.error("Error:", error)
+    toast.error("Unexpected error", {
+      id: toastId,
+      description: "An error occurred while updating",
+    })
+  }
+}
 
   return (
     <>

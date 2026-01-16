@@ -255,44 +255,44 @@ const fetchSchedules = async () => {
   }
   
 
-  const getStatusColor = (event: ScheduleEvent) => {
-    // Priority: Use database status directly
-    if (event.status === 'cancelled') return '#ef4444'    // red
-    if (event.status === 'finished') return '#94a3b8'     // gray
-    if (event.status === 'ongoing') return '#ed6205'      // orange
-    
-    // Display 'planned' and 'confirmed' as upcoming (yellow)
-    if (event.status === 'planned' || event.status === 'confirmed') return '#facc15' // yellow
-    
-    // Fallback: calculate based on dates if status is unknown
-    const now = new Date()
-    now.setHours(0, 0, 0, 0)
-    
-    const startDate = new Date(event.startDate)
-    startDate.setHours(0, 0, 0, 0)
-    
-    const endDate = new Date(event.endDate)
-    endDate.setHours(23, 59, 59, 999)
-    
-    if (now > endDate) return '#94a3b8'                   // finished (gray)
-    if (now >= startDate && now <= endDate) return '#f59e0b' // ongoing (orange)
-    
-    return '#facc15'                                      // upcoming (yellow)
-  }
+ const getStatusColor = (event: ScheduleEvent) => {
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  
+  // Check cancelled status first
+  if (event.status === 'cancelled') return '#ef4444' // red
+  if (event.status === 'finished') return '#94a3b8'
+  
+  const eventEnd = new Date(event.endDate)
+  eventEnd.setHours(0, 0, 0, 0)
+  
+  const eventStart = new Date(event.startDate)
+  eventStart.setHours(0, 0, 0, 0)
+  
+  if (now > eventEnd) return '#94a3b8'
+  if (now >= eventStart && now <= eventEnd) return '#f59e0b'
+  return '#10b981'
+}
 
-  const getStatusLabel = (event: ScheduleEvent) => {
-    // Display 'planned' and 'confirmed' as 'Upcoming'
-    if (event.status === 'planned' || event.status === 'confirmed') return 'Upcoming'
-    if (event.status === 'finished') return 'Finished'
-    if (event.status === 'cancelled') return 'Cancelled'
-    if (event.status === 'ongoing') return 'Ongoing'
-    
-    // Fallback based on dates
-    const now = new Date()
-    if (now > event.endDate) return 'Finished'
-    if (now >= event.startDate && now <= event.endDate) return 'Ongoing'
-    return 'Upcoming'
-  }
+const getStatusLabel = (event: ScheduleEvent) => {
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  
+  // Check cancelled status first
+  if (event.status === 'cancelled') return 'Cancelled'
+  if (event.status === 'finished') return 'Finished'
+  
+  const eventEnd = new Date(event.endDate)
+  eventEnd.setHours(0, 0, 0, 0)
+  
+  const eventStart = new Date(event.startDate)
+  eventStart.setHours(0, 0, 0, 0)
+  
+  if (now > eventEnd) return 'Finished'
+  if (now >= eventStart && now <= eventEnd) return 'Ongoing'
+  return 'Upcoming'
+}
+
 
   const openModal = (event: ScheduleEvent) => {
     setSelectedEvent(event)
@@ -386,9 +386,13 @@ const fetchSchedules = async () => {
                   title={`${event.course} - ${event.branch}`}
                 >
                   <div className="truncate">
-                    {isStart && `${event.branch} ${event.course} - ${displayStatus}`}
+                    {isStart && (
+                      <span className={event.status === 'cancelled' ? 'line-through' : ''}>
+                        {event.branch} {event.course} - {displayStatus}
+                      </span>
+                    )}
                   </div>
-                </div>
+                      </div>
               )
             })}
           </div>
@@ -709,19 +713,21 @@ const fetchSchedules = async () => {
                   {getStatusLabel(selectedEvent)}
                 </Badge>
 
-                <div className="mt-4">
-                    {new Date() > new Date(selectedEvent.endDate) || getStatusLabel(selectedEvent) === 'Ongoing' ? (
-                      <Button variant="outline" disabled className="w-full text-black cursor-not-allowed dark:text-white">
-                        Enrollment Closed
-                      </Button>
-                    ) : (
-                      <Button
-                        className="w-full bg-white text-black hover:bg-gray-200 cursor-pointer"
-                        onClick={() => router.push(`/guest-training-registration?schedule_id=${selectedEvent.id}`)}
-                      >
-                        Enroll Now
-                      </Button>
-                    )}
+               <div className="mt-4">
+                  {new Date() > new Date(selectedEvent.endDate) || 
+                  getStatusLabel(selectedEvent) === 'Ongoing' ||
+                  selectedEvent.status === 'cancelled' ? (
+                    <Button variant="outline" disabled className="w-full text-black cursor-not-allowed dark:text-white">
+                      {selectedEvent.status === 'cancelled' ? 'Training Cancelled' : 'Enrollment Closed'}
+                    </Button>
+                  ) : (
+                    <Button
+                      className="w-full bg-white text-black hover:bg-gray-200 cursor-pointer"
+                      onClick={() => router.push(`/guest-training-registration?schedule_id=${selectedEvent.id}`)}
+                    >
+                      Enroll Now
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>

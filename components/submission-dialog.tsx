@@ -9,6 +9,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -30,8 +31,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, AlertCircle, CheckCircle2, XCircle, X } from "lucide-react";
 import { createClient } from "@/lib/supabase-client";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { Checkbox } from "./ui/checkbox";
 
 interface Payment {
   id: string;
@@ -88,6 +91,11 @@ export function SubmissionDialog({
   const [deletingPayment, setDeletingPayment] = useState(false);
 
 
+  const [voucherInput, setVoucherInput] = useState("")
+const [isVerifyingVoucher, setIsVerifyingVoucher] = useState(false)
+const [voucherError, setVoucherError] = useState("")
+const [discountMode, setDiscountMode] = useState<'voucher' | 'manual'>('manual')
+
   const [voucherInfo, setVoucherInfo] = useState<any>(null);
   
   const [pvcIdFee, setPvcIdFee] = useState<number>(0);
@@ -132,152 +140,6 @@ const fetchPayments = async () => {
       .eq("id", trainee.id);
   }
 };
-
-
-// Separate function to fetch voucher details
-// const fetchVoucherInfo = async () => {
-//   console.log("fetchVoucherInfo called", { 
-//     traineeId: trainee?.id,
-//     hasDiscount: trainee?.has_discount,
-//     discountedFee: trainee?.discounted_fee 
-//   });
-
-//   // Reset voucher info first
-//   setVoucherInfo(null);
-
-//   if (!trainee?.has_discount || !trainee?.discounted_fee) {
-//     console.log("No discount applied, skipping voucher fetch");
-//     return;
-//   }
-
-//   try {
-//     // Method 1: Try to find via voucher_usage table (most accurate)
-//     const { data: usageData, error: usageError } = await supabase
-//       .from("voucher_usage")
-//       .select(`
-//         voucher_id,
-//         vouchers (
-//           id,
-//           code,
-//           amount,
-//           service,
-//           voucher_type,
-//           expiry_date,
-//           is_batch,
-//           batch_count,
-//           batch_remaining
-//         )
-//       `)
-//       .eq("training_id", trainee.id)
-//       .single();
-
-//     if (!usageError && usageData?.vouchers) {
-//       console.log("Found voucher via usage table:", usageData.vouchers);
-//       setVoucherInfo(usageData.vouchers);
-//       return;
-//     }
-
-//     // Method 2: Calculate and find matching voucher
-//     console.log("Trying to find voucher by calculation...");
-//     const originalFee = Number(trainee.courses?.training_fee) || Number(trainee.training_fee) || 0;
-//     const discountedFee = Number(trainee.discounted_fee);
-//     const discountAmount = originalFee - discountedFee;
-
-//     console.log("Discount calculation:", {
-//       originalFee,
-//       discountedFee,
-//       discountAmount
-//     });
-
-//     // Get all vouchers for this course
-//     const { data: vouchers, error: voucherError } = await supabase
-//       .from("vouchers")
-//       .select("*")
-//       .eq("service_id", trainee.course_id)
-//       .order("created_at", { ascending: false });
-
-//     if (voucherError) {
-//       console.error("Error fetching vouchers:", voucherError);
-//       return;
-//     }
-
-//     console.log("Found vouchers:", vouchers?.length);
-
-//     if (vouchers && vouchers.length > 0) {
-//       // Find matching voucher
-//       for (const voucher of vouchers) {
-//         let matches = false;
-
-//         if (voucher.voucher_type === "Free") {
-//           matches = Math.abs(discountAmount - originalFee) < 1;
-//         } else {
-//           const vAmount = voucher.amount.replace(/₱/g, "").replace(/,/g, "").trim();
-          
-//           if (vAmount.includes("%")) {
-//             const percent = parseFloat(vAmount.replace("%", ""));
-//             const calculatedDiscount = (originalFee * percent) / 100;
-//             matches = Math.abs(calculatedDiscount - discountAmount) < 1;
-//           } else {
-//             matches = Math.abs(parseFloat(vAmount) - discountAmount) < 1;
-//           }
-//         }
-
-//         if (matches) {
-//           console.log("Found matching voucher:", voucher);
-//           setVoucherInfo(voucher);
-//           return;
-//         }
-//       }
-//     }
-
-//     // Method 3: Create generic voucher display if no exact match
-//     console.log("Creating generic voucher info");
-//     const genericVoucher = {
-//       code: "DISCOUNT",
-//       voucher_type: discountAmount >= originalFee ? "Free" : "Discount",
-//       amount: discountAmount >= originalFee 
-//         ? "Free" 
-//         : `₱${discountAmount.toLocaleString()}`,
-//       service: trainee.courses?.name || "Applied Discount",
-//       is_batch: false
-//     };
-    
-//     console.log("Setting generic voucher:", genericVoucher);
-//     setVoucherInfo(genericVoucher);
-
-//   } catch (err) {
-//     console.error("Error fetching voucher info:", err);
-//   }
-// };
-
-
-
-// const fetchFreshTrainee = async () => {
-//   if (!trainee?.id) return null;
-
-//   const { data, error } = await supabase
-//     .from("trainings")
-//     .select(`
-//       *,
-//       courses:course_id (
-//         training_fee,
-//         name
-//       )
-//     `)
-//     .eq("id", trainee.id)
-//     .single();
-
-//   if (error) {
-//     console.error("Failed to refetch trainee:", error);
-//     return null;
-//   }
-
-//   return {
-//     ...data,
-//     training_fee: data.courses?.training_fee || 0,
-//     courses: data.courses,
-//   };
-// };
 
 
 const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
@@ -441,6 +303,228 @@ useEffect(() => {
   const formatCurrency = (value: number) =>
     value.toLocaleString("en-PH", { style: "currency", currency: "PHP" });
   const isPending = trainee.status?.toLowerCase() === "pending";
+
+
+
+const handleVerifyVoucher = async () => {
+  if (!voucherInput.trim()) {
+    setVoucherError("Please enter a voucher code")
+    return
+  }
+
+  setIsVerifyingVoucher(true)
+  setVoucherError("")
+
+  try {
+    const { data, error } = await supabase
+      .from("vouchers")
+      .select("*")
+      .eq("code", voucherInput.trim().toUpperCase())
+      .single()
+
+    if (error || !data) {
+      setVoucherError("This voucher code does not exist.")
+      setIsVerifyingVoucher(false)
+      return
+    }
+
+    // Check expiry
+    const isExpired = data.expiry_date && new Date(data.expiry_date) < new Date()
+    
+    // Check if voucher is fully used
+    const isFullyUsed = data.is_batch 
+      ? data.batch_remaining <= 0 
+      : data.is_used
+
+    if (isFullyUsed) {
+      setVoucherError(
+        data.is_batch 
+          ? "This batch voucher has no remaining uses." 
+          : "This voucher has already been used."
+      )
+      setIsVerifyingVoucher(false)
+      return
+    }
+
+    if (isExpired) {
+      setVoucherError("This voucher has expired.")
+      setIsVerifyingVoucher(false)
+      return
+    }
+
+    // Check if voucher is for the correct course
+    if (data.service_id && trainee.course_id !== data.service_id) {
+      setVoucherError("This voucher is not valid for this course.")
+      setIsVerifyingVoucher(false)
+      return
+    }
+
+    // Voucher is valid - set voucher info and calculate discount
+    setVoucherInfo(data)
+    
+    let discountAmount = 0
+    const originalFee = Number(trainee.courses?.training_fee) || Number(trainee.training_fee) || 0
+    
+    if (data.voucher_type === "Free") {
+      discountAmount = originalFee
+    } else {
+      const amountStr = data.amount.replace(/₱/g, "").trim()
+      if (amountStr.includes("%")) {
+        const percentage = parseFloat(amountStr.replace("%", ""))
+        discountAmount = (originalFee * percentage) / 100
+      } else {
+        discountAmount = parseFloat(amountStr) || 0
+      }
+    }
+    
+    const discountedPrice = originalFee - discountAmount
+    setDiscountPrice(String(discountedPrice))
+    
+    // Don't auto-apply, just show preview
+    alert(`Voucher verified! Save to apply discount of ₱${discountAmount.toLocaleString()}`)
+  } catch (err) {
+    console.error("Voucher verification error:", err)
+    setVoucherError("Failed to verify voucher. Please try again.")
+  } finally {
+    setIsVerifyingVoucher(false)
+  }
+}
+
+const handleSaveVoucher = async () => {
+  if (!voucherInfo) return
+
+  setApplyingDiscount(true)
+  try {
+    const originalFee = Number(trainee.courses?.training_fee) || Number(trainee.training_fee) || 0
+    const discounted = Number(discountPrice)
+
+    // Update training record with voucher info
+    const { error } = await supabase
+      .from("trainings")
+      .update({
+        has_discount: true,
+        discounted_fee: discounted,
+      })
+      .eq("id", trainee.id)
+
+    if (error) throw error
+
+    // Create voucher usage record
+    const { error: usageError } = await supabase
+      .from("voucher_usage")
+      .insert([{
+        voucher_id: voucherInfo.id,
+        used_by: `${trainee.first_name} ${trainee.last_name}`,
+        training_id: trainee.id
+      }])
+
+    if (usageError) {
+      console.error("Failed to log voucher usage:", usageError)
+    }
+
+    // Update voucher remaining count
+    if (voucherInfo.is_batch) {
+      const newRemaining = voucherInfo.batch_remaining - 1
+      const newUsed = (voucherInfo.batch_used || 0) + 1
+      const isFullyUsed = newRemaining <= 0
+
+      await supabase
+        .from("vouchers")
+        .update({ 
+          batch_remaining: newRemaining,
+          batch_used: newUsed,
+          is_used: isFullyUsed
+        })
+        .eq("id", voucherInfo.id)
+    } else {
+      await supabase
+        .from("vouchers")
+        .update({ is_used: true })
+        .eq("id", voucherInfo.id)
+    }
+
+    setDiscountApplied(discounted)
+    setIsDiscounted(true)
+    
+    // Recalculate payment status
+    const totalPaidNow = payments.reduce((sum, p) => sum + (p.amount_paid || 0), 0)
+    await checkAndUpdatePaymentStatus(totalPaidNow)
+
+    alert("Voucher applied successfully!")
+    fetchPayments() // Refresh data
+  } catch (err) {
+    console.error("Error applying voucher:", err)
+    alert("Failed to apply voucher.")
+  } finally {
+    setApplyingDiscount(false)
+  }
+}
+
+const handleRemoveVoucher = async () => {
+  if (!voucherInfo) {
+    setVoucherInput("")
+    setVoucherError("")
+    setDiscountPrice("")
+    return
+  }
+
+  const confirm = window.confirm("Are you sure you want to remove this voucher? This action cannot be undone.")
+  if (!confirm) return
+
+  setApplyingDiscount(true)
+  try {
+    // Remove discount from training
+    const { error } = await supabase
+      .from("trainings")
+      .update({
+        has_discount: false,
+        discounted_fee: null,
+      })
+      .eq("id", trainee.id)
+
+    if (error) throw error
+
+    // Delete voucher usage record
+    await supabase
+      .from("voucher_usage")
+      .delete()
+      .eq("training_id", trainee.id)
+      .eq("voucher_id", voucherInfo.id)
+
+    // Restore voucher count
+    if (voucherInfo.is_batch) {
+      await supabase
+        .from("vouchers")
+        .update({ 
+          batch_remaining: voucherInfo.batch_remaining + 1,
+          batch_used: Math.max(0, (voucherInfo.batch_used || 1) - 1),
+          is_used: false
+        })
+        .eq("id", voucherInfo.id)
+    } else {
+      await supabase
+        .from("vouchers")
+        .update({ is_used: false })
+        .eq("id", voucherInfo.id)
+    }
+
+    setVoucherInput("")
+    setVoucherInfo(null)
+    setVoucherError("")
+    setDiscountPrice("")
+    setDiscountApplied(null)
+    setIsDiscounted(false)
+
+    alert("Voucher removed successfully!")
+    fetchPayments() // Refresh data
+  } catch (err) {
+    console.error("Error removing voucher:", err)
+    alert("Failed to remove voucher.")
+  } finally {
+    setApplyingDiscount(false)
+  }
+}
+
 
 
 
@@ -1749,71 +1833,241 @@ const handleUpdateIdPhoto = async () => {
                         </div>
                       )}
                         
-                        {/* Discount Toggle - Auto-checked if voucher applied */}
-                        <div className="flex items-center gap-2 pt-2">
-                          <Label>Discounted?</Label>
-                         <input 
-                          type="checkbox" 
-                          checked={isDiscounted}
-                          onChange={async (e) => {
-                            const checked = e.target.checked;
-                            setIsDiscounted(checked);
-                            
-                            // Reset voucher info if discount is turned off
-                            if (!checked) {
-                              setVoucherInfo(null);
-                            }
-                            
-                            const { error } = await supabase
-                              .from("trainings")
-                              .update({ has_discount: checked })
-                              .eq("id", trainee.id);
-                              
-                            if (error) {
-                              alert("Failed to update discount status.");
-                              console.error("Update discount toggle error:", error);
-                            }
-                            // ✅ REMOVED: No need to fetch voucher info anymore
-                            // It will be loaded on next dialog open via the parent component
-                          }}
-                          disabled={trainee.has_discount && voucherInfo}
-                        />
-                        {trainee.has_discount && voucherInfo && (
-                          <span className="text-xs text-emerald-600 dark:text-emerald-400 ml-2">
-                            (Applied via voucher)
-                          </span>
-                        )}
-                        </div>
+                        {/* Discount Mode Selection */}
+<div className="space-y-3 pt-2">
+  <Label className="text-sm font-medium">Apply Discount</Label>
+  
+  <RadioGroup
+    value={discountMode}
+    onValueChange={(val: 'voucher' | 'manual') => {
+      setDiscountMode(val)
+      if (val === 'voucher') {
+        setIsDiscounted(true)
+      }
+    }}
+    className="flex gap-4"
+  >
+    <div className="flex items-center gap-2">
+      <RadioGroupItem value="manual" id="discount-manual" />
+      <Label htmlFor="discount-manual" className="cursor-pointer">Manual Discount</Label>
+    </div>
+    <div className="flex items-center gap-2">
+      <RadioGroupItem value="voucher" id="discount-voucher" />
+      <Label htmlFor="discount-voucher" className="cursor-pointer">Voucher Code</Label>
+    </div>
+  </RadioGroup>
 
-                        {/* Discount Input - Show current discount if voucher applied */}
-                        {isDiscounted && (
-                          <div className="space-y-2 p-3 border rounded bg-background">
-                            <Label>Discounted Price</Label>
-                            <Input
-                              type="number"
-                              placeholder="Enter discounted price"
-                              value={discountPrice}
-                              onChange={(e) => setDiscountPrice(e.target.value)}
-                              disabled={trainee.has_discount && voucherInfo} // Disable if voucher applied
-                            />
-                            {discountPercent !== null && (
-                              <p className="text-sm text-green-700 font-semibold">
-                                Discount Applied: {discountPercent}% off
-                                {voucherInfo && (
-                                  <span className="text-xs text-muted-foreground ml-2">
-                                    (from voucher code: {voucherInfo.code})
-                                  </span>
-                                )}
-                              </p>
-                            )}
-                            {trainee.has_discount && voucherInfo && (
-                              <p className="text-xs text-amber-600 dark:text-amber-400">
-                                This discount was applied via voucher and cannot be modified.
-                              </p>
-                            )}
-                          </div>
-                        )}
+  {/* Manual Discount Input */}
+  {discountMode === 'manual' && (
+    <div className="space-y-2 p-3 border rounded bg-background">
+      <div className="flex items-center gap-2 mb-2">
+        <Checkbox
+          id="manual-discount-toggle"
+          checked={isDiscounted}
+          onCheckedChange={(checked) => {
+            setIsDiscounted(!!checked)
+            if (!checked) {
+              setDiscountPrice("")
+              setDiscountApplied(null)
+            }
+          }}
+        />
+        <Label htmlFor="manual-discount-toggle">Apply Manual Discount</Label>
+      </div>
+      
+      {isDiscounted && (
+        <>
+          <Label>Discounted Price</Label>
+          <Input
+            type="number"
+            placeholder="Enter discounted price"
+            value={discountPrice}
+            onChange={(e) => setDiscountPrice(e.target.value)}
+          />
+          {discountPercent !== null && (
+            <p className="text-sm text-green-700 font-semibold">
+              Discount Applied: {discountPercent}% off
+            </p>
+          )}
+          <Button
+            onClick={handleApplyDiscount}
+            disabled={applyingDiscount}
+            className="w-full"
+          >
+            {applyingDiscount ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Applying...
+              </>
+            ) : (
+              'Apply Discount'
+            )}
+          </Button>
+        </>
+      )}
+    </div>
+  )}
 
+  {/* Voucher Code Input */}
+{discountMode === 'voucher' && (
+  <div className="space-y-3 p-3 border rounded bg-background">
+    {!voucherInfo ? (
+      <>
+        <Label htmlFor="voucher_input">Voucher Code</Label>
+        <div className="flex gap-2">
+          <Input
+            id="voucher_input"
+            placeholder="Enter voucher code"
+            value={voucherInput}
+            onChange={(e) => {
+              setVoucherInput(e.target.value.toUpperCase())
+              setVoucherError("")
+            }}
+            className="font-mono"
+            maxLength={14}
+            disabled={isVerifyingVoucher}
+          />
+          <Button
+            type="button"
+            onClick={handleVerifyVoucher}
+            disabled={isVerifyingVoucher || !voucherInput.trim()}
+            variant="outline"
+          >
+            {isVerifyingVoucher ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Verifying...
+              </>
+            ) : (
+              'Verify'
+            )}
+          </Button>
+        </div>
+        
+        {voucherError && (
+          <p className="text-xs text-red-600 flex items-center gap-1">
+            <XCircle className="w-3 h-3" />
+            {voucherError}
+          </p>
+        )}
+      </>
+    ) : (
+      <>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 rounded-md px-3 py-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <div>
+                <p className="text-sm font-medium text-emerald-900 dark:text-emerald-100">
+                  {voucherInfo.code}
+                </p>
+                <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                  {voucherInfo.service || voucherInfo.description}
+                </p>
+              </div>
+            </div>
+            <span className={`text-xs px-2 py-0.5 rounded ${
+              voucherInfo.is_batch 
+                ? 'bg-blue-100 text-blue-800' 
+                : 'bg-purple-100 text-purple-800'
+            }`}>
+              {voucherInfo.is_batch ? 'Batch Voucher' : 'Single Use'}
+            </span>
+          </div>
+
+          {/* Voucher Details */}
+          <div className="text-xs space-y-1 bg-white dark:bg-gray-900 p-2 rounded border">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Type:</span>
+              <span className="font-medium">{voucherInfo.voucher_type}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Discount:</span>
+              <span className="font-semibold text-emerald-600">{voucherInfo.amount}</span>
+            </div>
+            {voucherInfo.is_batch && (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Total Codes:</span>
+                  <span className="font-medium">{voucherInfo.batch_count}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Remaining:</span>
+                  <span className="font-semibold text-blue-600">{voucherInfo.batch_remaining}</span>
+                </div>
+              </>
+            )}
+            {voucherInfo.expiry_date && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Expires:</span>
+                <span className="text-xs">{new Date(voucherInfo.expiry_date).toLocaleDateString()}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Discount Preview */}
+          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 p-2 rounded">
+            <p className="text-xs text-amber-800 dark:text-amber-200 mb-1">
+              <strong>New Price Preview:</strong>
+            </p>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-muted-foreground line-through">
+                ₱{(Number(trainee.courses?.training_fee) || 0).toLocaleString()}
+              </span>
+              <span className="text-lg font-bold text-emerald-600">
+                ₱{Number(discountPrice).toLocaleString()}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-2 pt-2">
+          {!discountApplied || discountApplied !== Number(discountPrice) ? (
+            <Button
+              type="button"
+              onClick={handleSaveVoucher}
+              disabled={applyingDiscount}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+            >
+              {applyingDiscount ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  Save & Apply Voucher
+                </>
+              )}
+            </Button>
+          ) : (
+            <div className="flex-1 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 flex items-center justify-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <span className="text-sm font-medium text-emerald-700">Voucher Applied</span>
+            </div>
+          )}
+          
+          <Button
+            type="button"
+            onClick={handleRemoveVoucher}
+            variant="outline"
+            disabled={applyingDiscount}
+            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+          >
+            {applyingDiscount ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <X className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      </>
+    )}
+  </div>
+)}
+</div>
                       {discountApplied !== null && (() => {
                         // ✅ FIXED: Always use courses.training_fee as the original fee
                         const originalFee = Number(trainee.courses?.training_fee) || 0;
