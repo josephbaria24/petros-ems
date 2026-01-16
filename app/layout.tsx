@@ -1,16 +1,21 @@
 // app/layout.tsx
 import type { Metadata } from "next"
-import { Geist } from "next/font/google"
+import { Geist, Dancing_Script } from "next/font/google"
 import "./globals.css"
 import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
-import { Toaster } from "sonner" // ✅ Fixed import
+import { Toaster } from "sonner"
 import AppShell from "@/components/app-shell"
-import { headers } from "next/headers"
 
 const poppins = Geist({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+})
+
+const dancingScript = Dancing_Script({ 
+  subsets: ['latin'],
+  variable: '--font-welcome',
+  weight: ['400', '700']
 })
 
 export const metadata: Metadata = {
@@ -28,10 +33,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={poppins.className}>
+      <body className={`${poppins.className} ${dancingScript.variable}`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AppShell>{children}</AppShell>
-          <Toaster richColors position="top-right" /> {/* ✅ Optional config */}
+          <Toaster richColors position="top-right" />
         </ThemeProvider>
         <Analytics />
       </body>

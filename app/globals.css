@@ -115,6 +115,10 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+
+
+
+
 @layer base {
     
   * {
@@ -122,6 +126,12 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  
+  /* Custom cursive font for welcome heading */
+  .font-welcome {
+    font-family: var(--font-welcome), 'Brush Script MT', 'Lucida Handwriting', cursive;
+    letter-spacing: 0.02em;
   }
   
 }
@@ -197,4 +207,22 @@
 
 .custom-scrollbar [data-radix-scroll-area-thumb]:hover {
   background-color: rgba(0, 0, 0, 0.6);
+}
+
+/* Add this in the @layer base section, after the body styles */
+@layer base {
+    
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  
+  /* Custom cursive font for welcome heading */
+  .font-welcome {
+    font-family: 'Brush Script MT', 'Lucida Handwriting', 'Apple Chancery', cursive;
+    letter-spacing: 0.02em;
+  }
+  
 }

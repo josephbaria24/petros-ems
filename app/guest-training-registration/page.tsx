@@ -14,6 +14,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { supabase } from "@/lib/supabase-client"
 import { toast } from "sonner"
+import welcomeAnimation from '@/public/welcome.json';
+import Lottie from 'lottie-react';
+
 
 // Custom Searchable Dropdown Component
 function SearchableDropdown({
@@ -891,8 +894,8 @@ const handleSubmit = async () => {
     { id: 4, title: "Confirmation", subtitle: "You're all set! Enjoy your journey.", icon: CheckCircle2, completed: step > 4 }
   ]
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-orange-50 via-white to-emerald-50 flex items-center justify-center p-8">
-      <div className="w-full max-w-7xl h-full flex gap-8">
+    <div className="fixed inset-0 bg-gradient-to-br from-orange-50 via-white to-emerald-50 flex items-center justify-center p-2 sm:p-4 md:p-8">
+      <div className="w-full max-w-7xl h-full flex gap-2 sm:gap-4 md:gap-8">
       <div className="hidden lg:flex lg:w-[45%] rounded-3xl bg-banded text-black p-8 flex-col backdrop-blur-sm shadow-[0_20px_60px_rgba(0,0,0,0.3)] border-0">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Training Registration</h1>
@@ -971,49 +974,50 @@ const handleSubmit = async () => {
           </div>
         )}
 
-        <div className="flex-1 overflow-auto p-6 lg:p-8 flex items-center justify-center">
-          <div className="w-full max-w-2xl overflow-auto max-h-full">
+        <div className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 lg:p-8 flex items-center justify-center">
+         <div className="w-full max-w-2xl overflow-auto max-h-full px-1 sm:px-0">
             
             {step === 0 && (
-              <div className="text-center space-y-8">
-                  <div className="inline-flex px-4 py-2 from-slate-800 to-slate-700 ">
-                    <img src="/trans-logo-dark.png" alt="logo" className="w-60 h-auto" />
-                  </div>
-                <div className="flex flex-col items-center space-y-6">
-                  <img 
-                    src="/registration.svg" 
-                    alt="Registration" 
-                    className="w-64 h-64 object-contain"
-                  />
-                </div>
+             <div className="text-center space-y-4 sm:space-y-6 md:space-y-8">
+    <div className="inline-flex px-4 py-2 from-slate-800 to-slate-700">
+      <img src="/trans-logo-dark.png" alt="logo" className="w-60 h-auto" />
+    </div>
+    <div className="flex flex-col items-center space-y-6">
+      <Lottie 
+  animationData={welcomeAnimation} 
+  loop={true}
+  autoplay={true}
+  style={{ width: '300px', height: '300px' }}
+/>
+    </div>
 
-                <div className="space-y-3">
-                <h2 className="text-5xl font-bold mb-3">
-                    Welcome!
-                  </h2>
-                  <p className="text-lg text-gray-600 max-w-md mx-auto">
-                    Begin your training journey with us. Please complete all required fields to get started.
-                  </p>
-                </div>
-                
-                <div className="max-w-md mx-auto">
-                  <Button 
-                  variant={"outline"}
-                    onClick={() => setStep(1)}
-                    size="lg"
-                    className="w-full border-1   py-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 text-lg font-semibold cursor-pointer"
-                  >
-                    <div className="flex items-center justify-center gap-3">
-                      <User className="w-6 h-6" />
-                      <span>Start Your Registration</span>
-                    </div>
-                  </Button>
-                  
-                  <p className="text-sm text-gray-500 mt-4">
-                    Takes approximately 5 minutes to complete
-                  </p>
-                </div>
-              </div>
+    <div className="space-y-3">
+      <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 font-welcome">
+        Welcome!
+      </h2>
+      <p className="text-lg text-gray-600 max-w-md mx-auto">
+        Begin your training journey with us. Please complete all required fields to get started.
+      </p>
+    </div>
+    
+    <div className="max-w-md mx-auto">
+      <Button 
+        variant={"default"}
+        onClick={() => setStep(1)}
+        size="lg"
+        className="w-full border-1 py-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 text-lg font-semibold cursor-pointer"
+      >
+        <div className="flex items-center justify-center gap-3">
+          <User className="w-6 h-6" />
+          <span>Start Your Registration</span>
+        </div>
+      </Button>
+      
+      <p className="text-sm text-gray-500 mt-4">
+        Takes approximately 5 minutes to complete
+      </p>
+    </div>
+  </div>
             )}
             {step === 1 && (
             <div className="space-y-2">
