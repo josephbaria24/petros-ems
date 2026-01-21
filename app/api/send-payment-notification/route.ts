@@ -167,7 +167,7 @@ export async function POST(req: NextRequest) {
               </div>
               <div class="content">
                 <p>Dear ${traineeName},</p>
-                <p>Welcome to your online training classroom! Your payment has been confirmed, and you now have access to your course materials.</p>
+                <p>Welcome to your online training classroom! You now have access to your course room.</p>
                 <p>Click the links below to access your meeting room and group chat:</p>
                 
                 <p style="background-color: #f3f4f6; padding: 10px; border-radius: 5px; word-break: break-all;">
@@ -179,8 +179,9 @@ export async function POST(req: NextRequest) {
                     ${groupChatLink}
                   </p>
                 ` : ""}
-                <p>If you have any technical difficulties accessing the classroom, please contact our support team.</p>
+                <p>If you have any technical difficulties accessing the classroom, please contact our support team</p>
                 <p>Best regards,<br><strong>Petrosphere Incorporated</strong></p>
+                <p>training@petrosphere.com.ph</p>
               </div>
               <div class="footer">
                 <p>This is an automated email. Please do not reply to this message.</p>
