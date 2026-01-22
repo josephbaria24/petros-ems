@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import { SubmissionDialog } from "@/components/submission-dialog"
 import { DeclinePhotoDialog } from "@/components/decline-photo"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -29,6 +30,7 @@ import {
   AlertCircle,
   Upload,
   RefreshCw,
+  MoveRight
 } from "lucide-react";
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -68,7 +70,7 @@ export default function SubmissionPage() {
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false)
   
   // Bulk action states
-  const [bulkMode, setBulkMode] = useState<"paid" | "room" | null>(null)
+  const [bulkMode, setBulkMode] = useState<"paid" | "room" | "move" | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [roomLinkDialog, setRoomLinkDialog] = useState(false)
   const [roomLink, setRoomLink] = useState("")
@@ -81,6 +83,15 @@ export default function SubmissionPage() {
   const [traineeToDelete, setTraineeToDelete] = useState<any | null>(null)
   const [deleteConfirmText, setDeleteConfirmText] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
+
+
+  const [isLoadingTrainees, setIsLoadingTrainees] = useState(true)
+
+  const [moveScheduleDialog, setMoveScheduleDialog] = useState(false)
+const [availableSchedules, setAvailableSchedules] = useState<any[]>([])
+const [selectedTargetSchedule, setSelectedTargetSchedule] = useState<string>("")
+const [currentCourseId, setCurrentCourseId] = useState<string>("")
+
 
   const getStatusBadge = (status: string) => {
   const normalized = status?.toLowerCase().trim() || "pending";
@@ -167,9 +178,14 @@ export default function SubmissionPage() {
   }
 };
   
+
+
+
 const fetchTrainees = async () => {
   if (!scheduleId) return;
 
+   setIsLoadingTrainees(true);
+   
   try {
     // Fetch schedule with course name
     const { data: scheduleData, error: scheduleError } = await supabase
@@ -179,12 +195,13 @@ const fetchTrainees = async () => {
       .single();
 
     if (scheduleError) {
-      console.error(scheduleError);
-      toast.error("Failed to fetch schedule details");
-    } else if (scheduleData?.courses) {
-      // @ts-ignore
-      setCourseName(scheduleData.courses.name || "");
-    }
+  console.error(scheduleError);
+  toast.error("Failed to fetch schedule details");
+} else if (scheduleData?.courses) {
+  // @ts-ignore
+  setCourseName(scheduleData.courses.name || "");
+  setCurrentCourseId(scheduleData.course_id); // ADD THIS LINE
+}
 
     // Fetch trainings data
     const { data, error } = await supabase
@@ -340,9 +357,11 @@ const fetchTrainees = async () => {
     console.log("📊 Trainees with vouchers:", formattedData.filter(t => t.voucherInfo).length);
     
     setTrainees(formattedData);
-  } catch (err) {
+ } catch (err) {
     console.error("💥 Unexpected error:", err);
     toast.error("An error occurred while loading trainees");
+  } finally {
+    setIsLoadingTrainees(false); // ADD THIS LINE
   }
 };
 
@@ -616,15 +635,128 @@ const updateStatus = async (status: string) => {
   }
 };
 
-  const handleQuickAction = (action: "paid" | "room") => {
-    setBulkMode(action);
-    setSelectedIds([]);
-  };
+  const handleQuickAction = (action: "paid" | "room" | "move") => {
+  setBulkMode(action);
+  setSelectedIds([]);
+};
 
   const handleCancelBulk = () => {
     setBulkMode(null);
     setSelectedIds([]);
   };
+
+
+const fetchAvailableSchedules = async () => {
+  if (!scheduleId || !currentCourseId) return;
+
+  try {
+    // Fetch schedules
+    const { data: schedules, error } = await supabase
+      .from("schedules")
+      .select(`
+        id,
+        schedule_type,
+        event_type,
+        branch,
+        status,
+        batch_number,
+        schedule_dates(date),
+        schedule_ranges(start_date, end_date)
+      `)
+      .eq("course_id", currentCourseId)
+      .neq("id", scheduleId)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+
+    // Fetch trainee counts for each schedule
+    const schedulesWithCounts = await Promise.all(
+      (schedules || []).map(async (schedule) => {
+        const { count, error: countError } = await supabase
+          .from("trainings")
+          .select("*", { count: "exact", head: true })
+          .eq("schedule_id", schedule.id);
+
+        if (countError) {
+          console.error("Error counting trainees:", countError);
+          return { ...schedule, trainee_count: 0 };
+        }
+
+        return { ...schedule, trainee_count: count || 0 };
+      })
+    );
+
+    setAvailableSchedules(schedulesWithCounts);
+  } catch (error) {
+    console.error("Error fetching schedules:", error);
+    toast.error("Failed to load available schedules");
+  }
+};
+
+const handleMoveScheduleSubmit = () => {
+  if (bulkMode === "move") {
+    fetchAvailableSchedules();
+    setMoveScheduleDialog(true);
+  }
+};
+
+const handleBulkMoveSchedule = async () => {
+  if (selectedIds.length === 0) {
+    toast.error("Please select at least one trainee");
+    return;
+  }
+
+  if (!selectedTargetSchedule) {
+    toast.error("Please select a target schedule");
+    return;
+  }
+
+  setProcessing(true);
+  setProgressCurrent(0);
+  setProgressTotal(selectedIds.length);
+
+  try {
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < selectedIds.length; i++) {
+      const traineeId = selectedIds[i];
+      setProgressCurrent(i + 1);
+
+      const { error } = await supabase
+        .from("trainings")
+        .update({ schedule_id: selectedTargetSchedule })
+        .eq("id", traineeId);
+
+      if (error) {
+        console.error(`Failed to move trainee ${traineeId}:`, error);
+        failCount++;
+      } else {
+        successCount++;
+      }
+    }
+
+    toast.success(
+      `${successCount} trainee(s) moved successfully${
+        failCount > 0 ? `, ${failCount} failed` : ""
+      }`
+    );
+
+    setMoveScheduleDialog(false);
+    setSelectedTargetSchedule("");
+    handleCancelBulk();
+    fetchTrainees();
+  } catch (error) {
+    console.error("Bulk move schedule error:", error);
+    toast.error("Failed to move trainees");
+  } finally {
+    setProcessing(false);
+    setProgressCurrent(0);
+    setProgressTotal(0);
+  }
+};
+
+
 
   const handleSelectAll = () => {
     if (selectedIds.length === filteredTrainees.length) {
@@ -837,20 +969,30 @@ const updateStatus = async (status: string) => {
             >
               Cancel
             </Button>
-            <Button
-              size="sm"
-              onClick={bulkMode === "paid" ? handleBulkMarkAsPaid : handleRoomLinkSubmit}
-              disabled={selectedIds.length === 0 || processing}
-            >
-              {processing ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Processing... ({progressCurrent}/{progressTotal})
-                </>
-              ) : (
-                bulkMode === "paid" ? "Mark as Paid" : "Send Room Link"
-              )}
-            </Button>
+           <Button
+            size="sm"
+            onClick={
+              bulkMode === "paid" 
+                ? handleBulkMarkAsPaid 
+                : bulkMode === "room" 
+                ? handleRoomLinkSubmit 
+                : handleMoveScheduleSubmit
+            }
+            disabled={selectedIds.length === 0 || processing}
+          >
+            {processing ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Processing... ({progressCurrent}/{progressTotal})
+              </>
+            ) : bulkMode === "paid" ? (
+              "Mark as Paid"
+            ) : bulkMode === "room" ? (
+              "Send Room Link"
+            ) : (
+              "Move Schedule"
+            )}
+          </Button>
           </div>
         ) : (
           <DropdownMenu>
@@ -867,6 +1009,9 @@ const updateStatus = async (status: string) => {
               <DropdownMenuItem onClick={() => handleQuickAction("room")} className="cursor-pointer">
                 Quick Send Room Link
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleQuickAction("move")} className="cursor-pointer">
+                Move to Another Schedule
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -881,91 +1026,132 @@ const updateStatus = async (status: string) => {
       />
 
       <Card>
-        <div className="max-h-[70vh] overflow-y-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {bulkMode && (
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={selectedIds.length === filteredTrainees.length && filteredTrainees.length > 0}
-                      onCheckedChange={handleSelectAll}
-                    />
-                  </TableHead>
-                )}
-                <TableHead>#</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Photo</TableHead>
-                {!bulkMode && <TableHead>Actions</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTrainees.map((trainee, index) => (
-                <TableRow
-                  key={trainee.id}
-                  className={bulkMode ? "" : "cursor-pointer"}
-                  onClick={() => !bulkMode && handleView(trainee)}
-                >
-                  {bulkMode && (
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={selectedIds.includes(trainee.id)}
-                        onCheckedChange={() => handleRowSelect(trainee.id)}
-                      />
-                    </TableCell>
-                  )}
-                  <TableCell>{index + 1}</TableCell>
-                  <TableCell>{trainee.first_name} {trainee.last_name}</TableCell>
-                  <TableCell>{trainee.phone_number || "N/A"}</TableCell>
-                  <TableCell>
-                    {getStatusBadge(
-                      trainee.status || "Pending"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Avatar>
-                      <AvatarImage src={trainee.picture_2x2_url} alt="2x2" />
-                      <AvatarFallback>
-                        {trainee.first_name[0]}
-                        {trainee.last_name[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                  </TableCell>
-                  {!bulkMode && (
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleView(trainee)}>
-                            View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDeclinePhoto(trainee)}>
-                            <ImageOff className="h-4 w-4 mr-2" />
-                            Decline Photos
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            className="text-destructive cursor-pointer"
-                            onClick={() => handleInitiateDelete(trainee)}
-                          >
-                            Delete Trainee
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </Card>
+  <div className="max-h-[70vh] overflow-y-auto">
+    <Table>
+      <TableHeader>
+        <TableRow>
+          {bulkMode && (
+            <TableHead className="w-12">
+              <Checkbox
+                checked={selectedIds.length === filteredTrainees.length && filteredTrainees.length > 0}
+                onCheckedChange={handleSelectAll}
+              />
+            </TableHead>
+          )}
+          <TableHead>#</TableHead>
+          <TableHead>Name</TableHead>
+          <TableHead>Phone</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead>Photo</TableHead>
+          {!bulkMode && <TableHead>Actions</TableHead>}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {isLoadingTrainees ? (
+          // Skeleton rows
+          Array.from({ length: 5 }).map((_, index) => (
+            <TableRow key={`skeleton-${index}`}>
+              {bulkMode && (
+                <TableCell>
+                  <Skeleton className="h-4 w-4" />
+                </TableCell>
+              )}
+              <TableCell>
+                <Skeleton className="h-4 w-8" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-4 w-32" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-4 w-24" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-6 w-32" />
+              </TableCell>
+              <TableCell>
+                <Skeleton className="h-10 w-10 rounded-full" />
+              </TableCell>
+              {!bulkMode && (
+                <TableCell>
+                  <Skeleton className="h-8 w-8" />
+                </TableCell>
+              )}
+            </TableRow>
+          ))
+        ) : filteredTrainees.length === 0 ? (
+          // Empty state
+          <TableRow>
+            <TableCell 
+              colSpan={bulkMode ? 6 : 7} 
+              className="text-center py-8 text-muted-foreground"
+            >
+              No trainees found
+            </TableCell>
+          </TableRow>
+        ) : (
+          // Actual data
+          filteredTrainees.map((trainee, index) => (
+            <TableRow
+              key={trainee.id}
+              className={bulkMode ? "" : "cursor-pointer"}
+              onClick={() => !bulkMode && handleView(trainee)}
+            >
+              {bulkMode && (
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <Checkbox
+                    checked={selectedIds.includes(trainee.id)}
+                    onCheckedChange={() => handleRowSelect(trainee.id)}
+                  />
+                </TableCell>
+              )}
+              <TableCell>{index + 1}</TableCell>
+              <TableCell>{trainee.first_name} {trainee.last_name}</TableCell>
+              <TableCell>{trainee.phone_number || "N/A"}</TableCell>
+              <TableCell>
+                {getStatusBadge(trainee.status || "Pending")}
+              </TableCell>
+              <TableCell>
+                <Avatar>
+                  <AvatarImage src={trainee.picture_2x2_url} alt="2x2" />
+                  <AvatarFallback>
+                    {trainee.first_name[0]}
+                    {trainee.last_name[0]}
+                  </AvatarFallback>
+                </Avatar>
+              </TableCell>
+              {!bulkMode && (
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleView(trainee)}>
+                        View Details
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleDeclinePhoto(trainee)}>
+                        Decline Photos
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem 
+                        className="text-destructive cursor-pointer"
+                        onClick={() => handleInitiateDelete(trainee)}
+                      >
+                        Delete Trainee
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              )}
+            </TableRow>
+          ))
+        )}
+      </TableBody>
+    </Table>
+  </div>
+</Card>
 
       <Dialog open={roomLinkDialog} onOpenChange={setRoomLinkDialog}>
         <DialogContent className="lg:w-[40vw] sm:w-[80vw]">
@@ -1128,6 +1314,140 @@ const updateStatus = async (status: string) => {
           <>
             <AlertCircle className="h-4 w-4 mr-2" />
             Delete Permanently
+          </>
+        )}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
+
+{/* Move Schedule Dialog */}
+<Dialog open={moveScheduleDialog} onOpenChange={setMoveScheduleDialog}>
+  <DialogContent className="sm:max-w-md">
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2">
+        <MoveRight className="h-5 w-5" />
+        Move to Another Schedule
+      </DialogTitle>
+      <DialogDescription>
+        Select a schedule to move {selectedIds.length} selected trainee(s)
+      </DialogDescription>
+    </DialogHeader>
+
+    <div className="space-y-4 py-4">
+      <div className="space-y-2">
+        <Label>Available Schedules for {courseName}</Label>
+        <div className="max-h-[300px] overflow-y-auto space-y-2 border rounded-lg p-2">
+          {availableSchedules.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No other schedules available for this course
+            </p>
+          ) : (
+           availableSchedules.map((schedule) => {
+  const formatScheduleDate = () => {
+    if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length > 0) {
+      const range = schedule.schedule_ranges[0];
+      return `${new Date(range.start_date).toLocaleDateString()} - ${new Date(range.end_date).toLocaleDateString()}`;
+    } else if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length > 0) {
+      return schedule.schedule_dates
+        .map((d: any) => new Date(d.date).toLocaleDateString())
+        .join(", ");
+    }
+    return "No dates";
+  };
+
+  const getStatusBadgeColor = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case "ongoing":
+        return "bg-blue-100 text-blue-800 border-blue-300";
+      case "finished":
+        return "bg-green-100 text-green-800 border-green-300";
+      case "confirmed":
+        return "bg-purple-100 text-purple-800 border-purple-300";
+      case "cancelled":
+        return "bg-red-100 text-red-800 border-red-300";
+      default: // planned
+        return "bg-orange-100 text-orange-800 border-orange-300";
+    }
+  };
+
+  return (
+    <div
+      key={schedule.id}
+      className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+        selectedTargetSchedule === schedule.id
+          ? "border-primary bg-primary/5"
+          : "hover:border-gray-400"
+      }`}
+      onClick={() => setSelectedTargetSchedule(schedule.id)}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <Badge 
+              className={`text-xs border ${getStatusBadgeColor(schedule.status)}`}
+            >
+              {schedule.status || "Planned"}
+            </Badge>
+            <Badge variant="outline" className="text-xs">
+              {schedule.schedule_type}
+            </Badge>
+            <Badge variant="outline" className="text-xs">
+              {schedule.event_type}
+            </Badge>
+            <Badge variant="outline" className="text-xs">
+              {schedule.branch}
+            </Badge>
+          </div>
+          <p className="text-sm font-medium mb-1">{formatScheduleDate()}</p>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            {schedule.batch_number && (
+              <span>Batch #{schedule.batch_number}</span>
+            )}
+            <span className="flex items-center gap-1">
+              <span className="font-semibold text-foreground">{schedule.trainee_count || 0}</span> 
+              trainee{schedule.trainee_count !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+        <Checkbox
+          checked={selectedTargetSchedule === schedule.id}
+          onCheckedChange={() => setSelectedTargetSchedule(schedule.id)}
+        />
+      </div>
+    </div>
+  );
+})
+          )}
+        </div>
+      </div>
+    </div>
+
+    <DialogFooter>
+      <Button
+        variant="outline"
+        onClick={() => {
+          setMoveScheduleDialog(false);
+          setSelectedTargetSchedule("");
+        }}
+        disabled={processing}
+      >
+        Cancel
+      </Button>
+      <Button
+        onClick={handleBulkMoveSchedule}
+        disabled={!selectedTargetSchedule || processing}
+      >
+        {processing ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            Moving... ({progressCurrent}/{progressTotal})
+          </>
+        ) : (
+          <>
+            <MoveRight className="h-4 w-4 mr-2" />
+            Move Selected
           </>
         )}
       </Button>

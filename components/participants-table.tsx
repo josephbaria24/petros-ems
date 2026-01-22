@@ -414,11 +414,21 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       header: "Branch",
       cell: ({ row }) => <div className="text-card-foreground">{row.getValue("branch")}</div>,
     },
-    {
-      accessorKey: "schedule",
-      header: "Schedule",
-      cell: ({ row }) => <div className="text-card-foreground">{row.getValue("schedule")}</div>,
-    },
+   {
+  accessorKey: "schedule",
+  header: "Schedule",
+  cell: ({ row }) => {
+    const scheduleText = row.getValue("schedule") as string
+    return (
+      <div 
+        className="text-card-foreground max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" 
+        title={scheduleText}
+      >
+        {scheduleText}
+      </div>
+    )
+  },
+},
     {
       accessorKey: "status",
       header: "Status",
