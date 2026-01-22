@@ -648,7 +648,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
 
   return (
     <>
-      <Card className="p-3 border-0 shadow-md">
+      <Card className="p-3 border-0 shadow-md bg- ">
         <div className="flex items-center justify-between mb-1">
           <Input
             placeholder="Search courses, branches, schedules, status, or types..."
