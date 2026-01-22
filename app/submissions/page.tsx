@@ -463,7 +463,7 @@ const handleDialogClose = async (open: boolean) => {
 const handleDeleteTrainee = async () => {
   if (!traineeToDelete) return;
 
-  const expectedText = `Delete ${traineeToDelete.first_name} ${traineeToDelete.last_name}`;
+  const expectedText = "delete this trainee";
   
   if (deleteConfirmText !== expectedText) {
     toast.error("Confirmation text doesn't match. Please type exactly as shown.");
@@ -1222,7 +1222,7 @@ const handleBulkMoveSchedule = async () => {
         onSuccess={fetchTrainees}
       />
 
-      {/* Delete Confirmation Dialog */}
+{/* Delete Confirmation Dialog */}
 <Dialog open={deleteDialogOpen} onOpenChange={handleCancelDelete}>
   <DialogContent className="sm:max-w-md">
     <DialogHeader>
@@ -1267,21 +1267,21 @@ const handleBulkMoveSchedule = async () => {
           <Label htmlFor="delete-confirm" className="text-sm font-medium">
             To confirm deletion, type:{" "}
             <span className="font-mono font-bold text-red-600">
-              Delete {traineeToDelete.first_name} {traineeToDelete.last_name}
+              delete this trainee
             </span>
           </Label>
           <Input
             id="delete-confirm"
             type="text"
-            placeholder={`Delete ${traineeToDelete.first_name} ${traineeToDelete.last_name}`}
+            placeholder="delete this trainee"
             value={deleteConfirmText}
             onChange={(e) => setDeleteConfirmText(e.target.value)}
             className="font-mono"
             autoComplete="off"
           />
-          {deleteConfirmText && deleteConfirmText !== `Delete ${traineeToDelete.first_name} ${traineeToDelete.last_name}` && (
+          {deleteConfirmText && deleteConfirmText !== "delete this trainee" && (
             <p className="text-xs text-red-600">
-              Text doesn't match. Please type exactly as shown above.
+              Text doesn't match. Please type exactly: delete this trainee
             </p>
           )}
         </div>
@@ -1302,7 +1302,7 @@ const handleBulkMoveSchedule = async () => {
         disabled={
           isDeleting || 
           !traineeToDelete || 
-          deleteConfirmText !== `Delete ${traineeToDelete.first_name} ${traineeToDelete.last_name}`
+          deleteConfirmText !== "delete this trainee"
         }
       >
         {isDeleting ? (
