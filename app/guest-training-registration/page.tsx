@@ -411,6 +411,36 @@ const handleRegionChange = (regionCode: string) => {
 
 
 
+
+
+// Add this to your existing state declarations (around line 40)
+const [industries, setIndustries] = useState<{ id: string; name: string }[]>([])
+
+
+// Add this useEffect to fetch industries (place it after your existing useEffects, around line 180)
+useEffect(() => {
+  const fetchIndustries = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("industries")
+        .select("id, name")
+        .order("display_order")
+
+      if (error) {
+        console.error("Error fetching industries:", error)
+        toast.error("Failed to load industries")
+        return
+      }
+
+      setIndustries(data || [])
+    } catch (err) {
+      console.error("Unexpected error fetching industries:", err)
+    }
+  }
+
+  fetchIndustries()
+}, [])
+
 // Complete handleVerifyVoucher function
 const handleVerifyVoucher = async () => {
   if (!voucherCode.trim()) {
@@ -1260,8 +1290,27 @@ const handleSubmit = async () => {
                       <Input id="company_position" required={isEmployed} name="company_position" onChange={handleChange} placeholder="Your position" />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="company_industry" className="text-sm font-medium">Industry</Label>
-                      <Input id="company_industry" required={isEmployed} name="company_industry" onChange={handleChange} placeholder="e.g., Technology, Finance" />
+                      <Label htmlFor="company_industry" className="text-sm font-medium">
+                        Industry *
+                      </Label>
+                      <SearchableDropdown
+                        items={industries.map(ind => ({ code: ind.id, name: ind.name }))}
+                        value={form.company_industry || ""}
+                        onChange={(industryId) => {
+                          const selectedIndustry = industries.find(ind => ind.id === industryId)
+                          setForm((prev: any) => ({
+                            ...prev,
+                            company_industry: selectedIndustry?.name || industryId,
+                          }))
+                          setErrors((prev) => ({ ...prev, company_industry: false }))
+                        }}
+                        placeholder="Select Industry"
+                        className="w-full"
+                        disabled={!isEmployed}
+                      />
+                      {errors.company_industry && (
+                        <p className="text-red-500 text-xs">Industry is required</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="company_email" className="text-sm font-medium">Company Email</Label>

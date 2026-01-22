@@ -31,7 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, AlertCircle, CheckCircle2, XCircle, X } from "lucide-react";
+import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, AlertCircle, CheckCircle2, XCircle, X, Briefcase } from "lucide-react";
 import { createClient } from "@/lib/supabase-client";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Checkbox } from "./ui/checkbox";
@@ -100,13 +100,60 @@ const [discountMode, setDiscountMode] = useState<'voucher' | 'manual'>('manual')
   
   const [pvcIdFee, setPvcIdFee] = useState<number>(0);
 
-  const [newDetails, setNewDetails] = useState({
-    company_name: trainee?.company_name || "",
-    gender: trainee?.gender || "",
-    age: trainee?.age || "",
-    phone_number: trainee?.phone_number || "",
-    food_restriction: trainee?.food_restriction || "",
-  });
+const [newDetails, setNewDetails] = useState({
+  courtesy_title: trainee?.courtesy_title || "",
+  first_name: trainee?.first_name || "",
+  middle_initial: trainee?.middle_initial || "",
+  last_name: trainee?.last_name || "",
+  suffix: trainee?.suffix || "",
+  email: trainee?.email || "",
+  phone_number: trainee?.phone_number || "",
+  gender: trainee?.gender || "",
+  age: trainee?.age || "",
+  employment_status: trainee?.employment_status || "",
+  company_name: trainee?.company_name || "",
+  company_position: trainee?.company_position || "",
+  company_industry: trainee?.company_industry || "",
+  company_email: trainee?.company_email || "",
+  company_landline: trainee?.company_landline || "",
+  company_city: trainee?.company_city || "",
+  company_region: trainee?.company_region || "",
+  total_workers: trainee?.total_workers || "",
+  food_restriction: trainee?.food_restriction || "",
+  is_student: trainee?.is_student || false,
+  school_name: trainee?.school_name || "",
+});
+
+
+useEffect(() => {
+  if (trainee) {
+    setNewDetails({
+      courtesy_title: trainee.courtesy_title || "",
+      first_name: trainee.first_name || "",
+      middle_initial: trainee.middle_initial || "",
+      last_name: trainee.last_name || "",
+      suffix: trainee.suffix || "",
+      email: trainee.email || "",
+      phone_number: trainee.phone_number || "",
+      gender: trainee.gender || "",
+      age: trainee.age || "",
+      employment_status: trainee.employment_status || "",
+      company_name: trainee.company_name || "",
+      company_position: trainee.company_position || "",
+      company_industry: trainee.company_industry || "",
+      company_email: trainee.company_email || "",
+      company_landline: trainee.company_landline || "",
+      company_city: trainee.company_city || "",
+      company_region: trainee.company_region || "",
+      total_workers: trainee.total_workers || "",
+      food_restriction: trainee.food_restriction || "",
+      is_student: trainee.is_student || false,
+      school_name: trainee.school_name || "",
+    });
+  }
+}, [trainee, open]); 
+
+
   const [show2x2ViewModal, setShow2x2ViewModal] = useState(false);
   const [showIdViewModal, setShowIdViewModal] = useState(false);
   const [sendingFollowUp, setSendingFollowUp] = useState(false);
@@ -1324,116 +1371,122 @@ const handleUpdateIdPhoto = async () => {
       <Dialog open={open} onOpenChange={onOpenChange}>
         {/* ✅ VIEW 1: PHOTO VERIFICATION - For Pending/Resubmitted */}
         {needsPhotoVerification ? (
-          <DialogContent className="w-[40vw]">
-            <DialogHeader>
-              <DialogTitle>
-                {isResubmission ? "Review Resubmitted Photos" : "Review Submission"}
-              </DialogTitle>
-              {isResubmission && trainee.declined_photos && (
-                <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
-                  <p className="font-semibold text-yellow-800">Previous Decline Reason:</p>
-                  <p className="text-yellow-700 mt-1">{trainee.declined_photos.reason}</p>
-                  <p className="text-xs text-yellow-600 mt-2">
-                    Declined: {new Date(trainee.declined_photos.declined_at).toLocaleDateString()}
-                  </p>
-                </div>
-              )}
-            </DialogHeader>
+  <DialogContent className="w-[40vw] max-h-[90vh] flex flex-col">
+    <DialogHeader>
+      <DialogTitle>
+        {isResubmission ? "Review Resubmitted Photos" : "Review Submission"}
+      </DialogTitle>
+      {isResubmission && trainee.declined_photos && (
+        <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
+          <p className="font-semibold text-yellow-800">Previous Decline Reason:</p>
+          <p className="text-yellow-700 mt-1">{trainee.declined_photos.reason}</p>
+          <p className="text-xs text-yellow-600 mt-2">
+            Declined: {new Date(trainee.declined_photos.declined_at).toLocaleDateString()}
+          </p>
+        </div>
+      )}
+    </DialogHeader>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* ID Picture */}
-              <div className="relative cursor-pointer" onClick={() => setShowIdViewModal(true)}>
-                <h4 className="text-sm font-semibold mb-2">
-                  ID Picture
-                  {trainee.declined_photos?.id_picture && (
-                    <span className="ml-2 text-xs text-red-600">(Was Declined)</span>
-                  )}
-                </h4>
-                <img
-                  src={trainee.id_picture_url}
-                  alt="ID Picture"
-                  className={`w-full rounded border hover:opacity-80 transition ${
-                    trainee.declined_photos?.id_picture ? 'border-red-400 border-2' : ''
-                  }`}
-                />
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="absolute top-2 right-2 text-sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleUpdateIdPhoto();
-                  }}
-                >
-                  <Edit />
-                </Button>
-              </div>
-              
-              {/* 2x2 Photo */}
-              <div className="relative cursor-pointer" onClick={() => setShow2x2ViewModal(true)}>
-                <h4 className="text-sm font-semibold mb-2">
-                  2x2 Photo
-                  {trainee.declined_photos?.picture_2x2 && (
-                    <span className="ml-2 text-xs text-red-600">(Was Declined)</span>
-                  )}
-                </h4>
-                <img
-                  src={trainee.picture_2x2_url}
-                  alt="2x2 Photo"
-                  className={`w-full rounded border hover:opacity-80 transition ${
-                    trainee.declined_photos?.picture_2x2 ? 'border-red-400 border-2' : ''
-                  }`}
-                />
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white shadow"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleUpdate2x2Photo();
-                  }}
-                  disabled={updatingPhoto}
-                >
-                  {updatingPhoto ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Edit className="h-3 w-3" />
-                  )}
-                </Button>
-              </div>
-            </div>
-            
-            <DialogFooter className="pt-4">
-              <Button 
-                variant="destructive" 
-                onClick={onDecline}
-                disabled={saving}
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  'Decline'
-                )}
-              </Button>
-              <Button 
-                onClick={onVerify}
-                disabled={saving}
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Verifying...
-                  </>
-                ) : (
-                  'Verify & Proceed to Payment'
-                )}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        )
+    {/* ✅ FIXED: Added ScrollArea with max height */}
+    <ScrollArea className="flex-1 overflow-y-auto pr-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* ID Picture */}
+        <div className="relative cursor-pointer" onClick={() => setShowIdViewModal(true)}>
+          <h4 className="text-sm font-semibold mb-2">
+            ID Picture
+            {trainee.declined_photos?.id_picture && (
+              <span className="ml-2 text-xs text-red-600">(Was Declined)</span>
+            )}
+          </h4>
+          {/* ✅ FIXED: Added max-height and object-contain */}
+          <img
+            src={trainee.id_picture_url}
+            alt="ID Picture"
+            className={`w-full max-h-[300px] object-contain rounded border hover:opacity-80 transition ${
+              trainee.declined_photos?.id_picture ? 'border-red-400 border-2' : ''
+            }`}
+          />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="absolute top-2 right-2 text-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleUpdateIdPhoto();
+            }}
+          >
+            <Edit />
+          </Button>
+        </div>
+        
+        {/* 2x2 Photo */}
+        <div className="relative cursor-pointer" onClick={() => setShow2x2ViewModal(true)}>
+          <h4 className="text-sm font-semibold mb-2">
+            2x2 Photo
+            {trainee.declined_photos?.picture_2x2 && (
+              <span className="ml-2 text-xs text-red-600">(Was Declined)</span>
+            )}
+          </h4>
+          {/* ✅ FIXED: Added max-height and object-contain */}
+          <img
+            src={trainee.picture_2x2_url}
+            alt="2x2 Photo"
+            className={`w-full max-h-[300px] object-contain rounded border hover:opacity-80 transition ${
+              trainee.declined_photos?.picture_2x2 ? 'border-red-400 border-2' : ''
+            }`}
+          />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white shadow"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleUpdate2x2Photo();
+            }}
+            disabled={updatingPhoto}
+          >
+            {updatingPhoto ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Edit className="h-3 w-3" />
+            )}
+          </Button>
+        </div>
+      </div>
+    </ScrollArea>
+    
+    {/* ✅ FIXED: Footer stays at bottom */}
+    <DialogFooter className="pt-4 border-t mt-4">
+      <Button 
+        variant="destructive" 
+        onClick={onDecline}
+        disabled={saving}
+      >
+        {saving ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Processing...
+          </>
+        ) : (
+          'Decline'
+        )}
+      </Button>
+      <Button 
+        onClick={onVerify}
+        disabled={saving}
+      >
+        {saving ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Verifying...
+          </>
+        ) : (
+          'Verify & Proceed to Payment'
+        )}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+)
         // Complete Return Block - Part 2 of 5
 // This continues directly after Part 1 (after the photo verification view closing)
 
@@ -1635,63 +1688,404 @@ const handleUpdateIdPhoto = async () => {
 
               <div className="space-y-4">
                 {/* Personal Details Section */}
-                <section className="border rounded overflow-hidden">
-                  <div className="flex justify-between items-center font-bold px-4 py-2">
-                    Personal Details
-                    <Button size="sm" variant="ghost" onClick={() => setIsEditingDetails(!isEditingDetails)}>
-                      <Edit/>
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 p-4 text-sm">
-                    {isEditingDetails ? (
-                      <>
-                        <div>
-                          <Label>Company</Label>
-                          <Input value={newDetails.company_name} onChange={e => setNewDetails(prev => ({ ...prev, company_name: e.target.value }))} />
-                        </div>
-                        <div>
-                          <Label>Gender</Label>
-                          <Input value={newDetails.gender} onChange={e => setNewDetails(prev => ({ ...prev, gender: e.target.value }))} />
-                        </div>
-                        <div>
-                          <Label>Age</Label>
-                          <Input type="number" value={newDetails.age} onChange={e => setNewDetails(prev => ({ ...prev, age: e.target.value }))} />
-                        </div>
-                        <div>
-                          <Label>Phone</Label>
-                          <Input value={newDetails.phone_number} onChange={e => setNewDetails(prev => ({ ...prev, phone_number: e.target.value }))} />
-                        </div>
-                        <div>
-                          <Label>Food Restriction</Label>
-                          <Input value={newDetails.food_restriction} onChange={e => setNewDetails(prev => ({ ...prev, food_restriction: e.target.value }))} />
-                        </div>
-                        <Button 
-                            onClick={handleSavePersonalDetails} 
-                            className="col-span-6"
-                            disabled={updatingDetails}
-                          >
-                            {updatingDetails ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Saving...
-                              </>
-                            ) : (
-                              'Save'
-                            )}
-                          </Button>
-                      </>
-                    ) : (
-                      <>
-                        <div><strong>Company</strong><div>{trainee?.company_name || "N/A"}</div></div>
-                        <div><strong>Gender</strong><div>{trainee?.gender}</div></div>
-                        <div><strong>Age</strong><div>{trainee?.age}</div></div>
-                        <div><strong>Phone Number</strong><div>{trainee?.phone_number || "N/A"}</div></div>
-                        <div><strong>Food Restriction</strong><div>{trainee?.food_restriction || "N/A"}</div></div>
-                      </>
-                    )}
-                  </div>
-                </section>
+                {/* Personal Details Section - COMPLETE VERSION */}
+<section className="border rounded overflow-hidden">
+  <div className="flex justify-between items-center font-bold px-4 py-2 bg-slate-100">
+    Personal Details
+    <Button 
+      size="sm" 
+      variant="ghost" 
+      onClick={() => setIsEditingDetails(!isEditingDetails)}
+    >
+      <Edit className="h-4 w-4" />
+    </Button>
+  </div>
+  
+  {isEditingDetails ? (
+    <div className="p-4 space-y-4">
+      {/* Name Section */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="space-y-2">
+          <Label htmlFor="courtesy_title" className="text-xs">Courtesy Title</Label>
+          <Input
+            id="courtesy_title"
+            value={newDetails.courtesy_title}
+            onChange={(e) => setNewDetails(prev => ({ ...prev, courtesy_title: e.target.value }))}
+            placeholder="Mr., Ms., Dr."
+            className="h-9"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="first_name" className="text-xs">First Name *</Label>
+          <Input
+            id="first_name"
+            value={newDetails.first_name}
+            onChange={(e) => setNewDetails(prev => ({ ...prev, first_name: e.target.value }))}
+            placeholder="First name"
+            className="h-9"
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="middle_initial" className="text-xs">M.I.</Label>
+          <Input
+            id="middle_initial"
+            value={newDetails.middle_initial}
+            onChange={(e) => setNewDetails(prev => ({ ...prev, middle_initial: e.target.value }))}
+            placeholder="M.I."
+            maxLength={1}
+            className="h-9"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="last_name" className="text-xs">Last Name *</Label>
+          <Input
+            id="last_name"
+            value={newDetails.last_name}
+            onChange={(e) => setNewDetails(prev => ({ ...prev, last_name: e.target.value }))}
+            placeholder="Last name"
+            className="h-9"
+            required
+          />
+        </div>
+      </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="space-y-2">
+          <Label htmlFor="suffix" className="text-xs">Suffix</Label>
+          <Input
+            id="suffix"
+            value={newDetails.suffix}
+            onChange={(e) => setNewDetails(prev => ({ ...prev, suffix: e.target.value }))}
+            placeholder="Jr., Sr., III"
+            className="h-9"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="gender" className="text-xs">Gender *</Label>
+          <Input
+            id="gender"
+            value={newDetails.gender}
+            onChange={(e) => setNewDetails(prev => ({ ...prev, gender: e.target.value }))}
+            placeholder="Male/Female"
+            className="h-9"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="age" className="text-xs">Age *</Label>
+          <Input
+            id="age"
+            type="number"
+            value={newDetails.age}
+            onChange={(e) => setNewDetails(prev => ({ ...prev, age: e.target.value }))}
+            placeholder="Age"
+            className="h-9"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="employment_status" className="text-xs">Employment Status</Label>
+          <Input
+            id="employment_status"
+            value={newDetails.employment_status}
+            onChange={(e) => setNewDetails(prev => ({ ...prev, employment_status: e.target.value }))}
+            placeholder="Employed/Unemployed"
+            className="h-9"
+          />
+        </div>
+      </div>
+
+      {/* Contact Information */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label htmlFor="email" className="text-xs">Email *</Label>
+          <Input
+            id="email"
+            type="email"
+            value={newDetails.email}
+            onChange={(e) => setNewDetails(prev => ({ ...prev, email: e.target.value }))}
+            placeholder="email@example.com"
+            className="h-9"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="phone_number" className="text-xs">Phone Number *</Label>
+          <Input
+            id="phone_number"
+            value={newDetails.phone_number}
+            onChange={(e) => setNewDetails(prev => ({ ...prev, phone_number: e.target.value }))}
+            placeholder="+63 912 345 6789"
+            className="h-9"
+          />
+        </div>
+      </div>
+
+      {/* Student Information (if unemployed) */}
+      {newDetails.employment_status === "Unemployed" && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded space-y-3">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="is_student"
+              checked={newDetails.is_student}
+              onCheckedChange={(checked) => 
+                setNewDetails(prev => ({ ...prev, is_student: !!checked }))
+              }
+            />
+            <Label htmlFor="is_student" className="text-sm cursor-pointer">
+              Student
+            </Label>
+          </div>
+          
+          {newDetails.is_student && (
+            <div className="space-y-2">
+              <Label htmlFor="school_name" className="text-xs">School/University Name</Label>
+              <Input
+                id="school_name"
+                value={newDetails.school_name}
+                onChange={(e) => setNewDetails(prev => ({ ...prev, school_name: e.target.value }))}
+                placeholder="Enter school or university"
+                className="h-9"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Company Information (if employed) */}
+      {newDetails.employment_status === "Employed" && (
+        <div className="space-y-3 p-3 bg-slate-50 border border-slate-200 rounded">
+          <h4 className="font-semibold text-sm">Company Details</h4>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="company_name" className="text-xs">Company Name</Label>
+              <Input
+                id="company_name"
+                value={newDetails.company_name}
+                onChange={(e) => setNewDetails(prev => ({ ...prev, company_name: e.target.value }))}
+                placeholder="Company name"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="company_position" className="text-xs">Position</Label>
+              <Input
+                id="company_position"
+                value={newDetails.company_position}
+                onChange={(e) => setNewDetails(prev => ({ ...prev, company_position: e.target.value }))}
+                placeholder="Job position"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="company_industry" className="text-xs">Industry</Label>
+              <Input
+                id="company_industry"
+                value={newDetails.company_industry}
+                onChange={(e) => setNewDetails(prev => ({ ...prev, company_industry: e.target.value }))}
+                placeholder="Industry"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="company_email" className="text-xs">Company Email</Label>
+              <Input
+                id="company_email"
+                type="email"
+                value={newDetails.company_email}
+                onChange={(e) => setNewDetails(prev => ({ ...prev, company_email: e.target.value }))}
+                placeholder="company@example.com"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="company_landline" className="text-xs">Company Landline</Label>
+              <Input
+                id="company_landline"
+                value={newDetails.company_landline}
+                onChange={(e) => setNewDetails(prev => ({ ...prev, company_landline: e.target.value }))}
+                placeholder="(02) 1234-5678"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="company_city" className="text-xs">Company City</Label>
+              <Input
+                id="company_city"
+                value={newDetails.company_city}
+                onChange={(e) => setNewDetails(prev => ({ ...prev, company_city: e.target.value }))}
+                placeholder="City"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="company_region" className="text-xs">Company Region</Label>
+              <Input
+                id="company_region"
+                value={newDetails.company_region}
+                onChange={(e) => setNewDetails(prev => ({ ...prev, company_region: e.target.value }))}
+                placeholder="Region"
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="total_workers" className="text-xs">Total Workers</Label>
+              <Input
+                id="total_workers"
+                type="number"
+                value={newDetails.total_workers}
+                onChange={(e) => setNewDetails(prev => ({ ...prev, total_workers: e.target.value }))}
+                placeholder="Number of workers"
+                className="h-9"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Food Restriction */}
+      <div className="space-y-2">
+        <Label htmlFor="food_restriction" className="text-xs">Food Restriction/Allergies</Label>
+        <Input
+          id="food_restriction"
+          value={newDetails.food_restriction}
+          onChange={(e) => setNewDetails(prev => ({ ...prev, food_restriction: e.target.value }))}
+          placeholder="Any food restrictions or allergies"
+          className="h-9"
+        />
+      </div>
+
+      {/* Save Button */}
+      <div className="flex justify-end gap-2 pt-2">
+        <Button
+          variant="outline"
+          onClick={() => setIsEditingDetails(false)}
+          disabled={updatingDetails}
+        >
+          Cancel
+        </Button>
+        <Button 
+          onClick={handleSavePersonalDetails} 
+          disabled={updatingDetails}
+        >
+          {updatingDetails ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            'Save Changes'
+          )}
+        </Button>
+      </div>
+    </div>
+  ) : (
+    /* VIEW MODE - Display all data */
+    <div className="p-4 space-y-4">
+      {/* Full Name Display */}
+      <div className="pb-3 border-b">
+        <div className="text-xs text-muted-foreground mb-1">Full Name</div>
+        <div className="font-semibold text-base">
+          {[
+            trainee?.courtesy_title,
+            trainee?.first_name,
+            trainee?.middle_initial && trainee?.middle_initial + '.',
+            trainee?.last_name,
+            trainee?.suffix
+          ].filter(Boolean).join(' ') || 'N/A'}
+        </div>
+      </div>
+
+      {/* Basic Information Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 text-sm">
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Gender</div>
+          <div className="font-medium">{trainee?.gender || 'N/A'}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Age</div>
+          <div className="font-medium">{trainee?.age || 'N/A'}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Employment Status</div>
+          <div className="font-medium">{trainee?.employment_status || 'N/A'}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Email</div>
+          <div className="font-medium text-xs break-all">{trainee?.email || 'N/A'}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Phone Number</div>
+          <div className="font-medium">{trainee?.phone_number || 'N/A'}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">Food Restriction</div>
+          <div className="font-medium">{trainee?.food_restriction || 'None'}</div>
+        </div>
+      </div>
+
+      {/* Student Information (if applicable) */}
+      {trainee?.employment_status === "Unemployed" && trainee?.is_student && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded">
+          <div className="text-xs text-muted-foreground mb-1">Student Information</div>
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-blue-600" />
+            <span className="font-medium text-sm">Currently a Student</span>
+          </div>
+          {trainee?.school_name && (
+            <div className="mt-2">
+              <div className="text-xs text-muted-foreground">School/University</div>
+              <div className="font-medium text-sm">{trainee.school_name}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Company Information (if employed) */}
+      {trainee?.employment_status === "Employed" && (
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded space-y-3">
+          <div className="font-semibold text-sm flex items-center gap-2">
+            <Briefcase className="h-4 w-4" />
+            Company Information
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Company Name</div>
+              <div className="font-medium">{trainee?.company_name || 'N/A'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Position</div>
+              <div className="font-medium">{trainee?.company_position || 'N/A'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Industry</div>
+              <div className="font-medium">{trainee?.company_industry || 'N/A'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Company Email</div>
+              <div className="font-medium text-xs break-all">{trainee?.company_email || 'N/A'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Landline</div>
+              <div className="font-medium">{trainee?.company_landline || 'N/A'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Company City</div>
+              <div className="font-medium">{trainee?.company_city || 'N/A'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Company Region</div>
+              <div className="font-medium">{trainee?.company_region || 'N/A'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground mb-1">Total Workers</div>
+              <div className="font-medium">{trainee?.total_workers || 'N/A'}</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )}
+</section>
                 {/* Mailing Address Section */}
                 <section className="border rounded overflow-hidden">
                   <div className="flex justify-between items-center font-bold px-4 py-2">
