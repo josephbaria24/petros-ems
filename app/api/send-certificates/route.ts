@@ -66,10 +66,10 @@ function generateCertificateEmailHTML(
           </div>
           <p>Your official certificate is attached as a PDF.</p>
           <p><strong>Note:</strong> Keep this certificate for your professional records.</p>
-          <p>Thank you for choosing Petrosphere Training Center!</p>
+          <p>Thank you for choosing Petrosphere Incorporated!</p>
         </div>
         <div class="footer">
-          <p>© ${new Date().getFullYear()} Petrosphere Training Center. All rights reserved.</p>
+          <p>© ${new Date().getFullYear()} Petrosphere Incorporated. All rights reserved.</p>
         </div>
       </div>
     </body>
@@ -279,7 +279,7 @@ export async function POST(req: NextRequest) {
 
             if (!emailSubject || !emailMessage) {
               // Fallback to default
-              emailSubject = `Your ${courseData.name} Certificate - Petrosphere Training Center`;
+              emailSubject = `Your ${courseData.name} Certificate - Petrosphere Incorporated`;
               emailMessage = generateCertificateEmailHTML(
                 trainee,
                 courseData.name,

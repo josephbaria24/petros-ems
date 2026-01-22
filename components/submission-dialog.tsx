@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { ImageCropDialog } from '@/components/image-crop-dialog';
 import {
   Dialog,
   DialogContent,
@@ -82,6 +83,10 @@ export function SubmissionDialog({
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [isEditingAddress, setIsEditingAddress] = useState(false);
 
+
+  const [show2x2CropDialog, setShow2x2CropDialog] = useState(false); 
+  const [showIdCropDialog, setShowIdCropDialog] = useState(false);
+
   // Add these new state variables after the existing ones (around line 85)
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
   const [applyingDiscount, setApplyingDiscount] = useState(false);
@@ -157,6 +162,10 @@ useEffect(() => {
   const [show2x2ViewModal, setShow2x2ViewModal] = useState(false);
   const [showIdViewModal, setShowIdViewModal] = useState(false);
   const [sendingFollowUp, setSendingFollowUp] = useState(false);
+
+
+  const [cropExisting2x2, setCropExisting2x2] = useState(false);
+const [cropExistingId, setCropExistingId] = useState(false);
 
   const [newAddress, setNewAddress] = useState({
     mailing_street: trainee?.mailing_street || "",
@@ -1294,77 +1303,146 @@ const handleSavePersonalDetails = async () => {
       }
     };
 
-const handleUpdate2x2Photo = async () => {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/*";
-  input.onchange = async (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-
-    setUpdatingPhoto(true);
-    try {
-      const formData = new FormData();
-      formData.append("image", file);
-
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
-
-      if (res.ok) {
-        await supabase
-          .from("trainings")
-          .update({ picture_2x2_url: data.url })
-          .eq("id", trainee.id);
-        alert("2x2 photo updated!");
-        window.location.reload();
-      } else {
-        alert("Upload failed.");
-      }
-    } catch (error) {
-      console.error("Error uploading photo:", error);
-      alert("Upload failed.");
-    } finally {
-      setUpdatingPhoto(false);
-    }
-  };
-  input.click();
+const handleUpdate2x2Photo = () => {
+  const shouldReplace = window.confirm(
+    '📷 Update 2x2 Photo\n\n' +
+    'Click OK to REPLACE with a new image\n' +
+    'Click Cancel to CROP the current image'
+  );
+  
+  if (shouldReplace) {
+    // Replace with new image
+    setCropExisting2x2(false);
+    setShow2x2CropDialog(true);
+  } else {
+    // Crop existing image
+    setCropExisting2x2(true);
+    setShow2x2CropDialog(true);
+  }
 };
 
-const handleUpdateIdPhoto = async () => {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/*";
-  input.onchange = async (e) => {
-    const file = (e.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-
-    setUpdatingPhoto(true);
-    try {
-      const formData = new FormData();
-      formData.append("image", file);
-
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
-
-      if (res.ok) {
-        await supabase
-          .from("trainings")
-          .update({ id_picture_url: data.url })
-          .eq("id", trainee.id);
-        alert("ID photo updated!");
-        window.location.reload();
-      } else {
-        alert("Upload failed.");
-      }
-    } catch (error) {
-      console.error("Error uploading photo:", error);
-      alert("Upload failed.");
-    } finally {
-      setUpdatingPhoto(false);
-    }
-  };
-  input.click();
+const handleUpdateIdPhoto = () => {
+  const shouldReplace = window.confirm(
+    '🪪 Update ID Photo\n\n' +
+    'Click OK to REPLACE with a new image\n' +
+    'Click Cancel to CROP the current image'
+  );
+  
+  if (shouldReplace) {
+    // Replace with new image
+    setCropExistingId(false);
+    setShowIdCropDialog(true);
+  } else {
+    // Crop existing image
+    setCropExistingId(true);
+    setShowIdCropDialog(true);
+  }
 };
+
+const handleSave2x2Photo = async (croppedUrl: string, originalUrl: string) => {
+  setUpdatingPhoto(true);
+  try {
+    const { error } = await supabase
+      .from('trainings')
+      .update({
+        picture_2x2_url: croppedUrl,
+        picture_2x2_original: originalUrl,
+      })
+      .eq('id', trainee.id);
+
+    if (error) throw error;
+    alert('2x2 photo updated successfully!');
+    window.location.reload();
+  } catch (error) {
+    console.error('Error updating 2x2 photo:', error);
+    alert('Failed to update photo.');
+  } finally {
+    setUpdatingPhoto(false);
+  }
+};
+
+const handleSaveIdPhoto = async (croppedUrl: string, originalUrl: string) => {
+  setUpdatingPhoto(true);
+  try {
+    const { error } = await supabase
+      .from('trainings')
+      .update({
+        id_picture_url: croppedUrl,
+        id_picture_original: originalUrl,
+      })
+      .eq('id', trainee.id);
+
+    if (error) throw error;
+    alert('ID photo updated successfully!');
+    window.location.reload();
+  } catch (error) {
+    console.error('Error updating ID photo:', error);
+    alert('Failed to update photo.');
+  } finally {
+    setUpdatingPhoto(false);
+  }
+};
+
+const handleRestore2x2Original = async () => {
+  if (!trainee.picture_2x2_original) {
+    alert('No original photo backup found.');
+    return;
+  }
+
+  const confirm = window.confirm(
+    'Restore original 2x2 photo? This will replace the current version.'
+  );
+
+  if (!confirm) return;
+
+  setUpdatingPhoto(true);
+  try {
+    const { error } = await supabase
+      .from('trainings')
+      .update({ picture_2x2_url: trainee.picture_2x2_original })
+      .eq('id', trainee.id);
+
+    if (error) throw error;
+    alert('Original 2x2 photo restored!');
+    window.location.reload();
+  } catch (error) {
+    console.error('Error:', error);
+    alert('Failed to restore.');
+  } finally {
+    setUpdatingPhoto(false);
+  }
+};
+
+const handleRestoreIdOriginal = async () => {
+  if (!trainee.id_picture_original) {
+    alert('No original ID photo backup found.');
+    return;
+  }
+
+  const confirm = window.confirm(
+    'Restore original ID photo? This will replace the current version.'
+  );
+
+  if (!confirm) return;
+
+  setUpdatingPhoto(true);
+  try {
+    const { error } = await supabase
+      .from('trainings')
+      .update({ id_picture_url: trainee.id_picture_original })
+      .eq('id', trainee.id);
+
+    if (error) throw error;
+    alert('Original ID photo restored!');
+    window.location.reload();
+  } catch (error) {
+    console.error('Error:', error);
+    alert('Failed to restore.');
+  } finally {
+    setUpdatingPhoto(false);
+  }
+};
+
 
   return (
     <>
@@ -1689,17 +1767,17 @@ const handleUpdateIdPhoto = async () => {
               <div className="space-y-4">
                 {/* Personal Details Section */}
                 {/* Personal Details Section - COMPLETE VERSION */}
-<section className="border rounded overflow-hidden">
-  <div className="flex justify-between items-center font-bold px-4 py-2 bg-slate-100">
-    Personal Details
-    <Button 
-      size="sm" 
-      variant="ghost" 
-      onClick={() => setIsEditingDetails(!isEditingDetails)}
-    >
-      <Edit className="h-4 w-4" />
-    </Button>
-  </div>
+            <section className="border rounded overflow-hidden">
+              <div className="flex justify-between items-center font-bold px-4 py-2 bg-card">
+                Personal Details
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  onClick={() => setIsEditingDetails(!isEditingDetails)}
+                >
+                  <Edit className="h-4 w-4" />
+                </Button>
+              </div>
   
   {isEditingDetails ? (
     <div className="p-4 space-y-4">
@@ -2088,7 +2166,7 @@ const handleUpdateIdPhoto = async () => {
 </section>
                 {/* Mailing Address Section */}
                 <section className="border rounded overflow-hidden">
-                  <div className="flex justify-between items-center font-bold px-4 py-2">
+                  <div className="flex justify-between items-center font-bold px-4 py-2 bg-card">
                     Mailing Address Details
                     <Button size="sm" variant="ghost" onClick={() => setIsEditingAddress(!isEditingAddress)}>
                       <Edit/>
@@ -3190,6 +3268,23 @@ const handleUpdateIdPhoto = async () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      {/* Image Crop Dialogs */}
+      {/* Image Crop Dialogs */}
+      <ImageCropDialog
+        open={show2x2CropDialog}
+        onOpenChange={setShow2x2CropDialog}
+        imageType="2x2"
+        onSave={handleSave2x2Photo}
+        existingImageUrl={cropExisting2x2 ? trainee.picture_2x2_url : undefined}
+      />
+
+      <ImageCropDialog
+        open={showIdCropDialog}
+        onOpenChange={setShowIdCropDialog}
+        imageType="id"
+        onSave={handleSaveIdPhoto}
+        existingImageUrl={cropExistingId ? trainee.id_picture_url : undefined}
+      />
     </>
   );
 }

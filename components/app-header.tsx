@@ -47,14 +47,14 @@ export function AppHeader() {
       }
     }
   
-    const fetchNotifications = async () => {
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("id, title, read, created_at, trainee_name, photo_url")
-        .order("created_at", { ascending: false })
-  
-      if (!error) setNotifications(data || [])
-    }
+  const fetchNotifications = async () => {
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("id, title, read, created_at, trainee_name, photo_url, schedule_info, training_id")
+    .order("created_at", { ascending: false })
+
+  if (!error) setNotifications(data || [])
+}
   
     // 🚀 Real-time subscription
     const channel = supabase
@@ -153,6 +153,8 @@ export function AppHeader() {
     .substring(0, 2)
     .toUpperCase()
 
+
+    
   return (
     <header className="sticky top-0 z-50 flex h-16 items-center border-b-4 border-[#FFCC00] justify-between border-0 shadow-md bg-[#1A1D66] px-6">
       <div className="container mx-auto flex items-center gap-4 px-4 py-4 sm:py-5">
@@ -210,41 +212,77 @@ export function AppHeader() {
             </div>
             <DropdownMenuSeparator />
             {notifications.length === 0 ? (
-              <DropdownMenuItem disabled>No notifications</DropdownMenuItem>
-            ) : (
-              notifications.map((note) => (
-                <DropdownMenuItem
-                  key={note.id}
-                  onClick={() => markAsRead(note.id)}
-                  className={`flex items-start space-x-3 cursor-pointer py-3 ${
-                    !note.read ? "bg-muted/50" : ""
-                  }`}
-                >
-                  <Avatar className="h-10 w-10 flex-shrink-0">
-                    <AvatarImage src={note.photo_url || "/placeholder.svg"} alt={note.trainee_name || "User"} />
-                    <AvatarFallback>
-                      {note.trainee_name
-                        ?.split(" ")
-                        .map((n: string) => n[0])
-                        .join("")
-                        .substring(0, 2)
-                        .toUpperCase() || "?"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col flex-1 min-w-0">
-                    <p className={`text-sm ${!note.read ? "font-bold" : "text-muted-foreground"}`}>
-                      {note.trainee_name || "Unknown"}
-                    </p>
-                    <p className={`text-xs ${!note.read ? "font-semibold" : "text-muted-foreground"}`}>
-                      {note.title}
-                    </p>
-                  </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
-                    {formatTimeAgo(note.created_at)}
-                  </span>
-                </DropdownMenuItem>
-              ))
-            )}
+  <DropdownMenuItem disabled>No notifications</DropdownMenuItem>
+) : (
+  notifications.map((note) => {
+    const formatScheduleDate = () => {
+      if (!note.schedule_info?.dates) return "";
+      
+      const scheduleType = note.schedule_info.schedule_type;
+      const dates = note.schedule_info.dates;
+      
+      if (scheduleType === "regular" && dates.length > 0) {
+        const start = new Date(dates[0].start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const end = new Date(dates[0].end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        return `${start} - ${end}`;
+      } else if (scheduleType === "staggered" && dates.length > 0) {
+        return dates.map((d: any) => 
+          new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        ).join(", ");
+      }
+      return "";
+    };
+
+    const handleNotificationClick = () => {
+      markAsRead(note.id);
+      
+      if (note.schedule_info?.schedule_id && note.training_id) {
+        // Navigate to submissions page with highlight parameter
+        router.push(
+          `/submissions?scheduleId=${note.schedule_info.schedule_id}&highlight=${note.training_id}`
+        );
+      }
+    };
+
+    return (
+      <DropdownMenuItem
+        key={note.id}
+        onClick={handleNotificationClick}
+        className={`flex items-start space-x-3 cursor-pointer py-3 ${
+          !note.read ? "bg-muted/50" : ""
+        }`}
+      >
+        <Avatar className="h-10 w-10 flex-shrink-0">
+          <AvatarImage src={note.photo_url || "/placeholder.svg"} alt={note.trainee_name || "User"} />
+          <AvatarFallback>
+            {note.trainee_name
+              ?.split(" ")
+              .map((n: string) => n[0])
+              .join("")
+              .substring(0, 2)
+              .toUpperCase() || "?"}
+          </AvatarFallback>
+        </Avatar>
+        <div className="flex flex-col flex-1 min-w-0">
+          <p className={`text-sm ${!note.read ? "font-bold" : "text-muted-foreground"}`}>
+            {note.trainee_name || "Unknown"}
+          </p>
+          <p className={`text-xs ${!note.read ? "font-semibold" : "text-muted-foreground"}`}>
+            {note.title}
+          </p>
+          {formatScheduleDate() && (
+            <p className="text-xs text-blue-600 mt-0.5">
+              📅 {formatScheduleDate()}
+            </p>
+          )}
+        </div>
+        <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
+          {formatTimeAgo(note.created_at)}
+        </span>
+      </DropdownMenuItem>
+    );
+  })
+)}
           </DropdownMenuContent>
         </DropdownMenu>
 

@@ -401,7 +401,7 @@ if (trainee.schedule_id) {
 
     // Add metadata
     pdfDoc.setTitle(`${isIDTemplate ? 'ID Card' : 'Certificate'} - ${trainee.first_name} ${trainee.last_name}`);
-    pdfDoc.setAuthor("Petrosphere Training Center");
+    pdfDoc.setAuthor("Petrosphere Incorporated");
     pdfDoc.setSubject(`${courseName} ${isIDTemplate ? 'ID Card' : 'Certificate of ' + template.template_type}`);
     pdfDoc.setCreator("Petrosphere Training Management System");
     pdfDoc.setProducer("Petrosphere Training Management System");

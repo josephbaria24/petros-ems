@@ -365,6 +365,8 @@ const fetchTrainees = async () => {
   }
 };
 
+
+
   useEffect(() => {
     fetchTrainees();
   }, [scheduleId]);
@@ -388,6 +390,8 @@ const handleView = (trainee: any) => {
     setDeclineDialogOpen(true)
   }
 
+
+  
 const handleDialogClose = async (open: boolean) => {
   setDialogOpen(open);
   
@@ -458,6 +462,8 @@ const handleDialogClose = async (open: boolean) => {
     }
   }
 };
+
+
 
 
 const handleDeleteTrainee = async () => {
@@ -535,6 +541,29 @@ const handleCancelDelete = () => {
   setTraineeToDelete(null);
   setDeleteConfirmText("");
 };
+
+
+const highlightId = searchParams.get("highlight")
+const [highlightedRow, setHighlightedRow] = useState<string | null>(null)
+
+useEffect(() => {
+  if (highlightId && trainees.length > 0) {
+    setHighlightedRow(highlightId);
+    
+    // Scroll to highlighted row
+    setTimeout(() => {
+      const element = document.getElementById(`trainee-row-${highlightId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+    
+    // Remove highlight after 2 seconds
+    setTimeout(() => {
+      setHighlightedRow(null);
+    }, 2000);
+  }
+}, [highlightId, trainees]);
 
 
 const updateStatus = async (status: string) => {
@@ -1091,11 +1120,16 @@ const handleBulkMoveSchedule = async () => {
         ) : (
           // Actual data
           filteredTrainees.map((trainee, index) => (
-            <TableRow
-              key={trainee.id}
-              className={bulkMode ? "" : "cursor-pointer"}
-              onClick={() => !bulkMode && handleView(trainee)}
-            >
+           <TableRow
+  id={`trainee-row-${trainee.id}`}
+  key={trainee.id}
+  className={`
+    ${bulkMode ? "" : "cursor-pointer"} 
+    ${highlightedRow === trainee.id ? "bg-yellow-100 dark:bg-yellow-900/20 animate-pulse" : ""}
+    transition-colors duration-300
+  `}
+  onClick={() => !bulkMode && handleView(trainee)}
+>
               {bulkMode && (
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <Checkbox

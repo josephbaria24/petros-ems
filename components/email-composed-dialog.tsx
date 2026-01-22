@@ -63,7 +63,7 @@ function plainTextToHtml(text: string): string {
           ${text.split('\n').map(line => `<p>${line || '&nbsp;'}</p>`).join('')}
         </div>
         <div class="footer">
-          <p>© ${new Date().getFullYear()} Petrosphere Training Center. All rights reserved.</p>
+          <p>© ${new Date().getFullYear()} Petrosphere Incorporated. All rights reserved.</p>
         </div>
       </div>
     </body>
@@ -298,7 +298,7 @@ Congratulations on successfully completing your training!
 
 Your certificate is attached to this email.
 
-Thank you for choosing Petrosphere Training Center!"
+Thank you for choosing Petrosphere Incorporated!"
                 rows={12}
                 className="text-sm"
               />

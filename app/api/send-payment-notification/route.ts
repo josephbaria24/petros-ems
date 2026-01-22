@@ -76,8 +76,8 @@ export async function POST(req: NextRequest) {
                 <div class="amount">₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</div>
                 <p>Your payment has been successfully processed and recorded in our system.</p>
                 <p>If you have any questions or concerns regarding this payment, please don't hesitate to contact training@petrosphere.com.ph</p>
-                <p>Thank you for choosing Petrosphere Training Center!</p>
-                <p>Best regards,<br><strong>Petrosphere Training Center</strong></p>
+                <p>Thank you for choosing Petrosphere Incorporated!</p>
+                <p>Best regards,<br><strong>Petrosphere Incorporated</strong></p>
               </div>
               <div class="footer">
                 <p>This is an automated email. Please do not reply to this message.</p>
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             to: traineeEmail,
-            subject: "Payment Confirmation - Petrosphere Training Center",
+            subject: "Payment Confirmation - Petrosphere Incorporated",
             message: confirmationHtml,
           }),
         });
@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             to: traineeEmail,
-            subject: "Online Classroom Access - Petrosphere Training Center",
+            subject: "Online Classroom Access - Petrosphere Incorporated",
             message: classroomHtml,
           }),
         });
