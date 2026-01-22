@@ -11,7 +11,7 @@ interface ImageCropDialogProps {
   onOpenChange: (open: boolean) => void;
   imageType: '2x2' | 'id';
   onSave: (croppedImageUrl: string, originalImageUrl: string) => Promise<void>;
-  existingImageUrl?: string; // Optional: if provided, crop this image instead of uploading new
+  existingImageUrl?: string;
 }
 
 export function ImageCropDialog({ 
@@ -38,11 +38,13 @@ export function ImageCropDialog({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [originalFile, setOriginalFile] = useState<File | null>(null);
 
-  // Load existing image when dialog opens
+  // Load existing image via proxy to avoid CORS issues
   React.useEffect(() => {
     if (open && existingImageUrl) {
-      setImageSrc(existingImageUrl);
-      setOriginalFile(null); // No original file for existing images
+      // Use proxy for external URLs to avoid CORS
+      const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(existingImageUrl)}`;
+      setImageSrc(proxyUrl);
+      setOriginalFile(null);
     } else if (!open) {
       // Reset when closing
       setImageSrc('');
@@ -75,6 +77,7 @@ export function ImageCropDialog({
     reader.readAsDataURL(file);
   };
 
+  // ✅ FIXED: Proper rotation with canvas transformation
   const getCroppedImg = useCallback(
     (image: HTMLImageElement, crop: PixelCrop): Promise<Blob> => {
       const canvas = document.createElement('canvas');
@@ -87,29 +90,55 @@ export function ImageCropDialog({
       const scaleX = image.naturalWidth / image.width;
       const scaleY = image.naturalHeight / image.height;
 
-      canvas.width = crop.width * scaleX;
-      canvas.height = crop.height * scaleY;
+      // ✅ Calculate rotated dimensions
+      const rotRad = (rotation * Math.PI) / 180;
+      const sin = Math.abs(Math.sin(rotRad));
+      const cos = Math.abs(Math.cos(rotRad));
+
+      const cropWidth = crop.width * scaleX;
+      const cropHeight = crop.height * scaleY;
+
+      // Set canvas size based on rotation
+      if (rotation === 90 || rotation === 270) {
+        canvas.width = cropHeight;
+        canvas.height = cropWidth;
+      } else {
+        canvas.width = cropWidth;
+        canvas.height = cropHeight;
+      }
 
       ctx.imageSmoothingQuality = 'high';
 
-      // Apply rotation if needed
-      if (rotation !== 0) {
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.rotate((rotation * Math.PI) / 180);
-        ctx.translate(-canvas.width / 2, -canvas.height / 2);
-      }
+      // ✅ Apply rotation transformation
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(rotRad);
 
-      ctx.drawImage(
-        image,
-        crop.x * scaleX,
-        crop.y * scaleY,
-        crop.width * scaleX,
-        crop.height * scaleY,
-        0,
-        0,
-        canvas.width,
-        canvas.height
-      );
+      // Draw image with proper rotation offset
+      if (rotation === 90 || rotation === 270) {
+        ctx.drawImage(
+          image,
+          crop.x * scaleX,
+          crop.y * scaleY,
+          cropWidth,
+          cropHeight,
+          -cropHeight / 2,
+          -cropWidth / 2,
+          cropHeight,
+          cropWidth
+        );
+      } else {
+        ctx.drawImage(
+          image,
+          crop.x * scaleX,
+          crop.y * scaleY,
+          cropWidth,
+          cropHeight,
+          -cropWidth / 2,
+          -cropHeight / 2,
+          cropWidth,
+          cropHeight
+        );
+      }
 
       return new Promise((resolve, reject) => {
         canvas.toBlob(
@@ -271,7 +300,7 @@ export function ImageCropDialog({
                     onClick={handleRotate}
                   >
                     <RotateCw className="h-4 w-4 mr-2" />
-                    Rotate
+                    Rotate 90°
                   </Button>
 
                   <Button
@@ -298,6 +327,12 @@ export function ImageCropDialog({
                       {Math.round(zoom * 100)}%
                     </span>
                   </div>
+
+                  {rotation > 0 && (
+                    <div className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                      Rotated: {rotation}°
+                    </div>
+                  )}
                 </div>
 
                 {/* Image Crop Area */}
@@ -330,6 +365,7 @@ export function ImageCropDialog({
                     <li>Drag the crop area to adjust position</li>
                     <li>Resize corners to adjust crop size</li>
                     <li>Use zoom slider for precise cropping</li>
+                    <li>Click "Rotate 90°" to rotate the image</li>
                     {!existingImageUrl && <li>Original image will be saved as backup</li>}
                   </ul>
                 </div>
