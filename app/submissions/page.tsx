@@ -93,6 +93,15 @@ const [selectedTargetSchedule, setSelectedTargetSchedule] = useState<string>("")
 const [currentCourseId, setCurrentCourseId] = useState<string>("")
 
 
+const hasPendingReceipt = (trainee: any) => {
+  return trainee.payments?.some(
+    (payment: any) => 
+      payment.receipt_link && 
+      payment.receipt_uploaded_at && // Has been uploaded
+      payment.payment_status === 'pending' // But still pending approval
+  );
+};
+
   const getStatusBadge = (status: string) => {
   const normalized = status?.toLowerCase().trim() || "pending";
   
@@ -949,6 +958,18 @@ const handleBulkMoveSchedule = async () => {
   })
 
   return (
+
+     <>
+    <style jsx>{`
+      @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+      }
+      .blink-dot {
+        animation: blink 1.5s ease-in-out infinite;
+      }
+    `}</style>
+    
     <div className="p-6 space-y-2">
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
@@ -959,8 +980,6 @@ const handleBulkMoveSchedule = async () => {
             </Button>
           </Link>
            {/* ✅ ADD THIS REFRESH BUTTON */}
-   
-    
           <div>
             {courseName && (
               <p className="text-sm text-muted-foreground font-medium">
@@ -970,15 +989,6 @@ const handleBulkMoveSchedule = async () => {
             <h1 className="text-2xl font-bold">Trainee Submissions</h1>
           </div>
         </div>
-         {/* <Button 
-      variant="ghost" 
-      size="sm" 
-      onClick={fetchTrainees}
-      className="gap-2"
-    >
-      <RefreshCw className="h-4 w-4" />
-      Refresh
-    </Button> */}
         
         {bulkMode ? (
           <div className="flex gap-2">
@@ -1072,6 +1082,7 @@ const handleBulkMoveSchedule = async () => {
           <TableHead>Phone</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Photo</TableHead>
+          <TableHead>PVC ID</TableHead>
           {!bulkMode && <TableHead>Actions</TableHead>}
         </TableRow>
       </TableHeader>
@@ -1100,6 +1111,9 @@ const handleBulkMoveSchedule = async () => {
               <TableCell>
                 <Skeleton className="h-10 w-10 rounded-full" />
               </TableCell>
+              <TableCell> {/* ADD THIS */}
+                <Skeleton className="h-6 w-16" />
+              </TableCell>
               {!bulkMode && (
                 <TableCell>
                   <Skeleton className="h-8 w-8" />
@@ -1111,9 +1125,9 @@ const handleBulkMoveSchedule = async () => {
           // Empty state
           <TableRow>
             <TableCell 
-              colSpan={bulkMode ? 6 : 7} 
-              className="text-center py-8 text-muted-foreground"
-            >
+                colSpan={bulkMode ? 7 : 8} 
+                className="text-center py-8 text-muted-foreground"
+              >
               No trainees found
             </TableCell>
           </TableRow>
@@ -1139,7 +1153,17 @@ const handleBulkMoveSchedule = async () => {
                 </TableCell>
               )}
               <TableCell>{index + 1}</TableCell>
-              <TableCell>{trainee.first_name} {trainee.last_name}</TableCell>
+             <TableCell>
+                <div className="flex items-center gap-2">
+                  {hasPendingReceipt(trainee) && (
+                    <div 
+                      className="w-2 h-2 bg-orange-500 rounded-full blink-dot" 
+                      title="Pending receipt approval"
+                    />
+                  )}
+                  <span>{trainee.first_name} {trainee.last_name}</span>
+                </div>
+              </TableCell>
               <TableCell>{trainee.phone_number || "N/A"}</TableCell>
               <TableCell>
                 {getStatusBadge(trainee.status || "Pending")}
@@ -1152,6 +1176,19 @@ const handleBulkMoveSchedule = async () => {
                     {trainee.last_name[0]}
                   </AvatarFallback>
                 </Avatar>
+              </TableCell>
+              <TableCell>
+                {trainee.add_pvc_id ? (
+                  <Badge className="bg-green-100 text-green-800 border border-green-300">
+                    <CheckCircle className="w-3 h-3 mr-1" />
+                    Yes
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-muted-foreground">
+                    <XCircle className="w-3 h-3 mr-1" />
+                    No
+                  </Badge>
+                )}
               </TableCell>
               {!bulkMode && (
                 <TableCell onClick={(e) => e.stopPropagation()}>
@@ -1491,5 +1528,6 @@ const handleBulkMoveSchedule = async () => {
 
 
     </div>
+    </>
   )
 }

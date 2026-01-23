@@ -11,6 +11,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -32,7 +34,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, AlertCircle, CheckCircle2, XCircle, X, Briefcase } from "lucide-react";
+import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, AlertCircle, CheckCircle2, XCircle, X, Briefcase, CreditCard } from "lucide-react";
 import { createClient } from "@/lib/supabase-client";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Checkbox } from "./ui/checkbox";
@@ -84,6 +86,7 @@ export function SubmissionDialog({
   const [isEditingAddress, setIsEditingAddress] = useState(false);
 
 
+
   const [show2x2CropDialog, setShow2x2CropDialog] = useState(false); 
   const [showIdCropDialog, setShowIdCropDialog] = useState(false);
 
@@ -128,6 +131,12 @@ const [newDetails, setNewDetails] = useState({
   is_student: trainee?.is_student || false,
   school_name: trainee?.school_name || "",
 });
+
+
+const [activeTab, setActiveTab] = useState<"info" | "payment">("info");
+useEffect(() => {
+  if (open) setActiveTab("info");
+}, [open]);
 
 
 useEffect(() => {
@@ -892,9 +901,13 @@ const handleApplyDiscount = async () => {
 const handleApprovePayment = async () => {
   if (!selectedPaymentId) return;
 
+  // ✅ FIXED: Calculate with PVC fee included
+  const courseFee = discountApplied !== null ? Number(discountApplied) : getTrainingFee();
+  const pvcFee = trainee.add_pvc_id ? 150 : 0;
+  const totalRequired = courseFee + pvcFee;
+  const remainingBalance = totalRequired - totalPaid;
+
   let finalAmount = 0;
-  const fee = discountApplied ?? Number(trainee.training_fee);
-  const remainingBalance = fee - totalPaid;
 
   if (approveType === 'full') {
     finalAmount = remainingBalance;
@@ -915,20 +928,42 @@ const handleApprovePayment = async () => {
   setSaving(true);
   try {
     const newTotal = totalPaid + finalAmount;
-    const discountedFee = discountApplied ?? Number(trainee.training_fee);
-    // ✅ PVC-aware totals for email + completion logic
-    const courseFee = discountApplied !== null ? Number(discountApplied) : getTrainingFee(); // respects event type fees
-    const pvcFee = trainee.add_pvc_id ? 150 : 0;
-    const totalRequired = courseFee + pvcFee;
+    
+    // ✅ FIXED: Use totalRequired instead of discountedFee
     const remainingBalanceAfter = totalRequired - newTotal;
     const isPaymentComplete = newTotal >= totalRequired;
 
-    
+    // ✅ FIXED: Determine status based on totalRequired (includes PVC)
     let finalStatus = 'completed';
-    if (newTotal >= discountedFee) {
-      finalStatus = isDiscounted ? 'Payment Completed (Discounted)' : 'Payment Completed';
+    let trainingStatus = '';
+    let paymentStatus = '';
+
+    if (newTotal >= totalRequired) {
+      finalStatus = 'completed';
+      trainingStatus = 'Payment Completed';
+      
+      if (isDiscounted && trainee.add_pvc_id) {
+        paymentStatus = 'Payment Completed (Discounted + PVC)';
+      } else if (isDiscounted) {
+        paymentStatus = 'Payment Completed (Discounted)';
+      } else if (trainee.add_pvc_id) {
+        paymentStatus = 'Payment Completed (with PVC)';
+      } else {
+        paymentStatus = 'Payment Completed';
+      }
     } else if (newTotal > 0) {
-      finalStatus = isDiscounted ? 'Partially Paid (Discounted)' : 'Partially Paid';
+      finalStatus = 'pending';
+      trainingStatus = 'Partially Paid';
+      
+      if (isDiscounted && trainee.add_pvc_id) {
+        paymentStatus = 'Partially Paid (Discounted + PVC)';
+      } else if (isDiscounted) {
+        paymentStatus = 'Partially Paid (Discounted)';
+      } else if (trainee.add_pvc_id) {
+        paymentStatus = 'Partially Paid (with PVC)';
+      } else {
+        paymentStatus = 'Partially Paid';
+      }
     }
 
     // Update payment status
@@ -937,6 +972,7 @@ const handleApprovePayment = async () => {
       .update({
         payment_status: finalStatus,
         amount_paid: finalAmount,
+        receipt_uploaded_by: 'admin',
         updated_at: new Date().toISOString(),
       })
       .eq('id', selectedPaymentId);
@@ -948,8 +984,8 @@ const handleApprovePayment = async () => {
       .from('trainings')
       .update({
         amount_paid: newTotal,
-        payment_status: finalStatus,
-        status: newTotal >= discountedFee ? 'Payment Completed' : 'Partially Paid',
+        payment_status: paymentStatus,
+        status: trainingStatus,
       })
       .eq('id', trainee.id);
 
@@ -1096,7 +1132,7 @@ const handleApprovePayment = async () => {
 
                 <div class="info-row">
                   <span class="label">Status:</span>
-                  <span class="value" style="color: #10b981; font-weight: bold;">${finalStatus}</span>
+                  <span class="value" style="color: #10b981; font-weight: bold;">${paymentStatus}</span>
                 </div>
               </div>
               
@@ -1746,97 +1782,149 @@ const handleRestoreIdOriginal = async () => {
     
         //* ✅ VIEW 3: FULL DETAILS VIEW - For Pending Payment, Partially Paid, Payment Completed, etc. */}
         : showFullDetailsView ? (
-          <DialogContent className="w-[70vw] p-0">
-            <ScrollArea className="h-[90vh] p-6 custom-scrollbar">
-              <DialogHeader>
-                <DialogTitle className="text-indigo-900 text-sm">
-                  Submission ID: {trainee?.id}
-                </DialogTitle>
-              </DialogHeader>
+  <DialogContent className="w-[70vw] p-0">
+    <ScrollArea className="h-[90vh] p-6 custom-scrollbar">
+      <DialogHeader>
+        <DialogTitle className="text-indigo-900 text-sm">
+          Submission ID: {trainee?.id}
+        </DialogTitle>
+      </DialogHeader>
 
-              <div className="text-right text-sm text-muted-foreground mb-2">
-                {new Date().toLocaleDateString()}
-              </div>
+      <div className="text-right text-sm text-muted-foreground mb-2">
+        {new Date().toLocaleDateString()}
+      </div>
 
-              {/* Photo Section */}
-              <div className="flex flex-col items-center gap-2 py-4">
-                <div className="flex gap-4 items-start">
-                  <div className="flex flex-col items-center gap-2">
-                    <Label className="text-xs text-muted-foreground">2x2 Photo</Label>
-                    <div className="relative cursor-pointer" onClick={() => setShow2x2ViewModal(true)}>
-                      <div className="border-2 border-primary rounded-lg p-1">
-                        <Avatar className="h-24 w-24">
-                          <AvatarImage src={trainee?.picture_2x2_url} />
-                        </Avatar>
-                      </div>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white shadow"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUpdate2x2Photo();
-                        }}
-                      >
-                        <Edit className="h-3 w-3" />
-                      </Button>
-                    </div>
+     {/* Tabs */}
+<Tabs
+  value={activeTab}
+  onValueChange={(v) => setActiveTab(v as "info" | "payment")}
+  className="w-full"
+>
+  <div className="flex justify-center">
+    <TabsList className="inline-flex w-fit gap-2 mb-4 bg-muted/40 p-1 rounded-xl border">
+      <TabsTrigger
+        value="info"
+        className="
+          flex items-center gap-2 px-4 py-2 rounded-lg
+          text-muted-foreground font-medium
+          data-[state=active]:bg-background
+          data-[state=active]:text-foreground
+          data-[state=active]:shadow-sm
+          data-[state=active]:ring-2
+          data-[state=active]:ring-primary/60
+          data-[state=active]:border
+          data-[state=active]:border-primary/30
+          transition
+        "
+      >
+        <User className="h-4 w-4" />
+        User Info
+      </TabsTrigger>
+
+      <TabsTrigger
+        value="payment"
+        className="
+          flex items-center gap-2 px-4 py-2 rounded-lg
+          text-muted-foreground font-medium
+          data-[state=active]:bg-background
+          data-[state=active]:text-foreground
+          data-[state=active]:shadow-sm
+          data-[state=active]:ring-2
+          data-[state=active]:ring-primary/60
+          data-[state=active]:border
+          data-[state=active]:border-primary/30
+          transition
+        "
+      >
+        <CreditCard className="h-4 w-4" />
+        Payment Details
+      </TabsTrigger>
+    </TabsList>
+  </div>
+
+
+
+        {/* ===================== TAB 1: USER INFO ===================== */}
+        <TabsContent value="info" className="space-y-4">
+          {/* Photo Section */}
+          <div className="flex flex-col items-center gap-2 py-4">
+            <div className="flex gap-4 items-start">
+              <div className="flex flex-col items-center gap-2">
+                <Label className="text-xs text-muted-foreground">2x2 Photo</Label>
+                <div className="relative cursor-pointer" onClick={() => setShow2x2ViewModal(true)}>
+                  <div className="border-2 border-primary rounded-lg p-1">
+                    <Avatar className="h-24 w-24">
+                      <AvatarImage src={trainee?.picture_2x2_url} />
+                    </Avatar>
                   </div>
-
-                  <div className="flex flex-col items-center gap-2">
-                    <Label className="text-xs text-muted-foreground">ID Picture</Label>
-                    <div className="relative cursor-pointer" onClick={() => setShowIdViewModal(true)}>
-                      <div className="border-2 border-primary rounded-lg p-1 w-32 h-24 overflow-hidden">
-                        <img 
-                          src={trainee?.id_picture_url} 
-                          alt="ID" 
-                          className="w-full h-full object-cover rounded"
-                        />
-                      </div>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white shadow"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUpdateIdPhoto();
-                        }}
-                        disabled={updatingPhoto}
-                      >
-                        {updatingPhoto ? (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Edit className="h-3 w-3" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white shadow"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUpdate2x2Photo();
+                    }}
+                  >
+                    <Edit className="h-3 w-3" />
+                  </Button>
                 </div>
-                
-                <span className="font-bold text-indigo-900 text-lg">
-                  {trainee?.first_name} {trainee?.last_name}
-                </span>
-                <span className="text-sm italic text-muted-foreground">
-                  {trainee?.email}
-                </span>
               </div>
 
-              <div className="space-y-4">
-                {/* Personal Details Section */}
-                {/* Personal Details Section - COMPLETE VERSION */}
-            <section className="border rounded overflow-hidden">
-              <div className="flex justify-between items-center font-bold px-4 py-2 bg-card">
-                Personal Details
-                <Button 
-                  size="sm" 
-                  variant="ghost" 
-                  onClick={() => setIsEditingDetails(!isEditingDetails)}
-                >
-                  <Edit className="h-4 w-4" />
-                </Button>
+              <div className="flex flex-col items-center gap-2">
+                <Label className="text-xs text-muted-foreground">ID Picture</Label>
+                <div className="relative cursor-pointer" onClick={() => setShowIdViewModal(true)}>
+                  <div className="border-2 border-primary rounded-lg p-1 w-32 h-24 overflow-hidden">
+                    <img
+                      src={trainee?.id_picture_url}
+                      alt="ID"
+                      className="w-full h-full object-cover rounded"
+                    />
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-white shadow"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUpdateIdPhoto();
+                    }}
+                    disabled={updatingPhoto}
+                  >
+                    {updatingPhoto ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Edit className="h-3 w-3" />
+                    )}
+                  </Button>
+                </div>
               </div>
-  
-  {isEditingDetails ? (
+            </div>
+
+            <span className="font-bold text-indigo-900 text-lg">
+              {trainee?.first_name} {trainee?.last_name}
+            </span>
+            <span className="text-sm italic text-muted-foreground">
+              {trainee?.email}
+            </span>
+          </div>
+
+          {/* Personal Details */}
+          <section className="border rounded overflow-hidden">
+            <div className="flex justify-between items-center font-bold px-4 py-2 bg-card">
+              Personal Details
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setIsEditingDetails(!isEditingDetails)}
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* KEEP YOUR EXISTING Personal Details CONTENT EXACTLY */}
+            {isEditingDetails ? (
+
     <div className="p-4 space-y-4">
       {/* Name Section */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -2221,83 +2309,88 @@ const handleRestoreIdOriginal = async () => {
     </div>
   )}
 </section>
-                {/* Mailing Address Section */}
-                <section className="border rounded overflow-hidden">
-                  <div className="flex justify-between items-center font-bold px-4 py-2 bg-card">
-                    Mailing Address Details
-                    <Button size="sm" variant="ghost" onClick={() => setIsEditingAddress(!isEditingAddress)}>
-                      <Edit/>
-                    </Button>
-                  </div>
-                  <div className="p-4 text-sm">
-                    {isEditingAddress ? (
+                {/* Mailing Address */}
+          <section className="border rounded overflow-hidden">
+            <div className="flex justify-between items-center font-bold px-4 py-2 bg-card">
+              Mailing Address Details
+              <Button size="sm" variant="ghost" onClick={() => setIsEditingAddress(!isEditingAddress)}>
+                <Edit />
+              </Button>
+            </div>
+            <div className="p-4 text-sm">
+              {isEditingAddress ? (
+                <>
+                  <Label>Street</Label>
+                  <Input value={newAddress.mailing_street} onChange={e => setNewAddress(prev => ({ ...prev, mailing_street: e.target.value }))} />
+                  <Label className="mt-2">City</Label>
+                  <Input value={newAddress.mailing_city} onChange={e => setNewAddress(prev => ({ ...prev, mailing_city: e.target.value }))} />
+                  <Label className="mt-2">Province</Label>
+                  <Input value={newAddress.mailing_province} onChange={e => setNewAddress(prev => ({ ...prev, mailing_province: e.target.value }))} />
+                  <Button onClick={handleSaveAddress} className="mt-2" disabled={updatingAddress}>
+                    {updatingAddress ? (
                       <>
-                        <Label>Street</Label>
-                        <Input value={newAddress.mailing_street} onChange={e => setNewAddress(prev => ({ ...prev, mailing_street: e.target.value }))} />
-                        <Label className="mt-2">City</Label>
-                        <Input value={newAddress.mailing_city} onChange={e => setNewAddress(prev => ({ ...prev, mailing_city: e.target.value }))} />
-                        <Label className="mt-2">Province</Label>
-                        <Input value={newAddress.mailing_province} onChange={e => setNewAddress(prev => ({ ...prev, mailing_province: e.target.value }))} />
-                        <Button 
-                          onClick={handleSaveAddress} 
-                          className="mt-2"
-                          disabled={updatingAddress}
-                        >
-                          {updatingAddress ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Saving...
-                            </>
-                          ) : (
-                            'Save'
-                          )}
-                        </Button>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
                       </>
                     ) : (
-                      <>
-                        <strong>Address</strong>
-                        <div>{[trainee?.mailing_street, trainee?.mailing_city, trainee?.mailing_province].filter(Boolean).join(", ") || "N/A"}</div>
-                      </>
+                      "Save"
                     )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <strong>Address</strong>
+                  <div>
+                    {[trainee?.mailing_street, trainee?.mailing_city, trainee?.mailing_province]
+                      .filter(Boolean)
+                      .join(", ") || "N/A"}
                   </div>
-                </section>
-                {/* Payment and Payment History Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                </>
+              )}
+            </div>
+          </section>
+        </TabsContent>
 
-                 {/* Payment Details Section */}
-                  <section className="border rounded overflow-hidden">
-                    <div className="font-bold px-4 py-2 bg-green-100 dark:text-blue-950 rounded border border-green-300">
-                      Payment Details
+                {/* ===================== TAB 2: PAYMENT ===================== */}
+        <TabsContent value="payment" className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Payment Details Section */}
+            <section className="border rounded overflow-hidden">
+              <div className="font-bold px-4 py-2 bg-green-100 dark:text-blue-950 rounded border border-green-300">
+                Payment Details
+              </div>
+
+              <div className="p-4 text-sm space-y-2">
+                <div className="flex justify-between">
+                  <span>Training Fee ({getEventTypeLabel()}):</span>
+                  <span>{formatCurrency(getTrainingFee())}</span>
+                </div>
+
+                {/* ✅ FIXED JSX COMMENT */}
+                {/* PVC ID Add-on Display */}
+                {trainee.add_pvc_id && (
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-300 rounded-lg space-y-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                      <span className="font-semibold text-blue-800 dark:text-blue-200">
+                        Physical PVC ID Requested
+                      </span>
                     </div>
-                   <div className="p-4 text-sm space-y-2">
-                   <div className="flex justify-between">
-                      <span>Training Fee ({getEventTypeLabel()}):</span>
-                      <span>{formatCurrency(getTrainingFee())}</span>
+                    <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+                      <span>PVC ID Fee:</span>
+                      <span className="font-semibold">₱150.00</span>
                     </div>
-                      
-                      {/*useEffect(() => {PVC ID Add-on Display */}
-                      {trainee.add_pvc_id && (
-                        <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-300 rounded-lg space-y-2">
-                          <div className="flex items-center gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-blue-600" />
-                            <span className="font-semibold text-blue-800 dark:text-blue-200">
-                              Physical PVC ID Requested
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
-                            <span>PVC ID Fee:</span>
-                            <span className="font-semibold">₱150.00</span>
-                          </div>
-                          <p className="text-xs text-blue-600 dark:text-blue-400">
-                            Client opted for Physical PVC ID card in addition to Digital ID
-                          </p>
-                        </div>
-                      )}
-                      
-                      <div className="flex justify-between">
-                        <span>Payment Method</span>
-                        <span>{trainee?.payment_method || "N/A"}</span>
-                      </div>
+                    <p className="text-xs text-blue-600 dark:text-blue-400">
+                      Client opted for Physical PVC ID card in addition to Digital ID
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex justify-between">
+                  <span>Payment Method</span>
+                  <span>{trainee?.payment_method || "N/A"}</span>
+                </div>
+
                       
                      {/* Voucher Info Banner - Show if voucher was applied */}
                       {trainee.has_discount && voucherInfo && (
@@ -2619,90 +2712,90 @@ const handleRestoreIdOriginal = async () => {
                         );
                       })()}
                                                 
-                        {/* Updated Total Calculation with PVC */}
-                        <div className="border-t pt-2 mt-2 space-y-1">
-                          <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>Course Fee:</span>
-                            <span>{formatCurrency(discountApplied !== null ? discountApplied : (trainee?.training_fee || 0))}</span>
-                          </div>
-                          {trainee.add_pvc_id && (
-                            <div className="flex justify-between text-xs text-muted-foreground">
-                              <span>+ PVC ID:</span>
-                              <span>₱150.00</span>
-                            </div>
-                          )}
-                          <div className="flex justify-between font-semibold text-base text-gray-900 dark:text-gray-100 pt-1 border-t">
-                            <span>Total Required:</span>
-                            <span>{formatCurrency((discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) + pvcIdFee)}</span>
-                          </div>
-                        </div>
-                        
-                        <div className="flex justify-between font-semibold text-green-700">
-                          <span>Total Amount Paid</span>
-                          <span>{formatCurrency(totalPaid)}</span>
-                        </div>
-                        
-                        {/* ✅ FIXED: Remaining Balance Calculation - No more NaN and conditionally hidden */}
-                          {(() => {
-                            const courseFee = discountApplied !== null ? Number(discountApplied) : Number(trainee?.training_fee || 0);
-                            const pvcFee = trainee.add_pvc_id ? 150 : 0;
-                            const requiredFee = courseFee + pvcFee;
-                            const currentPaid = Number(totalPaid) || 0;
-                            const balance = requiredFee - currentPaid;
-                            
-                            // Don't show if balance is 0 or less than 1 peso (accounting for rounding)
-                            if (Math.abs(balance) < 1) {
-                              return null;
-                            }
-                            
-                            if (balance < 0) {
-                              return (
-                                <div className="flex justify-between font-semibold text-blue-700">
-                                  <span>Exceeded Amount</span>
-                                  <span>{formatCurrency(Math.abs(balance))}</span>
-                                </div>
-                              );
-                            } else {
-                              return (
-                                <div className="flex justify-between font-semibold text-red-700">
-                                  <span>Remaining Balance</span>
-                                  <span>{formatCurrency(balance)}</span>
-                                </div>
-                              );
-                            }
-                          })()}
-                      </div>
-                    </section>
-
-                  {/* Payment History Section */}
-                  <section className="border rounded overflow-hidden">
-                    <div className="bg-yellow-100 dark:text-blue-950 rounded border border-yellow-300 font-bold px-4 py-2 flex justify-between items-center">
-                      <span>Payment History</span>
-                      {(!hasPayments || !isCounterPayment) && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 w-8 p-0"
-                          onClick={!isCounterPayment ? handleFileSelect : () => setShowPaidConfirm(true)}
-                          disabled={uploading}
-                        >
-                          {uploading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Plus className="h-4 w-4" />
-                          )}
-                        </Button>
+                       {/* Totals */}
+                <div className="border-t pt-2 mt-2 space-y-1">
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>Course Fee:</span>
+                    <span>
+                      {formatCurrency(
+                        (discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) as number
                       )}
-                      {hasPayments && isCounterPayment && (
-                        <Button
-                          size="sm"
-                          variant="default"
-                          onClick={() => setShowPaidConfirm(true)}
-                        >
-                          Add Payment
-                        </Button>
-                      )}
+                    </span>
+                  </div>
+                  {trainee.add_pvc_id && (
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>+ PVC ID:</span>
+                      <span>₱150.00</span>
                     </div>
+                  )}
+                  <div className="flex justify-between font-semibold text-base text-gray-900 dark:text-gray-100 pt-1 border-t">
+                    <span>Total Required:</span>
+                    <span>
+                      {formatCurrency(
+                        ((discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) as number) + pvcIdFee
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex justify-between font-semibold text-green-700">
+                  <span>Total Amount Paid</span>
+                  <span>{formatCurrency(totalPaid)}</span>
+                </div>
+
+                {(() => {
+                  const courseFee = discountApplied !== null ? Number(discountApplied) : Number(trainee?.training_fee || 0);
+                  const pvcFee = trainee.add_pvc_id ? 150 : 0;
+                  const requiredFee = courseFee + pvcFee;
+                  const currentPaid = Number(totalPaid) || 0;
+                  const balance = requiredFee - currentPaid;
+
+                  if (Math.abs(balance) < 1) return null;
+
+                  if (balance < 0) {
+                    return (
+                      <div className="flex justify-between font-semibold text-blue-700">
+                        <span>Exceeded Amount</span>
+                        <span>{formatCurrency(Math.abs(balance))}</span>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="flex justify-between font-semibold text-red-700">
+                      <span>Remaining Balance</span>
+                      <span>{formatCurrency(balance)}</span>
+                    </div>
+                  );
+                })()}
+              </div>
+            </section>
+
+            {/* Payment History Section */}
+            <section className="border rounded overflow-hidden">
+              <div className="bg-yellow-100 dark:text-blue-950 rounded border border-yellow-300 font-bold px-4 py-2 flex justify-between items-center">
+                <span>Payment History</span>
+                {(!hasPayments || !isCounterPayment) && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0"
+                    onClick={!isCounterPayment ? handleFileSelect : () => setShowPaidConfirm(true)}
+                    disabled={uploading}
+                  >
+                    {uploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Plus className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
+                {hasPayments && isCounterPayment && (
+                  <Button size="sm" variant="default" onClick={() => setShowPaidConfirm(true)}>
+                    Add Payment
+                  </Button>
+                )}
+              </div>
                     <div className="p-4 text-sm">
                       {!hasPayments ? (
                         <p className="italic text-muted-foreground">
@@ -2869,42 +2962,38 @@ const handleRestoreIdOriginal = async () => {
                     </div>
                   </section>
                 </div>
-              </div>
+               </TabsContent>
+      </Tabs>
 
-              {isPending && (
-                <DialogFooter className="pt-4">
-                  <Button 
-                    variant="destructive" 
-                    onClick={onDecline}
-                    disabled={saving}
-                  >
-                    {saving ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      'Decline'
-                    )}
-                  </Button>
-                  <Button 
-                    onClick={onVerify}
-                    disabled={saving}
-                  >
-                    {saving ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Verifying...
-                      </>
-                    ) : (
-                      'Verify'
-                    )}
-                  </Button>
-                </DialogFooter>
-              )}
-            </ScrollArea>
-          </DialogContent>
-        ) : null}
+             {isPending && (
+        <DialogFooter className="pt-4">
+          <Button variant="destructive" onClick={onDecline} disabled={saving}>
+            {saving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              "Decline"
+            )}
+          </Button>
+          <Button onClick={onVerify} disabled={saving}>
+            {saving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Verifying...
+              </>
+            ) : (
+              "Verify"
+            )}
+          </Button>
+        </DialogFooter>
+      )}
+    </ScrollArea>
+  </DialogContent>
+) : null}
+      
+      
       </Dialog>
       {/* Supporting Dialogs - Photo Viewers */}
       
