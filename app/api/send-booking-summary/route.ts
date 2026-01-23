@@ -42,8 +42,7 @@ export async function POST(req: Request) {
       paymentInfo,
     } = await req.json();
 
-
-      const formattedSchedule = scheduleRange 
+    const formattedSchedule = scheduleRange 
       ? formatDateRange(scheduleRange.startDate, scheduleRange.endDate)
       : "N/A";
 
@@ -69,7 +68,6 @@ export async function POST(req: Request) {
             <p style="margin: 0.25rem 0;"><strong>Account Number:</strong> 3481 0038 99</p>
           </div>
           
-          <!-- ✅ ADDED: Receipt Upload Link -->
           <div style="margin-top: 1rem; padding: 1rem; background-color: #dbeafe; border-radius: 0.5rem; border: 2px solid #3b82f6;">
             <p style="font-weight: 600; color: #1e3a8a; margin-bottom: 0.5rem;">📤 After Payment:</p>
             <p style="margin: 0.5rem 0; color: #1e40af;">Upload your payment receipt for faster verification:</p>
@@ -100,7 +98,6 @@ export async function POST(req: Request) {
           </ol>
           <p style="margin-top: 0.75rem; font-size: 0.875rem; color: #4b5563;">If you have questions, feel free to contact us at 0917 708 7994.</p>
           
-          <!-- ✅ ADDED: Receipt Upload Link -->
           <div style="margin-top: 1rem; padding: 1rem; background-color: #dbeafe; border-radius: 0.5rem; border: 2px solid #3b82f6;">
             <p style="font-weight: 600; color: #1e3a8a; margin-bottom: 0.5rem;">📤 After Payment:</p>
             <p style="margin: 0.5rem 0; color: #1e40af;">Upload your GCash receipt for faster verification:</p>
@@ -262,6 +259,17 @@ export async function POST(req: Request) {
                   <td style="padding: 0.5rem 0; color: #10b981; text-align: right;">-₱${paymentInfo.discount.toLocaleString()}</td>
                 </tr>
                 ` : ''}
+                ${paymentInfo.pvcIdFee > 0 ? `
+                <tr>
+                  <td style="padding: 0.5rem 0; color: #6b7280; font-weight: 600;">
+                    Physical PVC ID:
+                    <span style="display: inline-block; margin-left: 0.5rem; background-color: #dbeafe; color: #1e3a8a; padding: 0.125rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;">
+                      Add-on
+                    </span>
+                  </td>
+                  <td style="padding: 0.5rem 0; color: #111827; text-align: right;">₱${paymentInfo.pvcIdFee.toLocaleString()}</td>
+                </tr>
+                ` : ''}
                 <tr style="border-top: 2px solid #e5e7eb;">
                   <td style="padding: 0.75rem 0; color: #111827; font-weight: 700; font-size: 1.125rem;">Total Amount:</td>
                   <td style="padding: 0.75rem 0; color: #111827; font-weight: 700; font-size: 1.125rem; text-align: right;">₱${paymentInfo.totalAmount.toLocaleString()}</td>
@@ -279,6 +287,18 @@ export async function POST(req: Request) {
                   </td>
                 </tr>
               </table>
+
+              ${paymentInfo.pvcIdFee > 0 ? `
+              <!-- PVC ID Info -->
+              <div style="margin-top: 1rem; padding: 1rem; background-color: #dbeafe; border-left: 4px solid #3b82f6; border-radius: 0.5rem;">
+                <p style="margin: 0; color: #1e3a8a; font-size: 0.875rem; font-weight: 600;">
+                  📇 Physical PVC ID Card Requested
+                </p>
+                <p style="margin: 0.5rem 0 0 0; color: #1e40af; font-size: 0.75rem;">
+                  Your physical PVC ID card will be issued along with your digital ID after training completion.
+                </p>
+              </div>
+              ` : ''}
 
               ${paymentInstructions}
             </div>
@@ -336,8 +356,6 @@ export async function POST(req: Request) {
     const mailOptions = {
       from: `"${process.env.SMTP_FROM_NAME || 'Petrosphere Training'}" <${process.env.SMTP_USER}>`,
       to,
-      //cc: "sales@petrosphere.com.ph, training@petrosphere.com.ph",
-      //cc: "jlb@petrosphere.com.ph",
       subject: `Training Registration Confirmed - ${bookingReference}`,
       html: htmlContent,
     };

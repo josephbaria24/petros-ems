@@ -1,3 +1,4 @@
+//app\courses\page.tsx
 "use client"
 
 import {
@@ -54,7 +55,10 @@ type Course = {
   id: string
   name: string
   description: string | null
-  training_fee: number | null
+  training_fee: number | null  // Keep for backward compatibility
+  online_fee: number | null
+  face_to_face_fee: number | null
+  elearning_fee: number | null
   title: string | null
   serial_number: number | null
   serial_number_pad: number | null
@@ -66,7 +70,9 @@ type Course = {
 type CourseFormData = {
   name: string
   description: string
-  training_fee: string
+  online_fee: string
+  face_to_face_fee: string
+  elearning_fee: string
   title: string
   serial_number: string
   serial_number_pad: string
@@ -102,7 +108,9 @@ export default function CoursesPage() {
   const [formData, setFormData] = useState<CourseFormData>({
     name: "",
     description: "",
-    training_fee: "",
+    online_fee: "",
+    face_to_face_fee: "",
+    elearning_fee: "",
     title: "",
     serial_number: "",
     serial_number_pad: ""
@@ -121,7 +129,7 @@ export default function CoursesPage() {
     try {
       const { data, error } = await supabase
         .from("courses")
-        .select("id, name, description, training_fee, title, serial_number, serial_number_pad, pretest_link, posttest_link, created_at")
+        .select("id, name, description, training_fee, online_fee, face_to_face_fee, elearning_fee, title, serial_number, serial_number_pad, pretest_link, posttest_link, created_at")
         .order("name", { ascending: true })
 
       if (error) {
@@ -142,7 +150,9 @@ export default function CoursesPage() {
     setFormData({
       name: "",
       description: "",
-      training_fee: "",
+      online_fee: "",
+      face_to_face_fee: "",
+      elearning_fee: "",
       title: "",
       serial_number: "",
       serial_number_pad: ""
@@ -166,19 +176,20 @@ export default function CoursesPage() {
     setIsViewDialogOpen(true)
   }
 
-  const handleEditCourse = (course: Course) => {
-    setSelectedCourse(course)
-    setFormData({
-      name: course.name,
-      description: course.description || "",
-      training_fee: course.training_fee?.toString() || "",
-      title: course.title || "",
-      serial_number: course.serial_number?.toString() || "",
-      serial_number_pad: course.serial_number_pad?.toString() || ""
-    })
-    setIsEditDialogOpen(true)
-  }
-
+const handleEditCourse = (course: Course) => {
+  setSelectedCourse(course)
+  setFormData({
+    name: course.name,
+    description: course.description || "",
+    online_fee: course.online_fee?.toString() || "",
+    face_to_face_fee: course.face_to_face_fee?.toString() || "",
+    elearning_fee: course.elearning_fee?.toString() || "",
+    title: course.title || "",
+    serial_number: course.serial_number?.toString() || "",
+    serial_number_pad: course.serial_number_pad?.toString() || ""
+  })
+  setIsEditDialogOpen(true)
+}
   const handleDeleteClick = (course: Course) => {
     setSelectedCourse(course)
     setIsDeleteAlertOpen(true)
@@ -213,7 +224,9 @@ export default function CoursesPage() {
           {
             name: formData.name.trim(),
             description: formData.description.trim() || null,
-            training_fee: formData.training_fee ? parseFloat(formData.training_fee) : null,
+            online_fee: formData.online_fee ? parseFloat(formData.online_fee) : null,
+            face_to_face_fee: formData.face_to_face_fee ? parseFloat(formData.face_to_face_fee) : null,
+            elearning_fee: formData.elearning_fee ? parseFloat(formData.elearning_fee) : null,
             title: formData.title.trim() || null,
             serial_number: formData.serial_number ? parseInt(formData.serial_number) : null,
             serial_number_pad: formData.serial_number_pad ? parseInt(formData.serial_number_pad) : null,
@@ -252,7 +265,9 @@ export default function CoursesPage() {
         .update({
           name: formData.name.trim(),
           description: formData.description.trim() || null,
-          training_fee: formData.training_fee ? parseFloat(formData.training_fee) : null,
+          online_fee: formData.online_fee ? parseFloat(formData.online_fee) : null,
+          face_to_face_fee: formData.face_to_face_fee ? parseFloat(formData.face_to_face_fee) : null,
+          elearning_fee: formData.elearning_fee ? parseFloat(formData.elearning_fee) : null,
           title: formData.title.trim() || null,
           serial_number: formData.serial_number ? parseInt(formData.serial_number) : null,
           serial_number_pad: formData.serial_number_pad ? parseInt(formData.serial_number_pad) : null,
@@ -411,13 +426,34 @@ export default function CoursesPage() {
         ),
       },
       {
-        accessorKey: "training_fee",
-        header: "Training Fee",
+        id: "fees",
+        header: "Training Fees",
         cell: ({ row }) => (
-          <div className="text-right font-semibold">
-            {row.original.training_fee !== null
-              ? `₱${Number(row.original.training_fee).toLocaleString()}`
-              : "N/A"}
+          <div className="text-sm space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-16">Online:</span>
+              <span className="font-semibold">
+                {row.original.online_fee !== null
+                  ? `₱${Number(row.original.online_fee).toLocaleString()}`
+                  : "N/A"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-16">F2F:</span>
+              <span className="font-semibold">
+                {row.original.face_to_face_fee !== null
+                  ? `₱${Number(row.original.face_to_face_fee).toLocaleString()}`
+                  : "N/A"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-16">E-Learn:</span>
+              <span className="font-semibold">
+                {row.original.elearning_fee !== null
+                  ? `₱${Number(row.original.elearning_fee).toLocaleString()}`
+                  : "N/A"}
+              </span>
+            </div>
           </div>
         ),
       },
@@ -663,13 +699,34 @@ export default function CoursesPage() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-muted-foreground">Training Fee</Label>
-                  <p className="text-lg font-semibold">
-                    {selectedCourse.training_fee !== null
-                      ? `₱${Number(selectedCourse.training_fee).toLocaleString()}`
-                      : "Not specified"}
-                  </p>
+               <div className="space-y-2">
+                  <Label className="text-muted-foreground">Training Fees</Label>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm">Online:</span>
+                      <span className="text-lg font-semibold">
+                        {selectedCourse.online_fee !== null
+                          ? `₱${Number(selectedCourse.online_fee).toLocaleString()}`
+                          : "Not specified"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm">Face-to-Face:</span>
+                      <span className="text-lg font-semibold">
+                        {selectedCourse.face_to_face_fee !== null
+                          ? `₱${Number(selectedCourse.face_to_face_fee).toLocaleString()}`
+                          : "Not specified"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm">E-Learning:</span>
+                      <span className="text-lg font-semibold">
+                        {selectedCourse.elearning_fee !== null
+                          ? `₱${Number(selectedCourse.elearning_fee).toLocaleString()}`
+                          : "Not specified"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-muted-foreground">Created Date</Label>
@@ -923,18 +980,46 @@ export default function CoursesPage() {
                 rows={3}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-fee">Training Fee (₱)</Label>
-              <Input
-                id="add-fee"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={formData.training_fee}
-                onChange={(e) =>
-                  setFormData({ ...formData, training_fee: e.target.value })
-                }
-              />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="add-online-fee">Online Training Fee (₱)</Label>
+                <Input
+                  id="add-online-fee"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.online_fee}
+                  onChange={(e) =>
+                    setFormData({ ...formData, online_fee: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-f2f-fee">Face-to-Face Training Fee (₱)</Label>
+                <Input
+                  id="add-f2f-fee"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.face_to_face_fee}
+                  onChange={(e) =>
+                    setFormData({ ...formData, face_to_face_fee: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-elearn-fee">E-Learning Training Fee (₱)</Label>
+                <Input
+                  id="add-elearn-fee"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.elearning_fee}
+                  onChange={(e) =>
+                    setFormData({ ...formData, elearning_fee: e.target.value })
+                  }
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -1028,18 +1113,46 @@ export default function CoursesPage() {
                 rows={3}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-fee">Training Fee (₱)</Label>
-              <Input
-                id="edit-fee"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={formData.training_fee}
-                onChange={(e) =>
-                  setFormData({ ...formData, training_fee: e.target.value })
-                }
-              />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-online-fee">Online Training Fee (₱)</Label>
+                <Input
+                  id="edit-online-fee"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.online_fee}
+                  onChange={(e) =>
+                    setFormData({ ...formData, online_fee: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-f2f-fee">Face-to-Face Training Fee (₱)</Label>
+                <Input
+                  id="edit-f2f-fee"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.face_to_face_fee}
+                  onChange={(e) =>
+                    setFormData({ ...formData, face_to_face_fee: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-elearn-fee">E-Learning Training Fee (₱)</Label>
+                <Input
+                  id="edit-elearn-fee"
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={formData.elearning_fee}
+                  onChange={(e) =>
+                    setFormData({ ...formData, elearning_fee: e.target.value })
+                  }
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>

@@ -201,7 +201,7 @@ const fetchPayments = async () => {
 const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
   if (!trainee?.id || !trainee?.training_fee) return;
 
-  const originalFee = Number(trainee.training_fee);
+  const originalFee = getTrainingFee();
   const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
   const pvcFee = trainee.add_pvc_id ? 150 : 0;
 
@@ -272,7 +272,7 @@ useEffect(() => {
   setDiscountPrice(discountedFee !== null ? String(discountedFee) : "");
 
   // Calculate discount percentage
-  const originalFee = Number(trainee.courses?.training_fee) || Number(trainee.training_fee) || 0;
+  const originalFee = getTrainingFee() || 0;
   
   if (hasDiscount && discountedFee !== null && originalFee > 0) {
     const percent = ((originalFee - discountedFee) / originalFee) * 100;
@@ -419,7 +419,7 @@ const handleVerifyVoucher = async () => {
     setVoucherInfo(data)
     
     let discountAmount = 0
-    const originalFee = Number(trainee.courses?.training_fee) || Number(trainee.training_fee) || 0
+    const originalFee = getTrainingFee() || 0
     
     if (data.voucher_type === "Free") {
       discountAmount = originalFee
@@ -451,7 +451,7 @@ const handleSaveVoucher = async () => {
 
   setApplyingDiscount(true)
   try {
-    const originalFee = Number(trainee.courses?.training_fee) || Number(trainee.training_fee) || 0
+    const originalFee = getTrainingFee() || 0
     const discounted = Number(discountPrice)
 
     // Update training record with voucher info
@@ -581,6 +581,37 @@ const handleRemoveVoucher = async () => {
   }
 }
 
+
+
+// Helper function to get the correct fee based on event type
+const getTrainingFee = () => {
+  if (!trainee?.courses) return 0;
+  
+  const eventType = trainee.schedules?.event_type?.toLowerCase();
+  
+  if (eventType === 'online') {
+    return Number(trainee.courses.online_fee) || 0;
+  } else if (eventType === 'in-house') {
+    return Number(trainee.courses.face_to_face_fee) || 0;
+  } else if (eventType === 'elearning') {
+    return Number(trainee.courses.elearning_fee) || 0;
+  }
+  
+  return Number(trainee.courses.training_fee) || 0;
+};
+
+const getEventTypeLabel = () => {
+  const eventType = trainee?.schedules?.event_type;
+  if (!eventType) return "N/A";
+  
+  const typeMap: { [key: string]: string } = {
+    'online': 'Online',
+    'in-house': 'Face-to-Face',
+    'elearning': 'E-Learning'
+  };
+  
+  return typeMap[eventType.toLowerCase()] || eventType;
+};
 
 
 
@@ -797,7 +828,7 @@ const handleApplyDiscount = async () => {
     return;
   }
 
-  const originalFee = Number(trainee.training_fee);
+  const originalFee = getTrainingFee();
   const discounted = Number(discountPrice);
 
   if (discounted > originalFee) {
@@ -885,6 +916,13 @@ const handleApprovePayment = async () => {
   try {
     const newTotal = totalPaid + finalAmount;
     const discountedFee = discountApplied ?? Number(trainee.training_fee);
+    // ✅ PVC-aware totals for email + completion logic
+    const courseFee = discountApplied !== null ? Number(discountApplied) : getTrainingFee(); // respects event type fees
+    const pvcFee = trainee.add_pvc_id ? 150 : 0;
+    const totalRequired = courseFee + pvcFee;
+    const remainingBalanceAfter = totalRequired - newTotal;
+    const isPaymentComplete = newTotal >= totalRequired;
+
     
     let finalStatus = 'completed';
     if (newTotal >= discountedFee) {
@@ -1035,23 +1073,42 @@ const handleApprovePayment = async () => {
                   <span class="value">₱${newTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div class="info-row">
-                  <span class="label">Remaining Balance:</span>
-                  <span class="value">₱${(discountedFee - newTotal).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                  <span class="label">Course Fee:</span>
+                  <span class="value">₱${courseFee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
                 </div>
+
+                ${pvcFee > 0 ? `
+                <div class="info-row">
+                  <span class="label">PVC ID Fee:</span>
+                  <span class="value">₱${pvcFee.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                </div>
+                ` : ''}
+
+                <div class="info-row">
+                  <span class="label">Total Required:</span>
+                  <span class="value">₱${totalRequired.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                </div>
+
+                <div class="info-row">
+                  <span class="label">Remaining Balance:</span>
+                  <span class="value">₱${Math.max(0, remainingBalanceAfter).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                </div>
+
                 <div class="info-row">
                   <span class="label">Status:</span>
                   <span class="value" style="color: #10b981; font-weight: bold;">${finalStatus}</span>
                 </div>
               </div>
               
-              ${newTotal >= discountedFee 
-                ? `<p style="color: #10b981; font-weight: bold; text-align: center; font-size: 18px;">
-                     🎊 Congratulations! Your payment is now complete!
-                   </p>`
-                : `<p style="color: #f59e0b; font-weight: 600;">
-                     Please note: You still have a remaining balance of ₱${(discountedFee - newTotal).toLocaleString('en-PH', { minimumFractionDigits: 2 })}.
-                   </p>`
-              }
+              ${isPaymentComplete
+                  ? `<p style="color: #10b981; font-weight: bold; text-align: center; font-size: 18px;">
+                      🎊 Congratulations! Your payment is now complete!
+                    </p>`
+                  : `<p style="color: #f59e0b; font-weight: 600;">
+                      Please note: You still have a remaining balance of ₱${Math.max(0, remainingBalanceAfter).toLocaleString('en-PH', { minimumFractionDigits: 2 })}.
+                    </p>`
+                }
+
               
               <p>If you have any questions, please don't hesitate to contact us.</p>
               
@@ -2213,9 +2270,9 @@ const handleRestoreIdOriginal = async () => {
                       Payment Details
                     </div>
                    <div className="p-4 text-sm space-y-2">
-                    <div className="flex justify-between">
-                      <span>Training Fee</span>
-                      <span>{formatCurrency(Number(trainee?.courses?.training_fee) || 0)}</span>
+                   <div className="flex justify-between">
+                      <span>Training Fee ({getEventTypeLabel()}):</span>
+                      <span>{formatCurrency(getTrainingFee())}</span>
                     </div>
                       
                       {/*useEffect(() => {PVC ID Add-on Display */}
@@ -2542,7 +2599,7 @@ const handleRestoreIdOriginal = async () => {
 </div>
                       {discountApplied !== null && (() => {
                         // ✅ FIXED: Always use courses.training_fee as the original fee
-                        const originalFee = Number(trainee.courses?.training_fee) || 0;
+                        const originalFee = getTrainingFee() || 0;
                         const discounted = Number(discountApplied) || 0;
                         const savings = originalFee - discounted;
                         

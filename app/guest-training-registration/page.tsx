@@ -138,6 +138,8 @@ export default function GuestTrainingRegistration() {
   const [paymentMethod, setPaymentMethod] = useState("BPI")
   const [errors, setErrors] = useState<{ [key: string]: boolean }>({})
 
+    // Add state for schedule event type
+const [scheduleEventType, setScheduleEventType] = useState<string>("")
 
   const [voucherCode, setVoucherCode] = useState("")
   const [voucherDetails, setVoucherDetails] = useState<any>(null)
@@ -261,90 +263,97 @@ export default function GuestTrainingRegistration() {
   return true
 }
 
-  useEffect(() => {
-    const fetchCourseAndSchedule = async () => {
-      const scheduleId = new URLSearchParams(window.location.search).get("schedule_id")
-      if (!scheduleId) {
-        console.log("No schedule_id found in URL")
+useEffect(() => {
+  const fetchCourseAndSchedule = async () => {
+    const scheduleId = new URLSearchParams(window.location.search).get("schedule_id")
+    if (!scheduleId) {
+      console.log("No schedule_id found in URL")
+      return
+    }
+
+    console.log("Fetching data for schedule_id:", scheduleId)
+
+    try {
+      const { data: scheduleData, error: scheduleError } = await supabase
+        .from("schedules")
+        .select(`
+          course_id,
+          schedule_type,
+          event_type,
+          schedule_ranges (start_date, end_date),
+          schedule_dates (date)
+        `)
+        .eq("id", scheduleId)
+        .single()
+
+      console.log("Schedule data:", scheduleData)
+
+      if (scheduleError) {
+        console.error("Error fetching schedule:", scheduleError)
         return
       }
 
-      console.log("Fetching data for schedule_id:", scheduleId)
+      if (!scheduleData) {
+        console.log("No schedule data found")
+        return
+      }
 
-      try {
-        const { data: scheduleData, error: scheduleError } = await supabase
-          .from("schedules")
-          .select(`
-            course_id,
-            schedule_type,
-            schedule_ranges (start_date, end_date),
-            schedule_dates (date)
-          `)
-          .eq("id", scheduleId)
+      // ✅ Set event type FIRST
+      if (scheduleData?.event_type) {
+        setScheduleEventType(scheduleData.event_type)
+      }
+
+      if (scheduleData.course_id) {
+        const { data: courseData, error: courseError } = await supabase
+          .from("courses")
+          .select("*")
+          .eq("id", scheduleData.course_id)
           .single()
 
-        console.log("Schedule data:", scheduleData)
-
-        if (scheduleError) {
-          console.error("Error fetching schedule:", scheduleError)
-          return
-        }
-
-        if (!scheduleData) {
-          console.log("No schedule data found")
-          return
-        }
-
-        if (scheduleData.course_id) {
-          const { data: courseData, error: courseError } = await supabase
-            .from("courses")
-            .select("*")
-            .eq("id", scheduleData.course_id)
-            .single()
-
-          console.log("Course data:", courseData)
-          
-          if (courseError) {
-            console.error("Error fetching course:", courseError)
-          } else {
-            setCourse(courseData)
-          }
-        }
-
-        if (scheduleData.schedule_type === "regular" && scheduleData.schedule_ranges?.length > 0) {
-          const range = scheduleData.schedule_ranges[0]
-          console.log("Setting regular range:", range)
-          setScheduleRange({
-            start_date: range.start_date,
-            end_date: range.end_date
-          })
-        } else if (scheduleData.schedule_type === "staggered" && scheduleData.schedule_dates?.length > 0) {
-          const dates = scheduleData.schedule_dates
-            .map(d => d.date)
-            .sort()
-          
-          console.log("Setting staggered range:", {
-            start_date: dates[0],
-            end_date: dates[dates.length - 1]
-          })
-          
-          setScheduleRange({
-            start_date: dates[0],
-            end_date: dates[dates.length - 1]
-          })
+        console.log("Course data:", courseData)
+        
+        if (courseError) {
+          console.error("Error fetching course:", courseError)
         } else {
-          console.log("No valid schedule dates found")
+          setCourse(courseData)
         }
-      } catch (error) {
-        console.error("Unexpected error:", error)
       }
-    }
 
-    fetchCourseAndSchedule()
-    
-    const bookingRef = Math.floor(Math.random() * 9000000 + 1000000).toString()
-    setBookingReference(bookingRef)
-  }, [])
+      if (scheduleData.schedule_type === "regular" && scheduleData.schedule_ranges?.length > 0) {
+        const range = scheduleData.schedule_ranges[0]
+        console.log("Setting regular range:", range)
+        setScheduleRange({
+          start_date: range.start_date,
+          end_date: range.end_date
+        })
+      } else if (scheduleData.schedule_type === "staggered" && scheduleData.schedule_dates?.length > 0) {
+        const dates = scheduleData.schedule_dates
+          .map(d => d.date)
+          .sort()
+        
+        console.log("Setting staggered range:", {
+          start_date: dates[0],
+          end_date: dates[dates.length - 1]
+        })
+        
+        setScheduleRange({
+          start_date: dates[0],
+          end_date: dates[dates.length - 1]
+        })
+      } else {
+        console.log("No valid schedule dates found")
+      }
+    } catch (error) {
+      console.error("Unexpected error:", error)
+    }
+  }
+
+  fetchCourseAndSchedule()
+  
+  const bookingRef = Math.floor(Math.random() * 9000000 + 1000000).toString()
+  setBookingReference(bookingRef)
+}, [])
+
 
 useEffect(() => {
   fetch("/regions.json")
@@ -506,13 +515,13 @@ const handleVerifyVoucher = async () => {
     // Calculate discount amount
     let discountAmount = 0
     if (data.voucher_type === "Free") {
-      discountAmount = course?.training_fee || 0
+      discountAmount = getApplicableFee() || 0
     } else {
       // Parse discount amount (e.g., "20%" or "₱500")
       const amountStr = data.amount.replace(/₱/g, "").trim()
       if (amountStr.includes("%")) {
         const percentage = parseFloat(amountStr.replace("%", ""))
-        discountAmount = ((course?.training_fee || 0) * percentage) / 100
+        discountAmount = ((getApplicableFee() || 0) * percentage) / 100
       } else {
         discountAmount = parseFloat(amountStr) || 0
       }
@@ -651,6 +660,36 @@ const handleRemoveVoucher = () => {
     reader.readAsDataURL(file);
   };
 
+
+
+
+// Helper function to get the correct fee
+const getApplicableFee = () => {
+  if (!course) return 0;
+  
+  const eventType = scheduleEventType.toLowerCase();
+  
+  if (eventType === 'online') {
+    return Number(course.online_fee) || 0;
+  } else if (eventType === 'face-to-face') {
+    return Number(course.face_to_face_fee) || 0;
+  } else if (eventType === 'elearning') {
+    return Number(course.elearning_fee) || 0;
+  }
+  
+  return Number(course.training_fee) || 0;
+};
+
+const getEventTypeLabel = () => {
+  const typeMap: { [key: string]: string } = {
+    'online': 'Online',
+    'face-to-face': 'Face-to-Face',
+    'elearning': 'E-Learning'
+  };
+  
+  return typeMap[scheduleEventType.toLowerCase()] || scheduleEventType;
+};
+
 // Complete handleSubmit function - REPLACE YOUR ENTIRE handleSubmit
 const handleSubmit = async () => {
   toast.loading("Submitting registration...");
@@ -690,11 +729,11 @@ const handleSubmit = async () => {
 
     const batchNumber = scheduleDetails.batch_number
 
-    const { data: courseData, error: feeError } = await supabase
-      .from("courses")
-      .select("training_fee, name")
-      .eq("id", courseId)
-      .single();
+   const { data: courseData, error: feeError } = await supabase
+    .from("courses")
+    .select("training_fee, online_fee, face_to_face_fee, elearning_fee, name")
+    .eq("id", courseId)
+    .single();
 
     if (feeError) console.error("Error fetching course fee:", feeError);
 
@@ -713,7 +752,7 @@ const handleSubmit = async () => {
       courtesy_title: form.courtesy_title || null,
       
       // Add voucher fields
-      discounted_fee: discount > 0 ? (course?.training_fee || 0) - discount : null,
+      discounted_fee: discount > 0 ? (getApplicableFee() || 0) - discount : null,
       has_discount: discount > 0,
       add_pvc_id: form.add_pvc_id || false,
 
@@ -843,10 +882,10 @@ const handleSubmit = async () => {
                 }
               : null,
           paymentInfo: {
-            trainingFee: trainingFee,
+            trainingFee: getApplicableFee(),
             discount,
             pvcIdFee: form.add_pvc_id ? 150 : 0,
-            totalAmount: trainingFee - discount + (form.add_pvc_id ? 150 : 0),
+            totalAmount: getApplicableFee() - discount + (form.add_pvc_id ? 150 : 0),
             paymentMethod,
             paymentStatus:
               paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
@@ -929,15 +968,24 @@ const handleSubmit = async () => {
       <div className="hidden lg:flex lg:w-[45%] rounded-3xl bg-banded text-black p-8 flex-col backdrop-blur-sm shadow-[0_20px_60px_rgba(0,0,0,0.3)] border-0">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Training Registration</h1>
-          {course && (
-            <div className="border rounded-xl inline-block p-2 mt-2">
-              <p className="text-md text-white/90 font-bold m-0">
-                {course.name}
-              </p>
-            </div>
-
-            
-          )}
+            {/* {course && (
+              <div className="border rounded-xl inline-block p-3 mt-2">
+                <p className="text-md text-white/90 font-bold m-0 mb-1">
+                  {course.name}
+                </p>
+                {scheduleEventType && (
+                  <p className={`text-xs font-semibold m-0 ${
+                    scheduleEventType === 'online' 
+                      ? 'text-emerald-300' 
+                      : scheduleEventType === 'face-to-face'
+                      ? 'text-blue-300'
+                      : 'text-purple-300'
+                  }`}>
+                    {getEventTypeLabel()} Training
+                  </p>
+                )}
+              </div>
+            )} */}
         </div>
 
         <div className="space-y-0 flex-1 pt-10">
@@ -986,7 +1034,7 @@ const handleSubmit = async () => {
 
       <div className="flex-1 flex flex-col bg-white/70 backdrop-blur-xl rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.3)] border border-white/40 overflow-hidden">
         {step > 0 && (
-          <div className="p-2">
+          <div className="p-2 sm:p-4 flex items-center justify-between border-b">
             <Button 
               variant="ghost"
               onClick={() => {
@@ -1001,6 +1049,34 @@ const handleSubmit = async () => {
               <ArrowLeft className="w-4 h-4" />
               Go Back
             </Button>
+
+            {/* Course + Event Type Badge */}
+            {course && scheduleEventType && (
+              <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <Calendar className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                  <div className="text-right">
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 leading-tight">
+                      {course.name}
+                    </p>
+                    <p className={`text-[10px] font-medium leading-tight ${
+                      scheduleEventType === 'online' 
+                        ? 'text-emerald-600 dark:text-emerald-400' 
+                        : scheduleEventType === 'face-to-face'
+                        ? 'text-blue-600 dark:text-blue-400'
+                        : 'text-purple-600 dark:text-purple-400'
+                    }`}>
+                      {getEventTypeLabel()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Mobile version - icon only */}
+                <div className="sm:hidden p-2 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <Calendar className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1537,7 +1613,7 @@ const handleSubmit = async () => {
                           </legend>
 
                           <p className="text-sm text-gray-900">
-                            <strong>Training Fee:</strong> ₱{course?.training_fee?.toLocaleString() || "0.00"}
+                           <strong>Training Fee ({getEventTypeLabel()}):</strong> ₱{getApplicableFee()?.toLocaleString() || "0.00"}
                           </p>
 
                           {/* Voucher Code Input */}
@@ -1645,7 +1721,7 @@ const handleSubmit = async () => {
                             <div className="space-y-1">
                               <p className="text-sm text-gray-600 flex justify-between">
                                 <span>Subtotal:</span>
-                                <span>₱{((course?.training_fee || 0) - discount).toLocaleString()}</span>
+                                <span>₱{((getApplicableFee() || 0) - discount).toLocaleString()}</span>
                               </p>
                               {form.add_pvc_id && (
                                 <p className="text-sm text-gray-600 flex justify-between">
@@ -1656,13 +1732,13 @@ const handleSubmit = async () => {
                               <p className="text-base text-gray-900 font-bold flex justify-between pt-2 border-t">
                                 <span>Total Payable:</span>
                                 <span className={discount > 0 ? "text-emerald-600" : ""}>
-                                  ₱{((course?.training_fee || 0) - discount + (form.add_pvc_id ? 150 : 0)).toLocaleString()}
+                                  ₱{((getApplicableFee() || 0) - discount + (form.add_pvc_id ? 150 : 0)).toLocaleString()}
                                 </span>
                               </p>
                             </div>
                             {discount > 0 && (
                               <p className="text-xs text-gray-500 line-through mt-1">
-                                Original: ₱{course?.training_fee?.toLocaleString() || "0.00"}
+                                Original: ₱{getApplicableFee()?.toLocaleString() || "0.00"}
                               </p>
                             )}
                           </div>
@@ -1866,7 +1942,7 @@ const handleSubmit = async () => {
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.5rem', borderTop: '1px solid #e5e7eb' }}>
                             <span style={{ fontWeight: '600' }}>Total Amount:</span>
-                            <span style={{ fontWeight: 'bold' }}>₱{((course?.training_fee || 0) - discount).toLocaleString()}</span>
+                            <span style={{ fontWeight: 'bold' }}>₱{((getApplicableFee() || 0) - discount).toLocaleString()}</span>
                           </div>
                         </div>
                 
