@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Settings, Search, FileText, Plus, Loader2 } from "lucide-react"
 import CertificateTemplateModal from "@/components/certificate-template-modal"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 
 interface Course {
   id: string
@@ -43,7 +43,7 @@ export default function CertificateManagementPage() {
       setLoading(true)
       
       // Fetch all courses
-      const { data: coursesData, error: coursesError } = await supabase
+      const { data: coursesData, error: coursesError } = await tmsDb
         .from("courses")
         .select("*")
         .order("serial_number", { ascending: true })
@@ -51,7 +51,7 @@ export default function CertificateManagementPage() {
       if (coursesError) throw coursesError
 
       // Fetch template counts for each course
-      const { data: templatesData, error: templatesError } = await supabase
+      const { data: templatesData, error: templatesError } = await tmsDb
         .from("certificate_templates")
         .select("course_id, template_type")
 

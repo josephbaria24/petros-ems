@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Upload, X, Plus, Trash2, Save, Eye, Loader2, Award, CalendarCheck, Trophy } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb, supabase } from "@/lib/supabase-client"
 import React from "react"
 import { toast } from "sonner"
 
@@ -693,20 +693,30 @@ const handleSave = async () => {
     const isID = currentTemplateType === "excellence";
 
     const response = await fetch("/api/certificate-template", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        courseId,
-        imageUrl: imageUrl,
-        fields: textFields[currentTemplateType].map((f: TextField): TextField => ({
-          ...f,
-          x: toPercentX(f.x, isID),
-          y: toPercentY(f.y, isID),
-          fontSize: toPercentFont(f.fontSize, isID),
-        })),
-        templateType: currentTemplateType,
-      }),
-    });
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    courseId,
+    imageUrl: imageUrl,
+    fields: textFields[currentTemplateType].map((f) => ({
+      ...f,
+      x: toPercentX(f.x, isID),
+      y: toPercentY(f.y, isID),
+      fontSize: toPercentFont(f.fontSize, isID),
+    })),
+    templateType: currentTemplateType,
+  }),
+})
+
+if (!response.ok) {
+  const err = await response.json().catch(async () => ({ error: await response.text() }))
+  console.log("API save error:", err)
+  toast.error(err.details || err.error || "Failed to save template.")
+  return
+}
+
+toast.success("Template saved successfully!")
+
 
     if (response.ok) {
       toast.success(`${TEMPLATE_TYPES.find(t => t.value === currentTemplateType)?.label} template saved successfully!`);

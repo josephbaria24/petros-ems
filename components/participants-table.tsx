@@ -2,7 +2,7 @@
 
 "use client"
 
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 import * as React from "react"
 import {
   useReactTable,
@@ -155,7 +155,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     try {
       // Delete related records first (in order of dependencies)
       // 1. Delete trainings
-      const { error: trainingsError } = await supabase
+      const { error: trainingsError } = await tmsDb
         .from("trainings")
         .delete()
         .eq("schedule_id", selectedParticipant.id)
@@ -170,7 +170,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       }
 
       // 2. Delete schedule_dates
-      const { error: datesError } = await supabase
+      const { error: datesError } = await tmsDb
         .from("schedule_dates")
         .delete()
         .eq("schedule_id", selectedParticipant.id)
@@ -185,7 +185,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       }
 
       // 3. Delete schedule_ranges
-      const { error: rangesError } = await supabase
+      const { error: rangesError } = await tmsDb
         .from("schedule_ranges")
         .delete()
         .eq("schedule_id", selectedParticipant.id)
@@ -200,7 +200,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       }
 
       // 4. Finally delete the schedule
-      const { error: scheduleError } = await supabase
+      const { error: scheduleError } = await tmsDb
         .from("schedules")
         .delete()
         .eq("id", selectedParticipant.id)
@@ -234,7 +234,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const fetchTrainings = React.useCallback(async () => {
     setLoading(true)
 
-    let query = supabase
+    let query = tmsDb
       .from("schedules")
       .select(`
         id,
@@ -586,7 +586,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   try {
     const newStatus = participant.status === 'cancelled' ? 'planned' : 'cancelled'
     
-    const { error } = await supabase
+    const { error } = await tmsDb
       .from("schedules")
       .update({ status: newStatus })
       .eq("id", participant.id)
@@ -603,7 +603,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     if (newStatus === 'cancelled') {
       try {
         // Get all trainees for this schedule
-        const { data: trainees } = await supabase
+        const { data: trainees } = await tmsDb
           .from("trainings")
           .select("email, first_name, last_name")
           .eq("schedule_id", participant.id)

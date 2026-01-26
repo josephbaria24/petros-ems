@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { supabase } from '@/lib/supabase-client';
+import { tmsDb } from '@/lib/supabase-client';
 
 type StageStatus = 'completed' | 'in-progress' | 'pending';
 type CertificateType = 'e-certificate' | 'id' | 'physical';
@@ -86,7 +86,7 @@ const CertificateTracker = () => {
       setError(null);
 
       // Fetch trainings with related schedule, course, and payment data
-      const { data, error: fetchError } = await supabase
+      const { data, error: fetchError } = await tmsDb
         .from('trainings')
         .select(`
           *,
@@ -314,7 +314,7 @@ const CertificateTracker = () => {
     try {
       const updateField = statusDialog.type === 'physical' ? 'physical_cert_status' : 'e_id_status';
       
-      const { error } = await supabase
+      const { error } = await tmsDb
         .from('trainings')
         .update({ [updateField]: newStatus })
         .eq('id', statusDialog.traineeId);

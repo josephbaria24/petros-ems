@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -38,7 +38,7 @@ export default function ReuploadPage() {
     }
 
     try {
-      const { data, error: fetchError } = await supabase
+      const { data, error: fetchError } = await tmsDb
         .from("trainings")
         .select("*")
         .eq("id", traineeId)
@@ -161,7 +161,7 @@ export default function ReuploadPage() {
       }
 
       // Update database
-      const { error: updateError } = await supabase
+      const { error: updateError } = await tmsDb
         .from("trainings")
         .update({
           id_picture_url: idUrl,

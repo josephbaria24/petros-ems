@@ -1,5 +1,5 @@
 // lib/certificate-serial.ts
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 
 /**
  * Generates a certificate serial number in format: PSI-{COURSE_CODE}-{PADDED_NUMBER}
@@ -12,7 +12,7 @@ export async function generateCertificateSerial(
 ): Promise<string | null> {
   try {
     // Get course details for padding width
-    const { data: course, error: courseError } = await supabase
+    const { data: course, error: courseError } = await tmsDb
       .from("courses")
       .select("serial_number_pad, name")
       .eq("id", courseId)
@@ -24,7 +24,7 @@ export async function generateCertificateSerial(
     }
 
     // Count total trainees for this course who have certificate numbers
-    const { count, error: countError } = await supabase
+    const { count, error: countError } = await tmsDb
       .from("trainings")
       .select("id", { count: "exact", head: true })
       .eq("course_id", courseId)
@@ -89,7 +89,7 @@ export async function batchGenerateCertificateSerials(
 
   try {
     // Get course details for padding width
-    const { data: course, error: courseError } = await supabase
+    const { data: course, error: courseError } = await tmsDb
       .from("courses")
       .select("serial_number_pad")
       .eq("id", courseId)
@@ -101,7 +101,7 @@ export async function batchGenerateCertificateSerials(
     }
 
     // Count existing trainees with certificate numbers
-    const { count, error: countError } = await supabase
+    const { count, error: countError } = await tmsDb
       .from("trainings")
       .select("id", { count: "exact", head: true })
       .eq("course_id", courseId)
@@ -143,7 +143,7 @@ export async function assignCertificateSerial(
 ): Promise<string | null> {
   try {
     // Check if trainee already has a certificate number
-    const { data: trainee } = await supabase
+    const { data: trainee } = await tmsDb
       .from("trainings")
       .select("certificate_number")
       .eq("id", traineeId)
@@ -162,7 +162,7 @@ export async function assignCertificateSerial(
     }
 
     // Assign to trainee
-    const { error } = await supabase
+    const { error } = await tmsDb
       .from("trainings")
       .update({ certificate_number: serialNumber })
       .eq("id", traineeId)
@@ -212,7 +212,7 @@ export async function batchAssignCertificateSerials(
 
     // Update all trainees in batch
     for (const [traineeId, serialNumber] of serialMap.entries()) {
-      const { error } = await supabase
+      const { error } = await tmsDb
         .from("trainings")
         .update({ certificate_number: serialNumber })
         .eq("id", traineeId)
@@ -241,13 +241,13 @@ export async function getNextSerialNumber(
   courseName: string
 ): Promise<string> {
   try {
-    const { count } = await supabase
+    const { count } = await tmsDb
       .from("trainings")
       .select("id", { count: "exact", head: true })
       .eq("course_id", courseId)
       .not("certificate_number", "is", null)
 
-    const { data: course } = await supabase
+    const { data: course } = await tmsDb
       .from("courses")
       .select("serial_number_pad")
       .eq("id", courseId)

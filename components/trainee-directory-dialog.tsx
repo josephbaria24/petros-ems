@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2 } from "lucide-react"
 import { exportTraineeExcel } from "@/lib/exports/export-excel"
 import { exportCertificatesNew } from "@/lib/exports/export-certificate"
@@ -362,7 +362,7 @@ export default function ParticipantDirectoryDialog({
     if (!scheduleId) return
 
     try {
-      const { data: scheduleData } = await supabase
+      const { data: scheduleData } = await tmsDb
         .from("schedules")
         .select("course_id")
         .eq("id", scheduleId)
@@ -370,7 +370,7 @@ export default function ParticipantDirectoryDialog({
 
       if (!scheduleData) return
 
-      const { data: courseData } = await supabase
+      const { data: courseData } = await tmsDb
         .from("courses")
         .select("id, name")
         .eq("id", scheduleData.course_id)
@@ -437,7 +437,7 @@ const handleDownloadCertificates = async () => {
   try {
     console.log("📊 Starting certificate download for", selectedTrainees.length, "selected trainees");
 
-    const { data: scheduleData } = await supabase
+    const { data: scheduleData } = await tmsDb
       .from("schedules")
       .select("course_id")
       .eq("id", scheduleId)
@@ -445,7 +445,7 @@ const handleDownloadCertificates = async () => {
 
     if (!scheduleData) throw new Error("Missing schedule data");
 
-    const { data: courseData } = await supabase
+    const { data: courseData } = await tmsDb
       .from("courses")
       .select("id, name, title, serial_number, serial_number_pad")
       .eq("id", scheduleData.course_id)
@@ -472,7 +472,7 @@ const handleDownloadCertificates = async () => {
       return { ...trainee, certificate_number };
     });
 
-    const { data: templateCheck } = await supabase
+    const { data: templateCheck } = await tmsDb
       .from("certificate_templates")
       .select("template_type")
       .eq("course_id", courseData.id)
@@ -536,7 +536,7 @@ const handleDownloadCertificates = async () => {
     
     setLoading(true)
     try {
-      const { data, error } = await supabase
+      const { data, error } = await tmsDb
         .from("trainings")
         .select("id, first_name, last_name, middle_initial, schedule_id, picture_2x2_url, status, email, certificate_number, course_id, batch_number")
         .eq("schedule_id", scheduleId)
@@ -560,7 +560,7 @@ const handleDownloadCertificates = async () => {
     if (!scheduleId) return
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await tmsDb
         .from("schedules")
         .select("status")
         .eq("id", scheduleId)
@@ -610,7 +610,7 @@ const handleDownloadCertificates = async () => {
       const result = await res.json()
       
       if (result.url) {
-        const { data, error } = await supabase
+        const { data, error } = await tmsDb
           .from("trainings")
           .update({ picture_2x2_url: result.url })
           .eq("id", selectedTrainee.id)
@@ -680,14 +680,14 @@ const handleOpenEmailCompose = async () => {
 
   // Fetch course title for email
   if (scheduleId) {
-    const { data: scheduleData } = await supabase
+    const { data: scheduleData } = await tmsDb
       .from("schedules")
       .select("course_id")
       .eq("id", scheduleId)
       .single()
 
     if (scheduleData) {
-      const { data: courseData } = await supabase
+      const { data: courseData } = await tmsDb
         .from("courses")
         .select("title, name")
         .eq("id", scheduleData.course_id)
@@ -796,7 +796,7 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
 
     console.log("Submitting update for:", selectedTrainee)
 
-    const { data, error } = await supabase
+    const { data, error } = await tmsDb
       .from("trainings")
       .update({
         first_name: selectedTrainee.first_name,

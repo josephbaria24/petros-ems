@@ -43,7 +43,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import { recalculateScheduleStatus } from "@/lib/schedule-status-updater"
 
@@ -83,7 +83,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
   // Fetch courses
   React.useEffect(() => {
     const fetchCourses = async () => {
-      const { data, error } = await supabase.from("courses").select("id, name").order("name")
+      const { data, error } = await tmsDb.from("courses").select("id, name").order("name")
       if (error) {
         console.error("Failed to load courses", error)
         toast.error("Failed to load courses", {
@@ -107,7 +107,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
       
       try {
         // Fetch schedule with related data
-        const { data: scheduleData, error: scheduleError } = await supabase
+        const { data: scheduleData, error: scheduleError } = await tmsDb
           .from("schedules")
           .select(`
             *,
@@ -181,7 +181,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
 
   try {
     // Step 1: Update the schedule
-    const { error: scheduleError } = await supabase
+    const { error: scheduleError } = await tmsDb
       .from("schedules")
       .update({
         course_id: course,
@@ -201,12 +201,12 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
     }
   
     // Step 2: Delete existing dates (both ranges and individual dates)
-    await supabase.from("schedule_ranges").delete().eq("schedule_id", scheduleId)
-    await supabase.from("schedule_dates").delete().eq("schedule_id", scheduleId)
+    await tmsDb.from("schedule_ranges").delete().eq("schedule_id", scheduleId)
+    await tmsDb.from("schedule_dates").delete().eq("schedule_id", scheduleId)
   
     // Step 3: Insert new dates based on schedule type
     if (scheduleType === "regular" && rangeDates?.from && rangeDates?.to) {
-      const { error: rangeError } = await supabase
+      const { error: rangeError } = await tmsDb
         .from("schedule_ranges")
         .insert({
           schedule_id: scheduleId,
@@ -230,7 +230,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
         date: formatDateForDB(d),
       }))
   
-      const { error: dateError } = await supabase
+      const { error: dateError } = await tmsDb
         .from("schedule_dates")
         .insert(staggeredInserts)
   
@@ -251,7 +251,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
     if (sendEmail) {
       try {
         // Fetch all trainees for this schedule
-        const { data: trainees, error: traineesError } = await supabase
+        const { data: trainees, error: traineesError } = await tmsDb
           .from("trainings")
           .select("email, first_name, last_name")
           .eq("schedule_id", scheduleId)

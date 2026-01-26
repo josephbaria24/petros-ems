@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Calendar, Users, BookOpen, TrendingUp } from "lucide-react"
 import EnrollmentBrushChart from "@/components/charts/enrollment-brush-chart"
@@ -24,7 +24,7 @@ import { isWithinInterval } from "date-fns"
 import { CourseDetailsModal } from "@/components/modals/course-details-modal"
 
 export default function DashboardPage() {
-  const supabase = createClient()
+  const supabase = tmsDb
 
   // Date filter state
   const [filterPreset, setFilterPreset] = useState<FilterPreset>("last30days")

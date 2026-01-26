@@ -34,7 +34,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Pencil, MoreVertical, Upload, Download, Trash2, Filter, ChevronDown, Search } from 'lucide-react';
-import { createClient } from '@/lib/supabase-client';
+import { tmsDb } from '@/lib/supabase-client';
 import { toast } from 'sonner';
 
 interface TrainingReport {
@@ -120,7 +120,7 @@ export default function TrainingReportsPage() {
     totalParticipants: 0,
   });
   
-  const supabase = createClient();
+  const supabase = tmsDb;
   // PART 3 - PASTE THIS AFTER PART 2
 // Helper functions for column filters
 

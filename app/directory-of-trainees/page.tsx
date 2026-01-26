@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase-client'
+import { tmsDb } from '@/lib/supabase-client';
 import { Button } from '@/components/ui/button'
 
 import { Upload, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
@@ -101,7 +101,7 @@ export default function DirectoryTabs() {
   // 🔁 Fetch courses
   useEffect(() => {
     const fetchCourses = async () => {
-      const { data, error } = await supabase
+      const { data, error } = await tmsDb
         .from('courses')
         .select('id, name')
         .order('name')
@@ -118,7 +118,7 @@ export default function DirectoryTabs() {
     if (!selectedCourseId) return
 
     const fetchBatches = async () => {
-      const { data, error } = await supabase
+      const { data, error } = await tmsDb
         .from('trainings')
         .select('batch_number')
         .eq('course_id', selectedCourseId)
@@ -148,7 +148,7 @@ export default function DirectoryTabs() {
       const from = (currentPage - 1) * itemsPerPage
       const to = from + itemsPerPage - 1
     
-      let query = supabase
+      let query = tmsDb
         .from('trainings')
         .select(`
           id, certificate_number, first_name, last_name, middle_initial, suffix, gender, age,
@@ -179,12 +179,12 @@ export default function DirectoryTabs() {
   // 🧾 Fetch training list
   useEffect(() => {
     const fetchTrainings = async () => {
-      const { data, error } = await supabase
+      const { data, error } = await tmsDb
         .from('schedules')
         .select(`id, branch, status, course_id, created_at, batch_number`)
         .order('created_at', { ascending: false })
 
-      const { data: courseData } = await supabase.from('courses').select('id, name')
+      const { data: courseData } = await tmsDb.from('courses').select('id, name')
       const courseMap = new Map(courseData?.map(c => [c.id, c.name]))
 
       const mapped = data?.map(t => ({
@@ -290,7 +290,7 @@ export default function DirectoryTabs() {
 
     try {
       // Get the schedule details to extract batch number
-      const { data: scheduleData, error: scheduleError } = await supabase
+      const { data: scheduleData, error: scheduleError } = await tmsDb
         .from('schedules')
         .select('batch_number')
         .eq('id', importScheduleId)
@@ -340,7 +340,7 @@ export default function DirectoryTabs() {
             updated_at: new Date().toISOString()
           }
 
-          const { error } = await supabase
+          const { error } = await tmsDb
             .from('trainings')
             .insert(traineeData)
 

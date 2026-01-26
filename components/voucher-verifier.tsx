@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast"
 import {
   Search, CheckCircle2, XCircle, AlertCircle,
 } from "lucide-react"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 import { VoucherImagePreview } from "@/components/VoucherImagePreview"
 
 interface VerificationResult {
@@ -50,7 +50,7 @@ export function VoucherVerifier() {
     setIsVerifying(true)
     setVerificationResult(null)
 
-    const { data, error } = await supabase
+    const { data, error } = await tmsDb
       .from("vouchers")
       .select("*")
       .eq("code", voucherCode.trim())
@@ -241,7 +241,7 @@ export function VoucherVerifier() {
                   variant="default"
                   className="w-full"
                   onClick={async () => {
-                    const { error } = await supabase
+                    const { error } = await tmsDb
                       .from("vouchers")
                       .update({ is_used: true })
                       .eq("code", voucherCode.trim())

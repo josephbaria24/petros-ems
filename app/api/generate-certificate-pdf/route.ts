@@ -6,7 +6,7 @@ import { PDFDocument, rgb } from "pdf-lib";
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+).schema("tms");
 
 
 function formatScheduleRange(dates: Date[]): string {
@@ -14,6 +14,21 @@ function formatScheduleRange(dates: Date[]): string {
 
   const start = dates[0];
   const end = dates[dates.length - 1];
+
+  // ✅ FIX: Check if it's a single day
+  const isSingleDay = dates.length === 1 || 
+    (start.getDate() === end.getDate() && 
+     start.getMonth() === end.getMonth() && 
+     start.getFullYear() === end.getFullYear());
+
+  if (isSingleDay) {
+    // Single day format: "January 30, 2026"
+    return start.toLocaleString("en-US", { 
+      month: "long", 
+      day: "numeric", 
+      year: "numeric" 
+    });
+  }
 
   const sameMonth = start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear();
   const sameYear = start.getFullYear() === end.getFullYear();

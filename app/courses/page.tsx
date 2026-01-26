@@ -10,7 +10,8 @@ import {
   PaginationState,
 } from "@tanstack/react-table"
 import { useEffect, useState, useMemo } from "react"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
+
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -127,7 +128,7 @@ export default function CoursesPage() {
 
   const fetchCourses = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await tmsDb
         .from("courses")
         .select("id, name, description, training_fee, online_fee, face_to_face_fee, elearning_fee, title, serial_number, serial_number_pad, pretest_link, posttest_link, created_at")
         .order("name", { ascending: true })
@@ -218,7 +219,7 @@ const handleEditCourse = (course: Course) => {
 
     setIsSubmitting(true)
     try {
-      const { data: newCourse, error } = await supabase
+      const { data: newCourse, error } = await tmsDb
         .from("courses")
         .insert([
           {
@@ -260,7 +261,7 @@ const handleEditCourse = (course: Course) => {
 
     setIsSubmitting(true)
     try {
-      const { data: updatedCourse, error } = await supabase
+      const { data: updatedCourse, error } = await tmsDb
         .from("courses")
         .update({
           name: formData.name.trim(),
@@ -299,7 +300,7 @@ const handleEditCourse = (course: Course) => {
 
     setIsSubmitting(true)
     try {
-      const { data: updatedCourse, error } = await supabase
+      const { data: updatedCourse, error } = await tmsDb
         .from("courses")
         .update({
           pretest_link: examLinkData.pretest_link.trim() || null,
@@ -332,7 +333,7 @@ const handleEditCourse = (course: Course) => {
 
     setIsSubmitting(true)
     try {
-      const { error } = await supabase
+      const { error } = await tmsDb
         .from("courses")
         .delete()
         .eq("id", selectedCourse.id)

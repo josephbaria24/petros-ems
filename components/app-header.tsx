@@ -5,7 +5,7 @@ import * as React from "react"
 import { useTheme } from "next-themes"
 import { useRouter } from "next/navigation"
 import { Moon, Sun, Bell } from "lucide-react"
-import { createClient } from "@/lib/supabase-client"
+import { createClient, tmsDb } from "@/lib/supabase-client"
 
 import { fetchMicrosoftPhoto } from "@/lib/fetchMicrosoftPhoto"
 import {
@@ -48,7 +48,7 @@ export function AppHeader() {
     }
   
   const fetchNotifications = async () => {
-  const { data, error } = await supabase
+  const { data, error } = await tmsDb
     .from("notifications")
     .select("id, title, read, created_at, trainee_name, photo_url, schedule_info, training_id")
     .order("created_at", { ascending: false })
@@ -102,8 +102,7 @@ export function AppHeader() {
   const unreadCount = notifications.filter((n) => !n.read).length
 
   const markAsRead = async (id: string) => {
-    const supabase = createClient()
-    await supabase
+    await tmsDb
       .from("notifications")
       .update({ read: true })
       .eq("id", id)
@@ -113,12 +112,11 @@ export function AppHeader() {
   }
 
   const markAllAsRead = async () => {
-    const supabase = createClient()
     const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id)
     
     if (unreadIds.length === 0) return
 
-    await supabase
+    await tmsDb
       .from("notifications")
       .update({ read: true })
       .in("id", unreadIds)

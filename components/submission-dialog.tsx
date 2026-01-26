@@ -35,7 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, AlertCircle, CheckCircle2, XCircle, X, Briefcase, CreditCard } from "lucide-react";
-import { createClient } from "@/lib/supabase-client";
+import { tmsDb } from "@/lib/supabase-client";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Checkbox } from "./ui/checkbox";
 
@@ -77,7 +77,7 @@ export function SubmissionDialog({
   const [uploadedReceiptUrl, setUploadedReceiptUrl] = useState<string>("");
   const [amountPaid, setAmountPaid] = useState<string>("");
   const [onlineClassroomUrl, setOnlineClassroomUrl] = useState<string>("");
-  const supabase = createClient();
+  const supabase = tmsDb;
   const [isDiscounted, setIsDiscounted] = useState(false);
   const [discountPrice, setDiscountPrice] = useState("");
   const [discountPercent, setDiscountPercent] = useState<number | null>(null);
@@ -622,6 +622,26 @@ const getEventTypeLabel = () => {
   return typeMap[eventType.toLowerCase()] || eventType;
 };
 
+// ✅ Simple required-field validator
+const validateRequired = (fields: { key: string; label: string; value: any }[]) => {
+  const missing = fields
+    .filter((f) => {
+      if (typeof f.value === "string") return !f.value.trim();
+      if (typeof f.value === "number") return Number.isNaN(f.value);
+      if (typeof f.value === "boolean") return f.value === false; // only use for required booleans
+      return f.value === null || f.value === undefined;
+    })
+    .map((f) => f.label);
+
+  if (missing.length) {
+    alert(`Please fill in the required fields:\n• ${missing.join("\n• ")}`);
+    return false;
+  }
+  return true;
+};
+
+
+
 
 
   const isCounterPayment = trainee.payment_method?.toUpperCase() === "COUNTER";
@@ -744,6 +764,34 @@ const getEventTypeLabel = () => {
   };
 
   const handleSavePayment = async (sendEmail: boolean, sendClassroom: boolean) => {
+
+    // ✅ Required fields before saving payment
+if (
+  !validateRequired([
+    { key: "amountPaid", label: "Amount Paid", value: amountPaid },
+  ])
+) return;
+
+const amt = Number(amountPaid);
+if (!Number.isFinite(amt) || amt <= 0) {
+  alert("Please enter a valid amount greater than 0.");
+  return;
+}
+
+// If sending classroom URL, require URL
+if (sendClassroom && !validateRequired([
+  { key: "onlineClassroomUrl", label: "Online Classroom URL", value: onlineClassroomUrl },
+])) return;
+
+// Optional: require receipt file/link for non-counter uploads
+// (You can remove this if you allow saving without receipt)
+if (!uploadedReceiptUrl) {
+  alert("Please upload a receipt first.");
+  return;
+}
+
+
+
     if (!amountPaid || parseFloat(amountPaid) <= 0) {
       alert("Please enter a valid amount");
       return;
@@ -778,7 +826,7 @@ const getEventTypeLabel = () => {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await tmsDb
         .from("payments")
         .insert(payload)
         .select();
@@ -901,6 +949,13 @@ const handleApplyDiscount = async () => {
 const handleApprovePayment = async () => {
   if (!selectedPaymentId) return;
 
+  // ✅ FIXED: Get the current payment to preserve receipt_uploaded_by
+  const currentPayment = payments.find(p => p.id === selectedPaymentId);
+  if (!currentPayment) {
+    alert('Payment not found');
+    return;
+  }
+
   // ✅ FIXED: Calculate with PVC fee included
   const courseFee = discountApplied !== null ? Number(discountApplied) : getTrainingFee();
   const pvcFee = trainee.add_pvc_id ? 150 : 0;
@@ -952,8 +1007,8 @@ const handleApprovePayment = async () => {
         paymentStatus = 'Payment Completed';
       }
     } else if (newTotal > 0) {
-      finalStatus = 'pending';
-      trainingStatus = 'Partially Paid';
+  finalStatus = 'completed'; // ✅ CHANGED: Set to 'completed' instead of 'pending'
+  trainingStatus = 'Partially Paid';
       
       if (isDiscounted && trainee.add_pvc_id) {
         paymentStatus = 'Partially Paid (Discounted + PVC)';
@@ -967,12 +1022,12 @@ const handleApprovePayment = async () => {
     }
 
     // Update payment status
-    const { error: updateError } = await supabase
+    const { error: updateError } = await tmsDb
       .from('payments')
       .update({
         payment_status: finalStatus,
         amount_paid: finalAmount,
-        receipt_uploaded_by: 'admin',
+        receipt_uploaded_by: currentPayment.receipt_uploaded_by, // ✅ FIXED: Preserve original value
         updated_at: new Date().toISOString(),
       })
       .eq('id', selectedPaymentId);
@@ -980,7 +1035,7 @@ const handleApprovePayment = async () => {
     if (updateError) throw updateError;
 
     // Update training record
-    await supabase
+    await tmsDb
       .from('trainings')
       .update({
         amount_paid: newTotal,
@@ -990,7 +1045,7 @@ const handleApprovePayment = async () => {
       .eq('id', trainee.id);
 
     // Get course details for email
-    const { data: courseData } = await supabase
+    const { data: courseData } = await tmsDb
       .from('courses')
       .select('name')
       .eq('id', trainee.course_id)
@@ -1178,11 +1233,16 @@ const handleApprovePayment = async () => {
     }
 
     alert('Payment approved and client notified!');
+    
+    // ✅ FIXED: Reset all approval-related state first
     setShowApproveDialog(false);
     setSelectedPaymentId(null);
     setApproveAmount('');
     setApproveType('full');
-    fetchPayments();
+    setSaving(false); // Ensure saving state is reset
+    
+    // Then refresh payments
+    await fetchPayments();
 
   } catch (error) {
     console.error('Error approving payment:', error);
@@ -1233,6 +1293,14 @@ const handleApprovePayment = async () => {
 };
 
   const handleMarkAsPaid = async () => {
+    if (!validateRequired([{ key: "amountPaid", label: "Amount Paid", value: amountPaid }])) return;
+
+      const amt = Number(amountPaid);
+      if (!Number.isFinite(amt) || amt <= 0) {
+        alert("Please enter a valid amount greater than 0.");
+        return;
+      }
+
     if (!amountPaid || parseFloat(amountPaid) <= 0) {
       alert("Please enter a valid amount");
       return;
@@ -1240,7 +1308,7 @@ const handleApprovePayment = async () => {
 
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { error } = await tmsDb
         .from("payments")
         .insert({
           training_id: trainee.id,
@@ -1355,6 +1423,32 @@ const handleApprovePayment = async () => {
   };
 
 const handleSavePersonalDetails = async () => {
+
+  // ✅ Required personal fields
+if (!validateRequired([
+  { key: "first_name", label: "First Name", value: newDetails.first_name },
+  { key: "last_name", label: "Last Name", value: newDetails.last_name },
+  { key: "email", label: "Email", value: newDetails.email },
+  { key: "phone_number", label: "Phone Number", value: newDetails.phone_number },
+  { key: "gender", label: "Gender", value: newDetails.gender },
+  { key: "age", label: "Age", value: newDetails.age },
+])) return;
+
+// Extra strict checks (optional but recommended)
+const ageNum = Number(newDetails.age);
+if (!Number.isFinite(ageNum) || ageNum <= 0) {
+  alert("Please enter a valid Age.");
+  return;
+}
+
+const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newDetails.email.trim());
+if (!emailOk) {
+  alert("Please enter a valid Email.");
+  return;
+}
+
+
+
   setUpdatingDetails(true);
   try {
     const { error } = await supabase
@@ -1376,6 +1470,15 @@ const handleSavePersonalDetails = async () => {
 };
 
     const handleSaveAddress = async () => {
+
+      if (!validateRequired([
+  { key: "mailing_street", label: "Street", value: newAddress.mailing_street },
+  { key: "mailing_city", label: "City", value: newAddress.mailing_city },
+  { key: "mailing_province", label: "Province", value: newAddress.mailing_province },
+])) return;
+
+
+
       setUpdatingAddress(true);
       try {
         const { error } = await supabase

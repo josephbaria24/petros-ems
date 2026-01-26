@@ -22,7 +22,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import { Input } from "./ui/input"
 
@@ -70,7 +70,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
 
   React.useEffect(() => {
   const fetchCourses = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await tmsDb
       .from("courses")
       .select("id, name, online_fee, face_to_face_fee, elearning_fee")
       .order("name")
@@ -107,7 +107,7 @@ React.useEffect(() => {
     if (!course) return
   
     const fetchNextBatchNumber = async () => {
-      const { data, error } = await supabase
+      const { data, error } = await tmsDb
         .from("schedules")
         .select("batch_number")
         .eq("course_id", course)
@@ -147,7 +147,7 @@ React.useEffect(() => {
   
     try {
       // Step 1: Insert into schedules
-      const { data: scheduleData, error: scheduleError } = await supabase
+      const { data: scheduleData, error: scheduleError } = await tmsDb
         .from("schedules")
         .insert({
           course_id: course,
@@ -172,7 +172,7 @@ React.useEffect(() => {
     
       // Step 2: Insert dates
       if (scheduleType === "regular" && rangeDates?.from && rangeDates?.to) {
-        const { error: rangeError } = await supabase
+        const { error: rangeError } = await tmsDb
           .from("schedule_ranges")
           .insert({
             schedule_id: scheduleId,
@@ -196,7 +196,7 @@ React.useEffect(() => {
           date: formatDateForDB(d),
         }))
 
-        const { error: dateError } = await supabase
+        const { error: dateError } = await tmsDb
           .from("schedule_dates")
           .insert(staggeredInserts)
 

@@ -1,5 +1,5 @@
 // lib/exports/export-excel.ts (Enhanced with detailed logging)
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 
 export async function exportTraineeExcel(
   scheduleId: string, 
@@ -13,7 +13,7 @@ export async function exportTraineeExcel(
     console.log(`Schedule Range: ${scheduleRange}`)
     
     // Get schedule and course info first
-    const { data: scheduleData, error: scheduleError } = await supabase
+    const { data: scheduleData, error: scheduleError } = await tmsDb
       .from("schedules")
       .select("id, course_id, status, schedule_type, event_type, branch")
       .eq("id", scheduleId)
@@ -28,7 +28,7 @@ export async function exportTraineeExcel(
     console.log(`   Event Type: ${scheduleData.event_type}`)
     console.log(`   Branch: ${scheduleData.branch}`)
 
-    const { data: courseData, error: courseError } = await supabase
+    const { data: courseData, error: courseError } = await tmsDb
       .from("courses")
       .select("id, name")
       .eq("id", scheduleData.course_id)
@@ -43,7 +43,7 @@ export async function exportTraineeExcel(
 
     // Fetch trainees with ALL fields including picture_2x2_url
     console.log("\n📥 Fetching trainees from database...")
-    const { data: trainees, error: traineesError } = await supabase
+    const { data: trainees, error: traineesError } = await tmsDb
       .from("trainings")
       .select("*") // Get ALL fields
       .eq("schedule_id", scheduleId)
@@ -117,7 +117,7 @@ export async function exportTraineeExcel(
     let trainingDates = scheduleRange
 
     if (scheduleData.schedule_type === 'regular') {
-      const { data: rangeData } = await supabase
+      const { data: rangeData } = await tmsDb
         .from("schedule_ranges")
         .select("start_date, end_date")
         .eq("schedule_id", scheduleId)
@@ -144,7 +144,7 @@ export async function exportTraineeExcel(
         }
       }
     } else if (scheduleData.schedule_type === 'staggered') {
-      const { data: datesData } = await supabase
+      const { data: datesData } = await tmsDb
         .from("schedule_dates")
         .select("date")
         .eq("schedule_id", scheduleId)

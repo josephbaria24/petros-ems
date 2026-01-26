@@ -119,7 +119,7 @@ const [openDropdown, setOpenDropdown] = React.useState<string | null>("Trainings
 
        
             <img
-              src="/trans-logo.png"
+              src="/trans-logo.png" 
               alt="Petrosphere Training Manager"
               className="h-8 w-auto hidden dark:block"
             />

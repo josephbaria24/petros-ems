@@ -27,7 +27,7 @@ if (!process.env.HOSTINGER_SFTP_HOST || !process.env.HOSTINGER_SFTP_USER || !pro
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+).schema("tms");
 
 // Convert NextRequest → Node Request
 function toNodeRequest(req: NextRequest): any {

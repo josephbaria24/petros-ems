@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Calendar, List, X, Sun, Moon } from 'lucide-
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { supabase } from '@/lib/supabase-client'
+import { tmsDb } from '@/lib/supabase-client';
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { useTheme } from 'next-themes'
@@ -38,7 +38,7 @@ function NewsCarousel() {
   // Load news from Supabase
   useEffect(() => {
     const loadNews = async () => {
-      const { data, error } = await supabase
+      const { data, error } = await tmsDb
         .from("news_items")
         .select("*")
         .order("created_at", { ascending: false })
@@ -131,7 +131,7 @@ export default function TrainingCalendar() {
 
 const fetchSchedules = async () => {
   setLoading(true)
-  const { data, error } = await supabase
+  const { data, error } = await tmsDb
     .from('schedules')
     .select(`
       id,

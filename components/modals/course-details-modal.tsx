@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 import {
   Dialog,
   DialogContent,
@@ -55,7 +55,7 @@ type Schedule = {
 }
 
 export function CourseDetailsModal({ isOpen, onClose, courseName }: CourseDetailsModalProps) {
-  const supabase = createClient()
+  const supabase = tmsDb
   const [loading, setLoading] = useState(true)
   const [courseData, setCourseData] = useState<any>(null)
   const [schedules, setSchedules] = useState<Schedule[]>([])

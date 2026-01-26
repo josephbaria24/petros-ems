@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Copy, Download, Sparkles, Trash2, RefreshCw } from "lucide-react"
 import { VoucherCard } from "@/components/voucher-card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import {
   Command,
@@ -95,7 +95,7 @@ export function VoucherGenerator() {
   }
 
   const fetchServices = async () => {
-    const { data, error } = await supabase
+    const { data, error } = await tmsDb
       .from("courses")
       .select("id, name")
       .order("name", { ascending: true })
@@ -113,7 +113,7 @@ export function VoucherGenerator() {
 
   const fetchVouchers = async () => {
     setLoadingVouchers(true)
-    const { data, error } = await supabase
+    const { data, error } = await tmsDb
       .from("vouchers")
       .select("*")
       .order("created_at", { ascending: false })
@@ -183,7 +183,7 @@ export function VoucherGenerator() {
     setGeneratedVoucher(voucher)
     setLoading(true)
     
-    const { error } = await supabase.from("vouchers").insert([
+    const { error } = await tmsDb.from("vouchers").insert([
     {
       code: voucher.code,
       amount: voucher.amount,
@@ -234,7 +234,7 @@ export function VoucherGenerator() {
   const handleDelete = async () => {
     if (!voucherToDelete) return
 
-    const { error } = await supabase
+    const { error } = await tmsDb
       .from("vouchers")
       .delete()
       .eq("id", voucherToDelete)

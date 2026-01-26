@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+).schema("tms")
 
 // Helper function to calculate correct status based on dates
 function calculateScheduleStatus(

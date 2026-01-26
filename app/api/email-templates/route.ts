@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+).schema("tms");
 
 // GET - Fetch all email templates
 export async function GET(req: NextRequest) {

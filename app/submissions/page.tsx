@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import { SubmissionDialog } from "@/components/submission-dialog"
 import { DeclinePhotoDialog } from "@/components/decline-photo"
@@ -197,7 +197,7 @@ const fetchTrainees = async () => {
    
   try {
     // Fetch schedule with course name
-    const { data: scheduleData, error: scheduleError } = await supabase
+    const { data: scheduleData, error: scheduleError } = await tmsDb
       .from("schedules")
       .select("course_id, courses(name)")
       .eq("id", scheduleId)
@@ -213,7 +213,7 @@ const fetchTrainees = async () => {
 }
 
     // Fetch trainings data
-    const { data, error } = await supabase
+    const { data, error } = await tmsDb
       .from("trainings")
       .select(`
         id,
@@ -285,7 +285,7 @@ const fetchTrainees = async () => {
       console.log("🔍 Fetching vouchers for trainee IDs:", traineeIds);
       
       // Query 1: Get voucher_usage records WITHOUT nested select
-      const { data: usageRecords, error: usageError } = await supabase
+      const { data: usageRecords, error: usageError } = await tmsDb
         .from("voucher_usage")
         .select("*")
         .in("training_id", traineeIds);
@@ -302,7 +302,7 @@ const fetchTrainees = async () => {
         console.log("🎫 Fetching voucher details for IDs:", voucherIds);
         
         // Query 3: Fetch actual voucher details
-        const { data: voucherRecords, error: voucherError } = await supabase
+        const { data: voucherRecords, error: voucherError } = await tmsDb
           .from("vouchers")
           .select("*")
           .in("id", voucherIds);
@@ -406,7 +406,7 @@ const handleDialogClose = async (open: boolean) => {
   
   if (!open && selectedTrainee) {
     // ✅ Only refetch the specific trainee that was updated
-    const { data: updatedTrainee } = await supabase
+    const { data: updatedTrainee } = await tmsDb
       .from("trainings")
       .select(`
         *,
@@ -430,7 +430,7 @@ const handleDialogClose = async (open: boolean) => {
       // Check for voucher if has discount
       let voucherInfo = null;
       if (updatedTrainee.has_discount && updatedTrainee.discounted_fee) {
-        const { data: voucherUsage } = await supabase
+        const { data: voucherUsage } = await tmsDb
           .from("voucher_usage")
           .select(`
             voucher_id,
@@ -489,7 +489,7 @@ const handleDeleteTrainee = async () => {
   
   try {
     // First, delete related records from payments table
-    const { error: paymentsError } = await supabase
+    const { error: paymentsError } = await tmsDb
       .from("payments")
       .delete()
       .eq("training_id", traineeToDelete.id);
@@ -500,7 +500,7 @@ const handleDeleteTrainee = async () => {
     }
 
     // Delete from booking_summary if exists
-    const { error: bookingError } = await supabase
+    const { error: bookingError } = await tmsDb
       .from("booking_summary")
       .delete()
       .eq("training_id", traineeToDelete.id);
@@ -511,7 +511,7 @@ const handleDeleteTrainee = async () => {
     }
 
     // Finally, delete the trainee record
-    const { error: traineeError } = await supabase
+    const { error: traineeError } = await tmsDb
       .from("trainings")
       .delete()
       .eq("id", traineeToDelete.id);
@@ -582,7 +582,7 @@ const updateStatus = async (status: string) => {
 
   try {
     if (status === "Pending Payment" || status === "Payment Completed") {
-      const { data: scheduleData, error: scheduleError } = await supabase
+      const { data: scheduleData, error: scheduleError } = await tmsDb
         .from("schedules")
         .select("course_id")
         .eq("id", scheduleId)
@@ -590,7 +590,7 @@ const updateStatus = async (status: string) => {
   
       if (scheduleError || !scheduleData) throw scheduleError;
   
-      const { data: courseData, error: courseError } = await supabase
+      const { data: courseData, error: courseError } = await tmsDb
         .from("courses")
         .select("name, serial_number_pad")
         .eq("id", scheduleData.course_id)
@@ -601,7 +601,7 @@ const updateStatus = async (status: string) => {
       const courseName = courseData.name;
       const padLength = courseData.serial_number_pad || 6;
   
-      const { count, error: countError } = await supabase
+      const { count, error: countError } = await tmsDb
         .from("trainings")
         .select("certificate_number", { count: "exact", head: true })
         .eq("course_id", scheduleData.course_id)
@@ -635,7 +635,7 @@ const updateStatus = async (status: string) => {
       updateData.status = "Declined (Waiting for Resubmission)";
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await tmsDb
       .from("trainings")
       .update(updateData)
       .eq("id", selectedTrainee.id);
@@ -689,7 +689,7 @@ const fetchAvailableSchedules = async () => {
 
   try {
     // Fetch schedules
-    const { data: schedules, error } = await supabase
+    const { data: schedules, error } = await tmsDb
       .from("schedules")
       .select(`
         id,
@@ -710,7 +710,7 @@ const fetchAvailableSchedules = async () => {
     // Fetch trainee counts for each schedule
     const schedulesWithCounts = await Promise.all(
       (schedules || []).map(async (schedule) => {
-        const { count, error: countError } = await supabase
+        const { count, error: countError } = await tmsDb
           .from("trainings")
           .select("*", { count: "exact", head: true })
           .eq("schedule_id", schedule.id);
@@ -761,7 +761,7 @@ const handleBulkMoveSchedule = async () => {
       const traineeId = selectedIds[i];
       setProgressCurrent(i + 1);
 
-      const { error } = await supabase
+      const { error } = await tmsDb
         .from("trainings")
         .update({ schedule_id: selectedTargetSchedule })
         .eq("id", traineeId);
@@ -837,7 +837,7 @@ const handleBulkMoveSchedule = async () => {
           continue;
         }
 
-        const { error: paymentError } = await supabase
+        const { error: paymentError } = await tmsDb
           .from("payments")
           .insert({
             training_id: traineeId,
@@ -853,7 +853,7 @@ const handleBulkMoveSchedule = async () => {
           continue;
         }
 
-        const { error: statusError } = await supabase
+        const { error: statusError } = await tmsDb
           .from("trainings")
           .update({ status: "Payment Completed" })
           .eq("id", traineeId);

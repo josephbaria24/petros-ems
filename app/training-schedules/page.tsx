@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import { ParticipantsTable } from "@/components/participants-table"
 import { NewScheduleDialog } from "@/components/new-schedule-dialog"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 
 export default function TrainingSchedulesPage() {
   const searchParams = useSearchParams()
@@ -31,7 +31,7 @@ export default function TrainingSchedulesPage() {
   const autoFinishSchedules = async () => {
     const today = new Date()
   
-    const { data: schedules, error } = await supabase
+    const { data: schedules, error } = await tmsDb
       .from("schedules")
       .select(`
         id,
@@ -67,7 +67,7 @@ export default function TrainingSchedulesPage() {
     }
   
     if (toUpdate.length > 0) {
-      const { error: updateError } = await supabase
+      const { error: updateError } = await tmsDb
         .from("schedules")
         .update({ status: "finished" })
         .in("id", toUpdate)

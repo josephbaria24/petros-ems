@@ -16,6 +16,7 @@ export async function GET(req: Request) {
 
     // Get template from database
     const { data, error } = await supabaseServer
+      .schema("tms")
       .from("certificate_templates")
       .select("*")
       .eq("course_id", courseId)
@@ -59,6 +60,7 @@ export async function DELETE(req: Request) {
 
     // Fetch existing template to get image_url
     const { data: template, error: getError } = await supabaseServer
+      .schema("tms")
       .from("certificate_templates")
       .select("id, image_url")
       .eq("course_id", courseId)
@@ -89,6 +91,7 @@ export async function DELETE(req: Request) {
 
     // Delete database row
     const { error: deleteError } = await supabaseServer
+      .schema("tms")
       .from("certificate_templates")
       .delete()
       .eq("id", template.id)
@@ -132,6 +135,7 @@ export async function POST(req: Request) {
 
     // Check if template exists for this course and type
     const { data: existing, error: selectError } = await supabaseServer
+      .schema("tms")
       .from("certificate_templates")
       .select("id")
       .eq("course_id", courseId)
@@ -150,6 +154,7 @@ export async function POST(req: Request) {
       console.log("Updating existing template ID:", existing.id)
       
       const { error } = await supabaseServer
+        .schema("tms")
         .from("certificate_templates")
         .update({
           image_url: imageUrl,
@@ -170,6 +175,7 @@ export async function POST(req: Request) {
       console.log("Creating new template")
       
       const { error } = await supabaseServer
+        .schema("tms")
         .from("certificate_templates")
         .insert({
           course_id: courseId,

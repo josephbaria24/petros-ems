@@ -97,8 +97,8 @@ export default function CourseCoverUploadDialog({
       const uploadedUrl = await uploadPromise
       
       // Update database
-      const { supabase } = await import('@/lib/supabase-client')
-      const { error: dbError } = await supabase
+      const { tmsDb } = await import('@/lib/supabase-client')
+      const { error: dbError } = await tmsDb
         .from('courses')
         .update({ cover_image: uploadedUrl })
         .eq('id', courseId)

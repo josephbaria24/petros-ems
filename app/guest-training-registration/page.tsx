@@ -12,7 +12,7 @@ import { Check, User, Briefcase, Upload, ArrowLeft, CreditCard, Calendar, CheckC
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import welcomeAnimation from '@/public/welcome.json';
 import Lottie from 'lottie-react';
@@ -274,7 +274,7 @@ useEffect(() => {
     console.log("Fetching data for schedule_id:", scheduleId)
 
     try {
-      const { data: scheduleData, error: scheduleError } = await supabase
+      const { data: scheduleData, error: scheduleError } = await tmsDb
         .from("schedules")
         .select(`
           course_id,
@@ -304,7 +304,7 @@ useEffect(() => {
       }
 
       if (scheduleData.course_id) {
-        const { data: courseData, error: courseError } = await supabase
+        const { data: courseData, error: courseError } = await tmsDb
           .from("courses")
           .select("*")
           .eq("id", scheduleData.course_id)
@@ -430,7 +430,7 @@ const [industries, setIndustries] = useState<{ id: string; name: string }[]>([])
 useEffect(() => {
   const fetchIndustries = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await tmsDb
         .from("industries")
         .select("id, name")
         .order("display_order")
@@ -462,7 +462,7 @@ const handleVerifyVoucher = async () => {
   setVoucherDetails(null)
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await tmsDb
       .from("vouchers")
       .select("*")
       .eq("code", voucherCode.trim().toUpperCase())
@@ -703,7 +703,7 @@ const handleSubmit = async () => {
   }
 
   try {
-    const { data: schedule, error: scheduleError } = await supabase
+    const { data: schedule, error: scheduleError } = await tmsDb
       .from("schedules")
       .select("course_id")
       .eq("id", scheduleId)
@@ -716,7 +716,7 @@ const handleSubmit = async () => {
 
     const courseId = schedule.course_id;
 
-    const { data: scheduleDetails, error: scheduleDetailsError } = await supabase
+    const { data: scheduleDetails, error: scheduleDetailsError } = await tmsDb
       .from("schedules")
       .select("batch_number")
       .eq("id", scheduleId)
@@ -729,7 +729,7 @@ const handleSubmit = async () => {
 
     const batchNumber = scheduleDetails.batch_number
 
-   const { data: courseData, error: feeError } = await supabase
+   const { data: courseData, error: feeError } = await tmsDb
     .from("courses")
     .select("training_fee, online_fee, face_to_face_fee, elearning_fee, name")
     .eq("id", courseId)
@@ -765,7 +765,7 @@ const handleSubmit = async () => {
           : null,
     }
 
-    const { data: insertedTraining, error: insertError } = await supabase
+    const { data: insertedTraining, error: insertError } = await tmsDb
       .from("trainings")
       .insert([trainingPayload])
       .select("id")
@@ -779,7 +779,7 @@ const handleSubmit = async () => {
 
     const trainingId = insertedTraining.id;
 
-    const { error: bookingError } = await supabase
+    const { error: bookingError } = await tmsDb
       .from("booking_summary")
       .insert([
         {
@@ -802,7 +802,7 @@ const handleSubmit = async () => {
         const newUsed = voucherDetails.batch_used + 1
         const isFullyUsed = newRemaining <= 0
 
-        const { error: voucherUpdateError } = await supabase
+        const { error: voucherUpdateError } = await tmsDb
           .from("vouchers")
           .update({ 
             batch_remaining: newRemaining,
@@ -815,7 +815,7 @@ const handleSubmit = async () => {
           console.error("Failed to update batch voucher:", voucherUpdateError)
         } else {
           // Log the usage in voucher_usage table
-          const { error: usageLogError } = await supabase
+          const { error: usageLogError } = await tmsDb
             .from("voucher_usage")
             .insert([{
               voucher_id: voucherDetails.id,
@@ -829,7 +829,7 @@ const handleSubmit = async () => {
         }
       } else {
         // For single-use vouchers: mark as used
-        const { error: voucherUpdateError } = await supabase
+        const { error: voucherUpdateError } = await tmsDb
           .from("vouchers")
           .update({ is_used: true })
           .eq("code", voucherDetails.code)

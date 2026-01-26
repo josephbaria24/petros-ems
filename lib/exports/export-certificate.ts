@@ -1,5 +1,5 @@
 // lib/exports/export-certificate.ts
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 
 // CRITICAL: Must match the server-side generation exactly
 const CANVAS_WIDTH = 842
@@ -14,7 +14,7 @@ export async function exportCertificatesNew(
   courseId: string,
   onProgress?: (current: number, total: number) => void
 ) {
-  const { data: template, error: tplErr } = await supabase
+  const { data: template, error: tplErr } = await tmsDb
     .from("certificate_templates")
     .select("*")
     .eq("course_id", courseId)

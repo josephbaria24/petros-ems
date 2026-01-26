@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { supabase } from '@/lib/supabase-client'
+import { tmsDb } from '@/lib/supabase-client'
 import Image from "next/image"
 import { useRouter } from 'next/navigation'
 import CourseCoverUploadDialog from '@/components/course-cover-upload'
@@ -292,7 +292,7 @@ export default function TrainingCalendar() {
   }, [])
 
 const fetchNews = async () => {
-  const { data, error } = await supabase
+  const { data, error } = await tmsDb
     .from("news_items")
     .select("*")
     .order("created_at", { ascending: false })
@@ -304,7 +304,7 @@ const fetchNews = async () => {
 
   const fetchSchedules = async () => {
     setLoading(true)
-    const { data, error } = await supabase
+    const { data, error } = await tmsDb
       .from('schedules')
       .select(`
         id,
@@ -375,7 +375,7 @@ const handleSaveNews = async (items: NewsItem[]) => {
 
     // Delete removed items
     if (deletedIds.length > 0) {
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await tmsDb
         .from("news_items")
         .delete()
         .in("id", deletedIds);
@@ -389,7 +389,7 @@ const handleSaveNews = async (items: NewsItem[]) => {
 
     // Update existing items
     if (itemsToUpdate.length > 0) {
-      const { error: updateError } = await supabase
+      const { error: updateError } = await tmsDb
         .from("news_items")
         .upsert(itemsToUpdate.map(item => ({
           id: item.id,
@@ -407,7 +407,7 @@ const handleSaveNews = async (items: NewsItem[]) => {
 
     // Insert new items
     if (itemsToInsert.length > 0) {
-      const { error: insertError } = await supabase
+      const { error: insertError } = await tmsDb
         .from("news_items")
         .insert(itemsToInsert.map(item => ({
           title: item.title,
@@ -696,7 +696,7 @@ const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>, event: 
   }
 
   // Save into SUPABASE using course_id
-  const { error } = await supabase
+  const { error } = await tmsDb
     .from("courses")
     .update({ cover_image: result.url })
     .eq("id", event.course_id);
