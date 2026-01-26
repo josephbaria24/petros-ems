@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
-import { supabase } from "@/lib/supabase-client"
+import { tmsDb } from "@/lib/supabase-client"
 
 interface DeclinePhotoDialogProps {
   open: boolean
@@ -57,7 +57,7 @@ export function DeclinePhotoDialog({
       const reuploadUrl = `${window.location.origin}/reupload?token=${token}&traineeId=${trainee.id}`
 
       // Store decline information in database
-      const { error: dbError } = await supabase
+      const { error: dbError } = await tmsDb
         .from("trainings")
         .update({
           declined_photos: {

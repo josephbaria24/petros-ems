@@ -1,3 +1,4 @@
+//app\reupload\page.tsx
 "use client"
 
 import { useEffect, useState } from "react"
@@ -30,51 +31,65 @@ export default function ReuploadPage() {
     validateAndFetchTrainee()
   }, [token, traineeId])
 
-  const validateAndFetchTrainee = async () => {
-    if (!token || !traineeId) {
-      setError("Invalid or missing reupload link.")
+const validateAndFetchTrainee = async () => {
+  if (!token || !traineeId) {
+    setError("Invalid or missing reupload link.")
+    setLoading(false)
+    return
+  }
+
+  try {
+    const { data, error: fetchError } = await tmsDb
+      .from("trainings")
+      .select("*")
+      .eq("id", traineeId)
+      .single()
+
+    if (fetchError || !data) {
+      setError("Unable to find your registration.")
       setLoading(false)
       return
     }
 
-    try {
-      const { data, error: fetchError } = await tmsDb
-        .from("trainings")
-        .select("*")
-        .eq("id", traineeId)
-        .single()
-
-      if (fetchError || !data) {
-        setError("Unable to find your registration.")
-        setLoading(false)
-        return
-      }
-
-      // Verify token matches
-      if (data.declined_photos?.token !== token) {
-        setError("This reupload link is invalid or has expired.")
-        setLoading(false)
-        return
-      }
-
-      // Check if link expired (7 days)
-      const declinedDate = new Date(data.declined_photos.declined_at)
-      const expiryDate = new Date(declinedDate.getTime() + 7 * 24 * 60 * 60 * 1000)
-      
-      if (new Date() > expiryDate) {
-        setError("This reupload link has expired. Please contact support.")
-        setLoading(false)
-        return
-      }
-
-      setTrainee(data)
+    // ✅ FIX: Check if declined_photos exists
+    if (!data.declined_photos) {
+      setError("This reupload link is no longer valid. Your photos may have already been resubmitted.")
       setLoading(false)
-    } catch (err) {
-      console.error("Validation error:", err)
-      setError("An error occurred. Please try again.")
-      setLoading(false)
+      return
     }
+
+    // Verify token matches
+    if (data.declined_photos.token !== token) {
+      setError("This reupload link is invalid or has expired.")
+      setLoading(false)
+      return
+    }
+
+    // ✅ FIX: Check if already resubmitted
+    if (data.status === "Resubmitted (Pending Verification)") {
+      setError("You have already resubmitted your photos. Please wait for verification.")
+      setLoading(false)
+      return
+    }
+
+    // Check if link expired (7 days)
+    const declinedDate = new Date(data.declined_photos.declined_at)
+    const expiryDate = new Date(declinedDate.getTime() + 7 * 24 * 60 * 60 * 1000)
+    
+    if (new Date() > expiryDate) {
+      setError("This reupload link has expired (7 days limit). Please contact support.")
+      setLoading(false)
+      return
+    }
+
+    setTrainee(data)
+    setLoading(false)
+  } catch (err) {
+    console.error("Validation error:", err)
+    setError("An error occurred. Please try again.")
+    setLoading(false)
   }
+}
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'id' | '2x2') => {
     const file = e.target.files?.[0]
