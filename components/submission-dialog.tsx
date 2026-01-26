@@ -196,8 +196,9 @@ const fetchPayments = async () => {
     
     // Calculate total including PVC fee if applicable
     const paymentTotal = data.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
-    const pvcFee = trainee.add_pvc_id ? 150 : 0;
+    const pvcFee = getEffectivePvcFee(trainee);
     setPvcIdFee(pvcFee);
+
     
     await supabase
       .from("trainings")
@@ -212,7 +213,8 @@ const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
 
   const originalFee = getTrainingFee();
   const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
-  const pvcFee = trainee.add_pvc_id ? 150 : 0;
+  const pvcFee = getEffectivePvcFee(trainee);
+
 
   const currentStatus = trainee.status?.toLowerCase();
   if (
@@ -621,6 +623,29 @@ const getEventTypeLabel = () => {
   
   return typeMap[eventType.toLowerCase()] || eventType;
 };
+
+
+
+// ✅ PVC AUTO RULE (UI): if no discount -> PVC is automatically YES
+const isPvcAutoYes = (t: any) => !t?.has_discount;
+
+// ✅ Actual PVC "effective" value used in computations/UI
+const getEffectivePvcId = (t: any) => {
+  if (isPvcAutoYes(t)) return true;            // Auto YES
+  return !!t?.add_pvc_id;                      // Manual when discounted
+};
+
+// ✅ Label for admin clarity
+const getPvcDisplayLabel = (t: any) => {
+  if (isPvcAutoYes(t)) return "Auto: Yes (No Discount)";
+  return t?.add_pvc_id ? "Manual: Yes" : "Manual: No";
+};
+
+// ✅ Fee based on effective PVC
+const getEffectivePvcFee = (t: any) => (getEffectivePvcId(t) ? 150 : 0);
+
+
+
 
 // ✅ Simple required-field validator
 const validateRequired = (fields: { key: string; label: string; value: any }[]) => {
@@ -2471,23 +2496,32 @@ const handleRestoreIdOriginal = async () => {
 
                 {/* ✅ FIXED JSX COMMENT */}
                 {/* PVC ID Add-on Display */}
-                {trainee.add_pvc_id && (
-                  <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-300 rounded-lg space-y-2">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-blue-600" />
-                      <span className="font-semibold text-blue-800 dark:text-blue-200">
-                        Physical PVC ID Requested
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
-                      <span>PVC ID Fee:</span>
-                      <span className="font-semibold">₱150.00</span>
-                    </div>
-                    <p className="text-xs text-blue-600 dark:text-blue-400">
-                      Client opted for Physical PVC ID card in addition to Digital ID
-                    </p>
-                  </div>
-                )}
+                {getEffectivePvcId(trainee) && (
+  <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-300 rounded-lg space-y-2">
+    <div className="flex items-center gap-2">
+      <CheckCircle2 className="w-4 h-4 text-blue-600" />
+      <span className="font-semibold text-blue-800 dark:text-blue-200">
+        Physical PVC ID
+      </span>
+
+      <span className="ml-auto text-[11px] px-2 py-0.5 rounded bg-white/70 border border-blue-200 text-blue-800">
+        {getPvcDisplayLabel(trainee)}
+      </span>
+    </div>
+
+    <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+      <span>PVC ID Fee:</span>
+      <span className="font-semibold">₱150.00</span>
+    </div>
+
+    <p className="text-xs text-blue-600 dark:text-blue-400">
+      {isPvcAutoYes(trainee)
+        ? "Auto-included because trainee has no discount."
+        : "Manual selection because trainee has a discount."}
+    </p>
+  </div>
+)}
+
 
                 <div className="flex justify-between">
                   <span>Payment Method</span>
@@ -2825,17 +2859,18 @@ const handleRestoreIdOriginal = async () => {
                       )}
                     </span>
                   </div>
-                  {trainee.add_pvc_id && (
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>+ PVC ID:</span>
-                      <span>₱150.00</span>
-                    </div>
-                  )}
+                 {getEffectivePvcId(trainee) && (
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>+ PVC ID:</span>
+                        <span>₱150.00</span>
+                      </div>
+                    )}
                   <div className="flex justify-between font-semibold text-base text-gray-900 dark:text-gray-100 pt-1 border-t">
                     <span>Total Required:</span>
                     <span>
                       {formatCurrency(
-                        ((discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) as number) + pvcIdFee
+                        ((discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) as number) +
+                        getEffectivePvcFee(trainee)
                       )}
                     </span>
                   </div>

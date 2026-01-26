@@ -304,11 +304,11 @@ useEffect(() => {
       }
 
       if (scheduleData.course_id) {
-        const { data: courseData, error: courseError } = await tmsDb
-          .from("courses")
-          .select("*")
-          .eq("id", scheduleData.course_id)
-          .single()
+       const { data: courseData, error: courseError } = await tmsDb
+        .from("courses")
+        .select("*, has_pvc_id")
+        .eq("id", scheduleData.course_id)
+        .single()
 
         console.log("Course data:", courseData)
         
@@ -1680,32 +1680,32 @@ const handleSubmit = async () => {
                           </div>
 
 
-                          {/* PVC ID Add-on Option */}
-                            {discount > 0 && (
-                              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
-                                <p className="text-sm text-amber-900 font-medium mb-2">
-                                  ⚠️ Important: Discounted packages include Digital ID only
-                                </p>
-                                <p className="text-xs text-amber-700 mb-3">
-                                  Physical PVC ID is not included. If you wish to receive a Physical PVC ID, you can add it for an additional ₱150.
-                                </p>
-                                <div className="flex items-center gap-3">
-                                  <Checkbox
-                                    id="add_pvc"
-                                    checked={!!form.add_pvc_id}
-                                    onCheckedChange={(checked) =>
-                                      setForm((prev: any) => ({
-                                        ...prev,
-                                        add_pvc_id: Boolean(checked),
-                                      }))
-                                    }
-                                  />
-                                  <Label htmlFor="add_pvc" className="cursor-pointer text-sm font-medium">
-                                    Add Physical PVC ID (+₱150)
-                                  </Label>
-                                </div>
+                         {/* PVC ID Add-on Option - Only show if course offers PVC ID */}
+                          {course?.has_pvc_id && discount > 0 && (
+                            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                              <p className="text-sm text-amber-900 font-medium mb-2">
+                                ⚠️ Important: Discounted packages include Digital ID only
+                              </p>
+                              <p className="text-xs text-amber-700 mb-3">
+                                Physical PVC ID is not included. If you wish to receive a Physical PVC ID, you can add it for an additional ₱150.
+                              </p>
+                              <div className="flex items-center gap-3">
+                                <Checkbox
+                                  id="add_pvc"
+                                  checked={!!form.add_pvc_id}
+                                  onCheckedChange={(checked) =>
+                                    setForm((prev: any) => ({
+                                      ...prev,
+                                      add_pvc_id: Boolean(checked),
+                                    }))
+                                  }
+                                />
+                                <Label htmlFor="add_pvc" className="cursor-pointer text-sm font-medium">
+                                  Add Physical PVC ID (+₱150)
+                                </Label>
                               </div>
-                            )}
+                            </div>
+                          )}
 
                           {/* Discount Display */}
                           {discount > 0 && (

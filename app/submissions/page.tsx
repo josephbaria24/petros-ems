@@ -25,11 +25,9 @@ import {
   Zap,
   Loader2,
   PieChart,
-  ImageOff,
   ArrowLeft,
   AlertCircle,
   Upload,
-  RefreshCw,
   MoveRight
 } from "lucide-react";
 import { Input } from "@/components/ui/input"
@@ -84,7 +82,8 @@ export default function SubmissionPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("")
   const [isDeleting, setIsDeleting] = useState(false)
 
-
+  const [scheduleDateText, setScheduleDateText] = useState<string>("");
+  
   const [isLoadingTrainees, setIsLoadingTrainees] = useState(true)
 
   const [moveScheduleDialog, setMoveScheduleDialog] = useState(false)
@@ -102,9 +101,31 @@ const hasPendingReceipt = (trainee: any) => {
   );
 };
 
+
+
+const formatScheduleDate = (schedule: any) => {
+  if (!schedule) return "";
+
+  if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length > 0) {
+    const r = schedule.schedule_ranges[0];
+    return `${new Date(r.start_date).toLocaleDateString()} - ${new Date(r.end_date).toLocaleDateString()}`;
+  }
+
+  if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length > 0) {
+    return schedule.schedule_dates
+      .map((d: any) => new Date(d.date).toLocaleDateString())
+      .join(", ");
+  }
+
+  return "";
+};
+
+
   const getStatusBadge = (status: string) => {
   const normalized = status?.toLowerCase().trim() || "pending";
   
+
+
   switch (normalized) {
     case "pending":
       return (
@@ -199,7 +220,14 @@ const fetchTrainees = async () => {
     // Fetch schedule with course name
     const { data: scheduleData, error: scheduleError } = await tmsDb
       .from("schedules")
-      .select("course_id, courses(name)")
+      .select(`
+        course_id,
+        schedule_type,
+        schedule_dates(date),
+        schedule_ranges(start_date, end_date),
+        courses(name)
+      `)
+
       .eq("id", scheduleId)
       .single();
 
@@ -209,6 +237,7 @@ const fetchTrainees = async () => {
 } else if (scheduleData?.courses) {
   // @ts-ignore
   setCourseName(scheduleData.courses.name || "");
+  setScheduleDateText(formatScheduleDate(scheduleData));
   setCurrentCourseId(scheduleData.course_id); // ADD THIS LINE
 }
 
@@ -400,6 +429,7 @@ const handleView = (trainee: any) => {
   }
 
 
+  
   
 const handleDialogClose = async (open: boolean) => {
   setDialogOpen(open);
@@ -981,11 +1011,19 @@ const handleBulkMoveSchedule = async () => {
           </Link>
            {/* ✅ ADD THIS REFRESH BUTTON */}
           <div>
-            {courseName && (
-              <p className="text-sm text-muted-foreground font-medium">
-                {courseName}
-              </p>
-            )}
+           {courseName && (
+  <div className="flex flex-col">
+    <p className="text-sm text-muted-foreground font-medium">
+      {courseName}
+      {scheduleDateText ? (
+        <span className="ml-2 text-xs text-muted-foreground">
+          • {scheduleDateText}
+        </span>
+      ) : null}
+    </p>
+  </div>
+)}
+
             <h1 className="text-2xl font-bold">Trainee Submissions</h1>
           </div>
         </div>

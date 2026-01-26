@@ -51,12 +51,13 @@ import {
 } from "@/components/ui/alert-dialog"
 import { MoreVertical, Edit, Trash2, ChevronLeft, ChevronRight, Plus, ExternalLink, Eye, Link as LinkIcon } from "lucide-react"
 import { toast } from "sonner"
+import { Checkbox } from "@/components/ui/checkbox"
 
 type Course = {
   id: string
   name: string
   description: string | null
-  training_fee: number | null  // Keep for backward compatibility
+  training_fee: number | null
   online_fee: number | null
   face_to_face_fee: number | null
   elearning_fee: number | null
@@ -65,6 +66,7 @@ type Course = {
   serial_number_pad: number | null
   pretest_link: string | null
   posttest_link: string | null
+  has_pvc_id: boolean | null
   created_at: string
 }
 
@@ -77,6 +79,7 @@ type CourseFormData = {
   title: string
   serial_number: string
   serial_number_pad: string
+  has_pvc_id: boolean
 }
 
 type ExamLinkData = {
@@ -114,7 +117,8 @@ export default function CoursesPage() {
     elearning_fee: "",
     title: "",
     serial_number: "",
-    serial_number_pad: ""
+    serial_number_pad: "",
+    has_pvc_id: false
   })
 
   const [examLinkData, setExamLinkData] = useState<ExamLinkData>({
@@ -128,10 +132,10 @@ export default function CoursesPage() {
 
   const fetchCourses = async () => {
     try {
-      const { data, error } = await tmsDb
-        .from("courses")
-        .select("id, name, description, training_fee, online_fee, face_to_face_fee, elearning_fee, title, serial_number, serial_number_pad, pretest_link, posttest_link, created_at")
-        .order("name", { ascending: true })
+     const { data, error } = await tmsDb
+      .from("courses")
+      .select("id, name, description, training_fee, online_fee, face_to_face_fee, elearning_fee, title, serial_number, serial_number_pad, pretest_link, posttest_link, has_pvc_id, created_at")
+      .order("name", { ascending: true })
 
       if (error) {
         console.error("Error fetching courses:", error)
@@ -156,7 +160,8 @@ export default function CoursesPage() {
       elearning_fee: "",
       title: "",
       serial_number: "",
-      serial_number_pad: ""
+      serial_number_pad: "",
+      has_pvc_id: false
     })
   }
 
@@ -187,7 +192,8 @@ const handleEditCourse = (course: Course) => {
     elearning_fee: course.elearning_fee?.toString() || "",
     title: course.title || "",
     serial_number: course.serial_number?.toString() || "",
-    serial_number_pad: course.serial_number_pad?.toString() || ""
+    serial_number_pad: course.serial_number_pad?.toString() || "",
+    has_pvc_id: course.has_pvc_id || false
   })
   setIsEditDialogOpen(true)
 }
@@ -219,7 +225,7 @@ const handleEditCourse = (course: Course) => {
 
     setIsSubmitting(true)
     try {
-      const { data: newCourse, error } = await tmsDb
+     const { data: newCourse, error } = await tmsDb
         .from("courses")
         .insert([
           {
@@ -231,6 +237,7 @@ const handleEditCourse = (course: Course) => {
             title: formData.title.trim() || null,
             serial_number: formData.serial_number ? parseInt(formData.serial_number) : null,
             serial_number_pad: formData.serial_number_pad ? parseInt(formData.serial_number_pad) : null,
+            has_pvc_id: formData.has_pvc_id,
           },
         ])
         .select()
@@ -272,6 +279,7 @@ const handleEditCourse = (course: Course) => {
           title: formData.title.trim() || null,
           serial_number: formData.serial_number ? parseInt(formData.serial_number) : null,
           serial_number_pad: formData.serial_number_pad ? parseInt(formData.serial_number_pad) : null,
+          has_pvc_id: formData.has_pvc_id,
         })
         .eq("id", selectedCourse.id)
         .select()
@@ -1021,6 +1029,23 @@ const handleEditCourse = (course: Course) => {
                   }
                 />
               </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="add-has-pvc"
+                    checked={formData.has_pvc_id}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, has_pvc_id: Boolean(checked) })
+                    }
+                  />
+                  <Label htmlFor="add-has-pvc" className="cursor-pointer text-sm font-medium">
+                    This course offers Physical PVC ID
+                  </Label>
+                </div>
+                <p className="text-xs text-muted-foreground ml-6">
+                  Check this if trainees can opt to add a Physical PVC ID for ₱150
+                </p>
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -1153,6 +1178,23 @@ const handleEditCourse = (course: Course) => {
                     setFormData({ ...formData, elearning_fee: e.target.value })
                   }
                 />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="edit-has-pvc"
+                    checked={formData.has_pvc_id}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, has_pvc_id: Boolean(checked) })
+                    }
+                  />
+                  <Label htmlFor="edit-has-pvc" className="cursor-pointer text-sm font-medium">
+                    This course offers Physical PVC ID
+                  </Label>
+                </div>
+                <p className="text-xs text-muted-foreground ml-6">
+                  Check this if trainees can opt to add a Physical PVC ID for ₱150
+                </p>
               </div>
             </div>
           </div>
