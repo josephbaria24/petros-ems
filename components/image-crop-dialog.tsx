@@ -1,3 +1,4 @@
+//components\image-crop-dialog.tsx
 import React, { useState, useRef, useCallback } from 'react';
 import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -38,29 +39,52 @@ export function ImageCropDialog({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [originalFile, setOriginalFile] = useState<File | null>(null);
 
-  // Load existing image via proxy to avoid CORS issues
-  React.useEffect(() => {
-    if (open && existingImageUrl) {
-      // Use proxy for external URLs to avoid CORS
-      const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(existingImageUrl)}`;
-      setImageSrc(proxyUrl);
-      setOriginalFile(null);
-    } else if (!open) {
-      // Reset when closing
-      setImageSrc('');
-      setOriginalFile(null);
-      setCrop({
-        unit: '%',
-        width: imageType === '2x2' ? 50 : 70,
-        height: imageType === '2x2' ? 50 : 70,
-        x: 25,
-        y: 25,
-      });
-      setCompletedCrop(null);
-      setZoom(1);
-      setRotation(0);
+// In ImageCropDialog component, replace the useEffect:
+React.useEffect(() => {
+  if (open && existingImageUrl) {
+    const loadImage = async () => {
+      try {
+        // Try proxy first
+        const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(existingImageUrl)}`;
+        const response = await fetch(proxyUrl);
+        
+        if (!response.ok) {
+          console.warn('Proxy failed, trying direct URL');
+          // Fallback to direct URL (may have CORS issues but worth trying)
+          setImageSrc(existingImageUrl);
+          return;
+        }
+        
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        setImageSrc(objectUrl);
+      } catch (error) {
+        console.error('Failed to load image:', error);
+        // Last resort: try direct URL
+        setImageSrc(existingImageUrl);
+      }
+    };
+    
+    loadImage();
+  } else if (!open) {
+    // Cleanup object URLs
+    if (imageSrc && imageSrc.startsWith('blob:')) {
+      URL.revokeObjectURL(imageSrc);
     }
-  }, [open, existingImageUrl, imageType]);
+    setImageSrc('');
+    setOriginalFile(null);
+    setCrop({
+      unit: '%',
+      width: imageType === '2x2' ? 50 : 70,
+      height: imageType === '2x2' ? 50 : 70,
+      x: 25,
+      y: 25,
+    });
+    setCompletedCrop(null);
+    setZoom(1);
+    setRotation(0);
+  }
+}, [open, existingImageUrl, imageType]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

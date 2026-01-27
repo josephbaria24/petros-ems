@@ -117,7 +117,10 @@ export function DeclinePhotoDialog({
               
               <p>Please re-upload the declined photo(s) by clicking the button below:</p>
               
-              <a href="${reuploadUrl}" class="button">Re-upload Photos</a>
+              <a href="${reuploadUrl}" class="button" style="color: #fff;">
+                  Re-upload Photos
+                </a>
+
               
               <p><small>This link will expire in 7 days. If you have any questions, please contact us.</small></p>
               

@@ -2039,7 +2039,7 @@ const handleRestoreIdOriginal = async () => {
 
           {/* Personal Details */}
           <section className="border rounded overflow-hidden">
-            <div className="flex justify-between items-center font-bold px-4 py-2 bg-card">
+            <div className="flex justify-between items-center font-black px-4 py-2 bg-card ">
               Personal Details
               <Button
                 size="sm"
@@ -2203,7 +2203,7 @@ const handleRestoreIdOriginal = async () => {
 
       {/* Company Information (if employed) */}
       {newDetails.employment_status === "Employed" && (
-        <div className="space-y-3 p-3 bg-slate-50 border border-slate-200 rounded">
+        <div className="space-y-3 p-3 bg-card border border-slate-200 rounded">
           <h4 className="font-semibold text-sm">Company Details</h4>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -2393,7 +2393,7 @@ const handleRestoreIdOriginal = async () => {
 
       {/* Company Information (if employed) */}
       {trainee?.employment_status === "Employed" && (
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded space-y-3">
+        <div className="p-3 bg-card border border-slate-200 rounded space-y-3">
           <div className="font-semibold text-sm flex items-center gap-2">
             <Briefcase className="h-4 w-4" />
             Company Information

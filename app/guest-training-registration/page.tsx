@@ -1073,7 +1073,21 @@ const handleSubmit = async () => {
 
                 {/* Mobile version - icon only */}
                 <div className="sm:hidden p-2 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                  <Calendar className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                  {/* <Calendar className="w-4 h-4 text-slate-600 dark:text-slate-400" /> */}
+                  <div className="text-right">
+                    <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 leading-tight">
+                      {course.name}
+                    </p>
+                    <p className={`text-[10px] font-medium leading-tight ${
+                      scheduleEventType === 'online' 
+                        ? 'text-emerald-600 dark:text-emerald-400' 
+                        : scheduleEventType === 'face-to-face'
+                        ? 'text-blue-600 dark:text-blue-400'
+                        : 'text-purple-600 dark:text-purple-400'
+                    }`}>
+                      {getEventTypeLabel()}
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
