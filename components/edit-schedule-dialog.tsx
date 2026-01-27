@@ -1,5 +1,3 @@
-//components\edit-schedule-dialog.tsx
-
 "use client"
 
 import * as React from "react"
@@ -74,16 +72,20 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
   const [scheduleType, setScheduleType] = React.useState<string>("regular")
   const [rangeDates, setRangeDates] = React.useState<DateRange | undefined>()
   const [multiDates, setMultiDates] = React.useState<Date[]>([])
-  const [courseOptions, setCourseOptions] = React.useState<{ id: string; name: string }[]>([])
+  const [courseOptions, setCourseOptions] = React.useState<{ id: string; name: string; online_fee: number | null; face_to_face_fee: number | null; elearning_fee: number | null }[]>([])
   const [loadingCourses, setLoadingCourses] = React.useState(true)
   const [loadingSchedule, setLoadingSchedule] = React.useState(false)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
-  const isBranchRequired = eventType !== "online"
+  const isBranchRequired = eventType !== "online" && eventType !== "elearning"
+  const [selectedCourseData, setSelectedCourseData] = React.useState<any>(null)
 
-  // Fetch courses
+  // Fetch courses with fee information
   React.useEffect(() => {
     const fetchCourses = async () => {
-      const { data, error } = await tmsDb.from("courses").select("id, name").order("name")
+      const { data, error } = await tmsDb
+        .from("courses")
+        .select("id, name, online_fee, face_to_face_fee, elearning_fee")
+        .order("name")
       if (error) {
         console.error("Failed to load courses", error)
         toast.error("Failed to load courses", {
@@ -97,6 +99,19 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
 
     fetchCourses()
   }, [])
+
+  // Update selectedCourseData when course changes
+  React.useEffect(() => {
+    if (!course) {
+      setSelectedCourseData(null)
+      return
+    }
+
+    const fetchedCourse = courseOptions.find(c => c.id === course)
+    if (fetchedCourse) {
+      setSelectedCourseData(fetchedCourse)
+    }
+  }, [course, courseOptions])
 
   // Fetch schedule data when dialog opens
   React.useEffect(() => {
@@ -343,15 +358,15 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
               <div className="flex-1 space-y-4">
                 {/* Event Type */}
                 <div className="grid gap-2">
-                  <Label htmlFor="event-type">Event Type *</Label>
+                  <Label htmlFor="event-type">Training Type *</Label>
                   <Select value={eventType} onValueChange={setEventType} disabled={isSubmitting}>
                     <SelectTrigger id="event-type" className="max-w-sm">
-                      <SelectValue placeholder="Select event type" />
+                      <SelectValue placeholder="Select training type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="public">Public</SelectItem>
-                      <SelectItem value="in-house">In-house</SelectItem>
                       <SelectItem value="online">Online</SelectItem>
+                      <SelectItem value="face-to-face">Face-to-Face</SelectItem>
+                      <SelectItem value="elearning">E-Learning</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -406,8 +421,113 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
                   </Popover>
                 </div>
 
+                {/* Training Fees Display */}
+                {selectedCourseData && (
+                  <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md space-y-2">
+                    <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                      Training Fees:
+                    </p>
+                    <div className="space-y-2">
+                      {/* Online Fee */}
+                      <div 
+                        className={`p-2 rounded-md transition-all ${
+                          eventType === 'online' 
+                            ? 'bg-emerald-100 dark:bg-emerald-950 border-2 border-emerald-500 ring-2 ring-emerald-200' 
+                            : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className={`text-xs font-medium ${
+                            eventType === 'online' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'
+                          }`}>
+                            Online:
+                          </span>
+                          <p className={`font-bold text-sm ${
+                            eventType === 'online' ? 'text-emerald-900 dark:text-emerald-300' : 'text-slate-900 dark:text-slate-100'
+                          }`}>
+                            {selectedCourseData.online_fee !== null 
+                              ? `₱${Number(selectedCourseData.online_fee).toLocaleString()}`
+                              : "N/A"}
+                          </p>
+                        </div>
+                        {eventType === 'online' && (
+                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
+                            ✓ Selected
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Face-to-Face Fee */}
+                      <div 
+                        className={`p-2 rounded-md transition-all ${
+                          eventType === 'face-to-face' 
+                            ? 'bg-blue-100 dark:bg-blue-950 border-2 border-blue-500 ring-2 ring-blue-200' 
+                            : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className={`text-xs font-medium ${
+                            eventType === 'face-to-face' ? 'text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400'
+                          }`}>
+                            Face-to-Face:
+                          </span>
+                          <p className={`font-bold text-sm ${
+                            eventType === 'face-to-face' ? 'text-blue-900 dark:text-blue-300' : 'text-slate-900 dark:text-slate-100'
+                          }`}>
+                            {selectedCourseData.face_to_face_fee !== null 
+                              ? `₱${Number(selectedCourseData.face_to_face_fee).toLocaleString()}`
+                              : "N/A"}
+                          </p>
+                        </div>
+                        {eventType === 'face-to-face' && (
+                          <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-1 font-medium">
+                            ✓ Selected
+                          </p>
+                        )}
+                      </div>
+
+                      {/* E-Learning Fee */}
+                      <div 
+                        className={`p-2 rounded-md transition-all ${
+                          eventType === 'elearning' 
+                            ? 'bg-purple-100 dark:bg-purple-950 border-2 border-purple-500 ring-2 ring-purple-200' 
+                            : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className={`text-xs font-medium ${
+                            eventType === 'elearning' ? 'text-purple-700 dark:text-purple-400' : 'text-slate-600 dark:text-slate-400'
+                          }`}>
+                            E-Learning:
+                          </span>
+                          <p className={`font-bold text-sm ${
+                            eventType === 'elearning' ? 'text-purple-900 dark:text-purple-300' : 'text-slate-900 dark:text-slate-100'
+                          }`}>
+                            {selectedCourseData.elearning_fee !== null 
+                              ? `₱${Number(selectedCourseData.elearning_fee).toLocaleString()}`
+                              : "N/A"}
+                          </p>
+                        </div>
+                        {eventType === 'elearning' && (
+                          <p className="text-[10px] text-purple-600 dark:text-purple-400 mt-1 font-medium">
+                            ✓ Selected
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Info message when no event type selected */}
+                    {!eventType && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
+                        <span className="text-sm">⚠️</span>
+                        Select a training type above to see the applicable fee
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Branch */}
-                {eventType !== "online" && (
+                {eventType !== "online" && eventType !== "elearning" && (
                   <div className="grid gap-2">
                     <Label htmlFor="branch">Branch *</Label>
                     <Select value={branch} onValueChange={setBranch} disabled={isSubmitting}>
