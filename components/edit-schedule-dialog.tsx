@@ -1,3 +1,4 @@
+//components\edit-schedule-dialog.tsx
 "use client"
 
 import * as React from "react"
@@ -44,6 +45,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import { recalculateScheduleStatus } from "@/lib/schedule-status-updater"
+import { Input } from "./ui/input"
 
 interface EditScheduleDialogProps {
   open: boolean
@@ -78,7 +80,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const isBranchRequired = eventType !== "online" && eventType !== "elearning"
   const [selectedCourseData, setSelectedCourseData] = React.useState<any>(null)
-
+  const [batchNumber, setBatchNumber] = React.useState<number | null>(null)
   // Fetch courses with fee information
   React.useEffect(() => {
     const fetchCourses = async () => {
@@ -144,6 +146,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
         setCourse(scheduleData.course_id || "")
         setBranch(scheduleData.branch || "")
         setScheduleType(scheduleData.schedule_type || "regular")
+        setBatchNumber(scheduleData.batch_number || null) // ✅ Set batch number
 
         // Handle dates based on schedule type
         if (scheduleData.schedule_type === "regular" && scheduleData.schedule_ranges?.length > 0) {
@@ -169,7 +172,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
     fetchScheduleData()
   }, [scheduleId, open])
 
- const handleSubmit = async (e: React.FormEvent, sendEmail: boolean = false) => {
+const handleSubmit = async (e: React.FormEvent, sendEmail: boolean = false) => {
   e.preventDefault()
 
   if (!scheduleId) {
@@ -203,6 +206,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
         schedule_type: scheduleType,
         event_type: eventType,
         branch: branch,
+        batch_number: batchNumber, // ✅ Update batch number
       })
       .eq("id", scheduleId)
   
@@ -213,6 +217,21 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
       })
       setIsSubmitting(false)
       return
+    }
+
+    // ✅ NEW: Update all trainees with the new batch number
+    if (batchNumber !== null) {
+      const { error: batchUpdateError } = await tmsDb
+        .from("trainings")
+        .update({ batch_number: batchNumber })
+        .eq("schedule_id", scheduleId)
+
+      if (batchUpdateError) {
+        console.error("Error updating trainee batch numbers:", batchUpdateError)
+        // Don't fail the whole operation, just log it
+      } else {
+        console.log(`✅ Updated batch number to ${batchNumber} for all trainees in schedule ${scheduleId}`)
+      }
     }
   
     // Step 2: Delete existing dates (both ranges and individual dates)
@@ -283,17 +302,18 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
           const dateText = scheduleType === "regular" && rangeDates?.from && rangeDates?.to
             ? `${rangeDates.from.toLocaleDateString()} - ${rangeDates.to.toLocaleDateString()}`
             : multiDates.map(d => d.toLocaleDateString()).join(", ")
-            await fetch("/api/send-schedule-update-email", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                trainees,
-                courseName,
-                dateText,
-                branch,
-                eventType,
-              }),
-            })
+            
+          await fetch("/api/send-schedule-update-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              trainees,
+              courseName,
+              dateText,
+              branch,
+              eventType,
+            }),
+          })
 
           toast.success("Schedule Updated & Emails Sent", {
             id: toastId,
@@ -356,6 +376,19 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
             <div className="flex flex-col md:flex-row gap-6 mt-6">
               {/* LEFT COLUMN: Inputs */}
               <div className="flex-1 space-y-4">
+                {/* Batch Number */}
+                <div className="grid gap-2">
+                  <Label htmlFor="batch_number">Batch Number *</Label>
+                  <Input
+                    id="batch_number"
+                    type="number"
+                    min="1"
+                    value={batchNumber ?? ""}
+                    onChange={(e) => setBatchNumber(e.target.value ? parseInt(e.target.value) : null)}
+                    disabled={isSubmitting}
+                    placeholder="Enter batch number"
+                  />
+                </div>
                 {/* Event Type */}
                 <div className="grid gap-2">
                   <Label htmlFor="event-type">Training Type *</Label>

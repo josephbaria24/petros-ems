@@ -83,7 +83,8 @@ export default function SubmissionPage() {
   const [isDeleting, setIsDeleting] = useState(false)
 
   const [scheduleDateText, setScheduleDateText] = useState<string>("");
-  
+
+    const [batchNumber, setBatchNumber] = useState<number | null>(null);
   const [isLoadingTrainees, setIsLoadingTrainees] = useState(true)
 
   const [moveScheduleDialog, setMoveScheduleDialog] = useState(false)
@@ -161,18 +162,28 @@ const hasPendingReceipt = (trainee: any) => {
 };
 
 
-
 const formatScheduleDate = (schedule: any) => {
   if (!schedule) return "";
 
   if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length > 0) {
     const r = schedule.schedule_ranges[0];
-    return `${new Date(r.start_date).toLocaleDateString()} - ${new Date(r.end_date).toLocaleDateString()}`;
+    const startDate = new Date(r.start_date);
+    const endDate = new Date(r.end_date);
+    
+    const startMonth = startDate.toLocaleDateString('en-US', { month: 'long' });
+    const startDay = startDate.getDate();
+    const endDay = endDate.getDate();
+    const year = startDate.getFullYear();
+    
+    return `${startMonth} ${startDay}-${endDay}, ${year}`;
   }
 
   if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length > 0) {
     return schedule.schedule_dates
-      .map((d: any) => new Date(d.date).toLocaleDateString())
+      .map((d: any) => {
+        const date = new Date(d.date);
+        return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      })
       .join(", ");
   }
 
@@ -282,6 +293,7 @@ const fetchTrainees = async () => {
       .select(`
         course_id,
         schedule_type,
+        batch_number,
         schedule_dates(date),
         schedule_ranges(start_date, end_date),
         courses(name)
@@ -298,6 +310,7 @@ const fetchTrainees = async () => {
   setCourseName(scheduleData.courses.name || "");
   setScheduleDateText(formatScheduleDate(scheduleData));
   setCurrentCourseId(scheduleData.course_id); // ADD THIS LINE
+   setBatchNumber(scheduleData.batch_number);
 }
 
     // Fetch trainings data
@@ -1082,18 +1095,23 @@ const filteredTrainees = trainees.filter((t) => {
           </Link>
            {/* ✅ ADD THIS REFRESH BUTTON */}
           <div>
-           {courseName && (
-  <div className="flex flex-col">
-    <p className="text-sm text-muted-foreground font-medium">
-      {courseName}
-      {scheduleDateText ? (
-        <span className="ml-2 text-xs text-muted-foreground">
-          • {scheduleDateText}
-        </span>
-      ) : null}
-    </p>
-  </div>
-)}
+            {courseName && (
+              <div className="flex flex-col">
+                <p className="text-sm text-muted-foreground font-medium">
+                  {courseName}
+                  {batchNumber && (
+                      <Badge variant="default" className="ml-2 text-xs">
+                        Batch #{batchNumber}
+                      </Badge>
+                    )}
+                  {scheduleDateText ? (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      • {scheduleDateText}
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+            )}
 
             <h1 className="text-2xl font-bold">Trainee Submissions</h1>
           </div>

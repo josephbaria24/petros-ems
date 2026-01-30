@@ -1,4 +1,4 @@
-// components/participant-directory-dialog.tsx 
+// components\trainee-directory-dialog.tsx
 "use client"
 
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from "@/components/ui/alert-dialog"
@@ -209,8 +209,9 @@ export default function ParticipantDirectoryDialog({
   const [isLoadingStats, setIsLoadingStats] = useState(false)
   const [isDownloadingDirectory, setIsDownloadingDirectory] = useState(false)
 
-
-    
+  const [scheduleDateText, setScheduleDateText] = useState<string>("");
+  const [batchNumber, setBatchNumber] = useState<number | null>(null); // ADD THIS LINE
+      
   // ✅ NEW: Checkbox selection state
   const [selectedTraineeIds, setSelectedTraineeIds] = useState<Set<string>>(new Set())
   const [selectAll, setSelectAll] = useState(false)
@@ -536,6 +537,16 @@ const handleDownloadCertificates = async () => {
     
     setLoading(true)
     try {
+       // ADD THIS: Fetch schedule batch number
+    const { data: scheduleData } = await tmsDb
+      .from("schedules")
+      .select("batch_number")
+      .eq("id", scheduleId)
+      .single()
+    
+    if (scheduleData) {
+      setBatchNumber(scheduleData.batch_number)
+    }
       const { data, error } = await tmsDb
         .from("trainings")
         .select("id, first_name, last_name, middle_initial, schedule_id, picture_2x2_url, status, email, certificate_number, course_id, batch_number")
@@ -973,14 +984,21 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
 
 
         <div className="bg-yellow-400 dark:bg-blue-950 dark:text-white p-4 rounded-md">
-          <div className="text-sm font-semibold uppercase mb-1">
-            <Badge variant={getStatusBadgeVariant(scheduleStatus)} className="text-xs">
-              {scheduleStatus}
-            </Badge>
-          </div>
-          <div className="text-xl font-bold">{courseName}</div>
-          <div className="text-sm">{scheduleRange}</div>
+        <div className="text-sm font-semibold uppercase mb-1">
+          <Badge variant={getStatusBadgeVariant(scheduleStatus)} className="text-xs">
+            {scheduleStatus}
+          </Badge>
         </div>
+        <div className="text-xl font-bold">
+          {courseName}
+          {batchNumber && (
+            <span className="ml-2 text-lg font-normal">
+              • Batch #{batchNumber}
+            </span>
+          )}
+        </div>
+        <div className="text-sm">{scheduleRange}</div>
+      </div>
 
         <div className="space-y-2 border rounded-lg p-4 bg-muted/50">
           <Label htmlFor="template-type" className="font-semibold">Certificate Template Type</Label>

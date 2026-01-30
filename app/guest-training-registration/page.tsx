@@ -808,31 +808,37 @@ const handleSubmit = async () => {
   }
 
   try {
-    const { data: schedule, error: scheduleError } = await tmsDb
-      .from("schedules")
-      .select("course_id")
-      .eq("id", scheduleId)
-      .single()
-
-    if (scheduleError || !schedule) {
-      toast.error("Failed to retrieve course")
-      return
-    }
-
-    const courseId = schedule.course_id
-
+    // ✅ FIXED: Fetch schedule details only once
     const { data: scheduleDetails, error: scheduleDetailsError } = await tmsDb
       .from("schedules")
-      .select("batch_number")
+      .select("batch_number, course_id")
       .eq("id", scheduleId)
       .single()
 
-    if (scheduleDetailsError || !scheduleDetails?.batch_number) {
-      toast.error("Failed to get batch number from schedule.")
+    if (scheduleDetailsError) {
+      console.error("Schedule fetch error:", scheduleDetailsError)
+      toast.error("Failed to retrieve schedule details.")
       return
     }
 
+    if (!scheduleDetails) {
+      toast.error("Schedule not found.")
+      return
+    }
+
+    const courseId = scheduleDetails.course_id
     const batchNumber = scheduleDetails.batch_number
+
+    // Log for debugging
+    console.log("📊 Schedule Details:", {
+      scheduleId,
+      courseId,
+      batchNumber,
+    })
+
+    if (!batchNumber) {
+      console.warn("⚠️ Warning: Schedule has no batch number assigned!")
+    }
 
     const { data: courseData, error: feeError } = await tmsDb
       .from("courses")
@@ -1073,7 +1079,6 @@ const handleSubmit = async () => {
     toast.error("Something went wrong.")
   }
 }
-
   const isEmployed = form.employment_status === "Employed"
   
   const steps = [
