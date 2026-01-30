@@ -16,6 +16,10 @@ import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import welcomeAnimation from '@/public/welcome.json';
 import Lottie from 'lottie-react';
+import { checkDuplicateRegistration, DuplicateRegistrationHandler } from "@/components/duplicate-registration-handler"
+
+
+
 
 
 // Custom Searchable Dropdown Component
@@ -40,6 +44,7 @@ function SearchableDropdown({
   const filteredItems = items.filter((item) =>
     item.name.toLowerCase().includes(search.toLowerCase())
   )
+
 
   const selectedItem = items.find(item => item.code === value || item.name === value)
 
@@ -121,6 +126,13 @@ function SearchableDropdown({
 }
 
 export default function GuestTrainingRegistration() {
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false)
+  const [duplicateData, setDuplicateData] = useState<any>(null)
+  const [duplicateBookingRef, setDuplicateBookingRef] = useState<string>("")
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [editingTrainingId, setEditingTrainingId] = useState<string | null>(null)
+
+
   const [step, setStep] = useState(0)
   const [form, setForm] = useState<any>({})
   const [uploading, setUploading] = useState(false)
@@ -137,6 +149,8 @@ export default function GuestTrainingRegistration() {
   const [regions, setRegions] = useState<{ code: string; name: string }[]>([])
   const [paymentMethod, setPaymentMethod] = useState("BPI")
   const [errors, setErrors] = useState<{ [key: string]: boolean }>({})
+
+  const [scheduleId, setScheduleId] = useState<string>("")
 
     // Add state for schedule event type
 const [scheduleEventType, setScheduleEventType] = useState<string>("")
@@ -181,51 +195,142 @@ const [scheduleEventType, setScheduleEventType] = useState<string>("")
     return true
   }
 
-  const validateStep1 = () => {
-    const newErrors: any = {}
-    let firstErrorField: string | null = null
+const validateStep1 = async () => {
+  const newErrors: any = {}
+  let firstErrorField: string | null = null
 
-    requiredPersonalFields.forEach((field) => {
-      if (!form[field] || form[field].toString().trim() === "") {
-        newErrors[field] = true
-        if (!firstErrorField) firstErrorField = field
-      }
-    })
-
-    if (form.email) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(form.email)) {
-        newErrors.email = true
-        if (!firstErrorField) firstErrorField = "email"
-        toast.error("Please enter a valid email address.")
-      }
+  requiredPersonalFields.forEach((field) => {
+    if (!form[field] || form[field].toString().trim() === "") {
+      newErrors[field] = true
+      if (!firstErrorField) firstErrorField = field
     }
+  })
 
-    if (form.phone_number) {
-      const phoneDigits = form.phone_number.replace(/\D/g, "")
-      if (phoneDigits.length < 12) {
-        newErrors.phone_number = true
-        if (!firstErrorField) firstErrorField = "phone_number"
-        toast.error("Please enter a complete mobile number.")
-      }
+  if (form.email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(form.email)) {
+      newErrors.email = true
+      if (!firstErrorField) firstErrorField = "email"
+      toast.error("Please enter a valid email address.")
     }
-
-    setErrors(newErrors)
-
-    if (firstErrorField) {
-      const element = document.getElementById(firstErrorField)
-      if (element) {
-        element.scrollIntoView({ behavior: "smooth", block: "center" })
-        element.focus()
-      }
-      if (!Object.keys(newErrors).includes("email") && !Object.keys(newErrors).includes("phone_number")) {
-        toast.error("Please complete all required personal details.")
-      }
-      return false
-    }
-
-    return true
   }
+
+  if (form.phone_number) {
+    const phoneDigits = form.phone_number.replace(/\D/g, "")
+    if (phoneDigits.length < 12) {
+      newErrors.phone_number = true
+      if (!firstErrorField) firstErrorField = "phone_number"
+      toast.error("Please enter a complete mobile number.")
+    }
+  }
+
+  setErrors(newErrors)
+
+  if (firstErrorField) {
+    const element = document.getElementById(firstErrorField)
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" })
+      element.focus()
+    }
+    if (!Object.keys(newErrors).includes("email") && !Object.keys(newErrors).includes("phone_number")) {
+      toast.error("Please complete all required personal details.")
+    }
+    return false
+  }
+
+  // ✅ NEW: Check for duplicate registration before proceeding
+  if (!isEditMode) {
+    const scheduleId = new URLSearchParams(window.location.search).get("schedule_id")
+    if (scheduleId && form.email && form.phone_number) {
+      const duplicateCheck = await checkDuplicateRegistration(
+        scheduleId,
+        form.email,
+        form.phone_number
+      )
+
+      if (duplicateCheck.isDuplicate) {
+        setDuplicateData(duplicateCheck.data)
+        setDuplicateBookingRef(duplicateCheck.bookingRef || "")
+        setShowDuplicateDialog(true)
+        return false
+      }
+    }
+  }
+
+  return true
+}
+
+
+
+
+const handleProceedWithNewRegistration = () => {
+  // User wants to create a new registration despite duplicate
+  setShowDuplicateDialog(false)
+  setDuplicateData(null)
+  setDuplicateBookingRef("")
+  
+  // Proceed to next step
+  if (form.employment_status === "Unemployed") {
+    setStep(3)
+  } else {
+    setStep(2)
+  }
+}
+
+const handleEditExistingRegistration = (existingData: any) => {
+  setIsEditMode(true)
+  setEditingTrainingId(existingData.id)
+  
+  setForm({
+    ...existingData,
+    first_name: existingData.first_name || "",
+    last_name: existingData.last_name || "",
+    middle_initial: existingData.middle_initial || "",
+    suffix: existingData.suffix || "",
+    courtesy_title: existingData.courtesy_title || "",
+    email: existingData.email || "",
+    phone_number: existingData.phone_number || "",
+    gender: existingData.gender || "",
+    age: existingData.age || "",
+    mailing_street: existingData.mailing_street || "",
+    mailing_city: existingData.mailing_city || "",
+    mailing_province: existingData.mailing_province || "",
+    employment_status: existingData.employment_status || "",
+    company_name: existingData.company_name || "",
+    company_position: existingData.company_position || "",
+    company_industry: existingData.company_industry || "",
+    company_email: existingData.company_email || "",
+    company_landline: existingData.company_landline || "",
+    company_city: existingData.company_city || "",
+    company_region: existingData.company_region || "",
+    total_workers: existingData.total_workers || null,  // ✅ CHANGE THIS LINE - use null instead of ""
+    id_picture_url: existingData.id_picture_url || "",
+    picture_2x2_url: existingData.picture_2x2_url || "",
+    is_student: existingData.is_student || false,
+    school_name: existingData.school_name || "",
+    add_pvc_id: existingData.add_pvc_id || false,
+  })
+
+  if (existingData.id_picture_url) {
+    setIdPreview(existingData.id_picture_url)
+  }
+  if (existingData.picture_2x2_url) {
+    setPhotoPreview(existingData.picture_2x2_url)
+  }
+
+  setBookingReference(duplicateBookingRef)
+  toast.success("Loaded existing registration for editing")
+  setShowDuplicateDialog(false)
+  setStep(1)
+}
+
+
+
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search)
+  setScheduleId(params.get("schedule_id") || "")
+}, [])
+
 
   const validateStep2 = () => {
   if (form.employment_status !== "Employed") return true
@@ -690,16 +795,16 @@ const getEventTypeLabel = () => {
   return typeMap[scheduleEventType.toLowerCase()] || scheduleEventType;
 };
 
-// Complete handleSubmit function - REPLACE YOUR ENTIRE handleSubmit
+// Update your handleSubmit function to handle both create and update:
 const handleSubmit = async () => {
-  toast.loading("Submitting registration...");
+  toast.loading(isEditMode ? "Updating registration..." : "Submitting registration...")
 
-  const searchParams = new URLSearchParams(window.location.search);
-  const scheduleId = searchParams.get("schedule_id");
+  const searchParams = new URLSearchParams(window.location.search)
+  const scheduleId = searchParams.get("schedule_id")
 
   if (!scheduleId) {
-    toast.error("Missing schedule ID");
-    return;
+    toast.error("Missing schedule ID")
+    return
   }
 
   try {
@@ -707,14 +812,14 @@ const handleSubmit = async () => {
       .from("schedules")
       .select("course_id")
       .eq("id", scheduleId)
-      .single();
+      .single()
 
     if (scheduleError || !schedule) {
-      toast.error("Failed to retrieve course");
-      return;
+      toast.error("Failed to retrieve course")
+      return
     }
 
-    const courseId = schedule.course_id;
+    const courseId = schedule.course_id
 
     const { data: scheduleDetails, error: scheduleDetailsError } = await tmsDb
       .from("schedules")
@@ -729,75 +834,94 @@ const handleSubmit = async () => {
 
     const batchNumber = scheduleDetails.batch_number
 
-   const { data: courseData, error: feeError } = await tmsDb
-    .from("courses")
-    .select("training_fee, online_fee, face_to_face_fee, elearning_fee, name")
-    .eq("id", courseId)
-    .single();
+    const { data: courseData, error: feeError } = await tmsDb
+      .from("courses")
+      .select("training_fee, online_fee, face_to_face_fee, elearning_fee, name")
+      .eq("id", courseId)
+      .single()
 
-    if (feeError) console.error("Error fetching course fee:", feeError);
+    if (feeError) console.error("Error fetching course fee:", feeError)
 
-    const trainingFee = courseData?.training_fee || 0;
+    const trainingFee = courseData?.training_fee || 0
 
     const trainingPayload = {
       ...form,
       schedule_id: scheduleId,
       course_id: courseId,
       batch_number: batchNumber,
-      status: "pending",
+      status: isEditMode ? form.status || "pending" : "pending",
       payment_method: paymentMethod,
-      payment_status:
-        paymentMethod === "COUNTER" ? "pending" : "awaiting receipt",
-      amount_paid: 0,
+      payment_status: isEditMode 
+        ? form.payment_status || (paymentMethod === "COUNTER" ? "pending" : "awaiting receipt")
+        : (paymentMethod === "COUNTER" ? "pending" : "awaiting receipt"),
+      amount_paid: isEditMode ? form.amount_paid || 0 : 0,
       courtesy_title: form.courtesy_title || null,
-      
-      // Add voucher fields
       discounted_fee: discount > 0 ? (getApplicableFee() || 0) - discount : null,
       has_discount: discount > 0,
       add_pvc_id: form.add_pvc_id || false,
-
-      // normalize student fields
-      is_student:
-        form.employment_status === "Unemployed" ? !!form.is_student : false,
-      school_name:
-        form.employment_status === "Unemployed" && form.is_student
-          ? form.school_name
-          : null,
+      is_student: form.employment_status === "Unemployed" ? !!form.is_student : false,
+      school_name: form.employment_status === "Unemployed" && form.is_student ? form.school_name : null,
+      total_workers: form.employment_status === "Employed" && form.total_workers ? parseInt(form.total_workers) : null,
     }
 
-    const { data: insertedTraining, error: insertError } = await tmsDb
-      .from("trainings")
-      .insert([trainingPayload])
-      .select("id")
-      .single();
+    let trainingId: string
 
-    if (insertError || !insertedTraining) {
-      console.error("Insert training error:", insertError);
-      toast.error("Failed to submit registration.");
-      return;
+    if (isEditMode && editingTrainingId) {
+      // ✅ UPDATE existing training
+      const { error: updateError } = await tmsDb
+        .from("trainings")
+        .update(trainingPayload)
+        .eq("id", editingTrainingId)
+
+      if (updateError) {
+        console.error("Update training error:", updateError)
+        toast.error("Failed to update registration.")
+        return
+      }
+
+      trainingId = editingTrainingId
+      
+      toast.dismiss()
+      toast.success("Registration updated successfully!", { duration: 3000 })
+    } else {
+      // ✅ INSERT new training
+      const { data: insertedTraining, error: insertError } = await tmsDb
+        .from("trainings")
+        .insert([trainingPayload])
+        .select("id")
+        .single()
+
+      if (insertError || !insertedTraining) {
+        console.error("Insert training error:", insertError)
+        toast.error("Failed to submit registration.")
+        return
+      }
+
+      trainingId = insertedTraining.id
+
+      // Create booking summary for new registrations
+      const { error: bookingError } = await tmsDb
+        .from("booking_summary")
+        .insert([
+          {
+            training_id: trainingId,
+            reference_number: bookingReference,
+          },
+        ])
+
+      if (bookingError) {
+        console.error("Booking summary insert error:", bookingError)
+        toast.error("Failed to create booking summary.")
+        return
+      }
+
+      toast.dismiss()
+      toast.success("Registration submitted successfully!", { duration: 3000 })
     }
 
-    const trainingId = insertedTraining.id;
-
-    const { error: bookingError } = await tmsDb
-      .from("booking_summary")
-      .insert([
-        {
-          training_id: trainingId,
-          reference_number: bookingReference,
-        },
-      ]);
-
-    if (bookingError) {
-      console.error("Booking summary insert error:", bookingError);
-      toast.error("Failed to create booking summary.");
-      return;
-    }
-
-    // Mark voucher as used if applied - UPDATED FOR BATCH SUPPORT
-    if (voucherDetails) {
+    // Mark voucher as used if applied
+    if (voucherDetails && !isEditMode) {
       if (voucherDetails.is_batch) {
-        // For batch vouchers: decrement remaining uses
         const newRemaining = voucherDetails.batch_remaining - 1
         const newUsed = voucherDetails.batch_used + 1
         const isFullyUsed = newRemaining <= 0
@@ -807,14 +931,13 @@ const handleSubmit = async () => {
           .update({ 
             batch_remaining: newRemaining,
             batch_used: newUsed,
-            is_used: isFullyUsed // Mark as fully used when no remaining uses
+            is_used: isFullyUsed
           })
           .eq("code", voucherDetails.code)
 
         if (voucherUpdateError) {
           console.error("Failed to update batch voucher:", voucherUpdateError)
         } else {
-          // Log the usage in voucher_usage table
           const { error: usageLogError } = await tmsDb
             .from("voucher_usage")
             .insert([{
@@ -828,7 +951,6 @@ const handleSubmit = async () => {
           }
         }
       } else {
-        // For single-use vouchers: mark as used
         const { error: voucherUpdateError } = await tmsDb
           .from("vouchers")
           .update({ is_used: true })
@@ -840,119 +962,117 @@ const handleSubmit = async () => {
       }
     }
 
-    toast.dismiss();
-    toast.success("Registration submitted successfully!", {
-      duration: 3000,
-    });
+    setIsSubmitted(true)
 
-    setIsSubmitted(true);
-
-    // Send admin notification email
-    try {
-      await fetch("/api/send-registration-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          bookingReference,
-          courseName: courseData?.name || course?.name || "N/A",
-          scheduleRange: scheduleRange
-            ? {
-                startDate: scheduleRange.start_date,
-                endDate: scheduleRange.end_date
-              }
-            : null,
-          traineeInfo: {
-            name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
-            email: form.email,
-            phone: form.phone_number,
-            gender: form.gender,
-            age: form.age,
-            address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
-            employmentStatus: form.employment_status,
-          },
-          employmentInfo:
-            form.employment_status === "Employed"
+    // Send emails only for new registrations
+    if (!isEditMode) {
+      // Send admin notification email
+      try {
+        await fetch("/api/send-registration-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bookingReference,
+            courseName: courseData?.name || course?.name || "N/A",
+            scheduleRange: scheduleRange
               ? {
-                  companyName: form.company_name,
-                  position: form.company_position,
-                  industry: form.company_industry,
-                  companyEmail: form.company_email,
-                  city: form.company_city,
-                  region: form.company_region,
+                  startDate: scheduleRange.start_date,
+                  endDate: scheduleRange.end_date
                 }
               : null,
-          paymentInfo: {
-            trainingFee: getApplicableFee(),
-            discount,
-            pvcIdFee: form.add_pvc_id ? 150 : 0,
-            totalAmount: getApplicableFee() - discount + (form.add_pvc_id ? 150 : 0),
-            paymentMethod,
-            paymentStatus:
-              paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
-          },
-        }),
-      })
-      console.log("Admin notification email sent")
-    } catch (emailErr) {
-      console.error("Admin email sending failed:", emailErr)
-    }
+            traineeInfo: {
+              name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
+              email: form.email,
+              phone: form.phone_number,
+              gender: form.gender,
+              age: form.age,
+              address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
+              employmentStatus: form.employment_status,
+            },
+            employmentInfo:
+              form.employment_status === "Employed"
+                ? {
+                    companyName: form.company_name,
+                    position: form.company_position,
+                    industry: form.company_industry,
+                    companyEmail: form.company_email,
+                    city: form.company_city,
+                    region: form.company_region,
+                  }
+                : null,
+            paymentInfo: {
+              trainingFee: getApplicableFee(),
+              discount,
+              pvcIdFee: form.add_pvc_id ? 150 : 0,
+              totalAmount: getApplicableFee() - discount + (form.add_pvc_id ? 150 : 0),
+              paymentMethod,
+              paymentStatus:
+                paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+            },
+          }),
+        })
+        console.log("Admin notification email sent")
+      } catch (emailErr) {
+        console.error("Admin email sending failed:", emailErr)
+      }
 
-    // Send booking summary to trainee
-    try {
-      await fetch("/api/send-booking-summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: form.email,
-          bookingReference,
-          courseName: courseData?.name || course?.name || "N/A",
-          scheduleRange: scheduleRange
-            ? {
-                startDate: scheduleRange.start_date,
-                endDate: scheduleRange.end_date
-              }
-            : null,
-          traineeInfo: {
-            name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
-            email: form.email,
-            phone: form.phone_number,
-            gender: form.gender,
-            age: form.age,
-            address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
-            employmentStatus: form.employment_status,
-          },
-          employmentInfo:
-            form.employment_status === "Employed"
+      // Send booking summary to trainee
+      try {
+        await fetch("/api/send-booking-summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: form.email,
+            bookingReference,
+            courseName: courseData?.name || course?.name || "N/A",
+            scheduleRange: scheduleRange
               ? {
-                  companyName: form.company_name,
-                  position: form.company_position,
-                  industry: form.company_industry,
-                  companyEmail: form.company_email,
-                  city: form.company_city,
-                  region: form.company_region,
+                  startDate: scheduleRange.start_date,
+                  endDate: scheduleRange.end_date
                 }
               : null,
-          paymentInfo: {
-            trainingFee: trainingFee,
-            discount,
-            pvcIdFee: form.add_pvc_id ? 150 : 0,
-            totalAmount: trainingFee - discount + (form.add_pvc_id ? 150 : 0),
-            paymentMethod,
-            paymentStatus:
-              paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
-          },
-        }),
-      })
-      console.log("Booking summary email sent to trainee")
-    } catch (emailErr) {
-      console.error("Trainee email sending failed:", emailErr)
+            traineeInfo: {
+              name: `${form.first_name} ${form.middle_initial || ""} ${form.last_name}`.trim(),
+              email: form.email,
+              phone: form.phone_number,
+              gender: form.gender,
+              age: form.age,
+              address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
+              employmentStatus: form.employment_status,
+            },
+            employmentInfo:
+              form.employment_status === "Employed"
+                ? {
+                    companyName: form.company_name,
+                    position: form.company_position,
+                    industry: form.company_industry,
+                    companyEmail: form.company_email,
+                    city: form.company_city,
+                    region: form.company_region,
+                  }
+                : null,
+            paymentInfo: {
+              trainingFee: trainingFee,
+              discount,
+              pvcIdFee: form.add_pvc_id ? 150 : 0,
+              totalAmount: trainingFee - discount + (form.add_pvc_id ? 150 : 0),
+              paymentMethod,
+              paymentStatus:
+                paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+            },
+          }),
+        })
+        console.log("Booking summary email sent to trainee")
+      } catch (emailErr) {
+        console.error("Trainee email sending failed:", emailErr)
+      }
     }
 
   } catch (err) {
-    console.error("Unexpected error:", err);
-    toast.error("Something went wrong.");
+    console.error("Unexpected error:", err)
+    toast.error("Something went wrong.")
   }
-};
+}
 
   const isEmployed = form.employment_status === "Employed"
   
@@ -2013,6 +2133,17 @@ const handleSubmit = async () => {
         </AlertDialogContent>
       </AlertDialog>
       </div>
+      <DuplicateRegistrationHandler
+ scheduleId={scheduleId}
+  email={form.email || ""}
+  phoneNumber={form.phone_number || ""}
+  onProceedNew={handleProceedWithNewRegistration}
+  onEditExisting={handleEditExistingRegistration}
+  isOpen={showDuplicateDialog}
+  onClose={() => setShowDuplicateDialog(false)}
+  duplicateData={duplicateData}
+  bookingRef={duplicateBookingRef} 
+/>
     </div>
   )
 }
