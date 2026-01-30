@@ -15,7 +15,7 @@ export async function exportTraineeExcel(
     // Get schedule and course info first
     const { data: scheduleData, error: scheduleError } = await tmsDb
       .from("schedules")
-      .select("id, course_id, status, schedule_type, event_type, branch")
+      .select("id, course_id, status, schedule_type, event_type, branch, batch_number")
       .eq("id", scheduleId)
       .single()
 
@@ -169,6 +169,7 @@ export async function exportTraineeExcel(
       courseName: courseData.name,
       trainingDates,
       scheduleId,
+      batchNumber: scheduleData.batch_number,
     }
 
     console.log("\n" + "=".repeat(60))

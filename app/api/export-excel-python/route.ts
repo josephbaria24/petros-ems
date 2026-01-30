@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic' // Prevent caching
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { trainees, courseName, trainingDates, scheduleId, eventType, branch } = body
+    const { trainees, courseName, trainingDates, scheduleId, eventType, branch, batchNumber } = body
 
     if (!trainees || !courseName || !scheduleId) {
       return NextResponse.json(
@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
           proxyUrl,
           eventType,
           branch,
+          batchNumber,
         }),
         signal: controller.signal, // ✅ ADD THIS
       })
