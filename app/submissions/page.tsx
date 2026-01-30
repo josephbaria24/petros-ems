@@ -92,6 +92,65 @@ const [selectedTargetSchedule, setSelectedTargetSchedule] = useState<string>("")
 const [currentCourseId, setCurrentCourseId] = useState<string>("")
 
 
+
+
+//duplication
+const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false)
+const [duplicateGroups, setDuplicateGroups] = useState<Map<string, any[]>>(new Map())
+
+
+// ADD THIS FUNCTION to detect duplicates (around line 400, before filteredTrainees)
+const detectDuplicates = () => {
+  const groups = new Map<string, any[]>()
+  
+  trainees.forEach((trainee) => {
+    // Create potential duplicate keys
+    const keys = [
+      // Exact email match
+      trainee.email?.toLowerCase().trim(),
+      // Exact phone match (normalized)
+      trainee.phone_number?.replace(/\s+/g, '').replace(/\+/g, ''),
+      // First name + Last name + Age
+      `${trainee.first_name?.toLowerCase()}_${trainee.last_name?.toLowerCase()}_${trainee.age}`,
+      // Last name + Email
+      `${trainee.last_name?.toLowerCase()}_${trainee.email?.toLowerCase()}`,
+    ].filter(Boolean)
+    
+    keys.forEach((key) => {
+      if (!key) return
+      if (!groups.has(key)) {
+        groups.set(key, [])
+      }
+      groups.get(key)!.push(trainee)
+    })
+  })
+  
+  // Only keep groups with 2+ trainees
+  const duplicateOnly = new Map()
+  groups.forEach((group, key) => {
+    if (group.length > 1) {
+      // Remove duplicates within the group (same trainee matched multiple ways)
+      const uniqueIds = new Set()
+      const uniqueGroup = group.filter(t => {
+        if (uniqueIds.has(t.id)) return false
+        uniqueIds.add(t.id)
+        return true
+      })
+      if (uniqueGroup.length > 1) {
+        duplicateOnly.set(key, uniqueGroup)
+      }
+    }
+  })
+  
+  setDuplicateGroups(duplicateOnly)
+}
+
+useEffect(() => {
+  if (trainees.length > 0) {
+    detectDuplicates()
+  }
+}, [trainees])
+
 const hasPendingReceipt = (trainee: any) => {
   return trainee.payments?.some(
     (payment: any) => 
@@ -982,10 +1041,22 @@ const handleBulkMoveSchedule = async () => {
     }
   };
 
-  const filteredTrainees = trainees.filter((t) => {
-    const fullName = `${t.first_name} ${t.last_name}`.toLowerCase()
-    return fullName.includes(searchTerm.toLowerCase())
-  })
+const filteredTrainees = trainees.filter((t) => {
+  const fullName = `${t.first_name} ${t.last_name}`.toLowerCase()
+  const matchesSearch = fullName.includes(searchTerm.toLowerCase())
+  
+  if (!matchesSearch) return false
+  
+  // If showing duplicates only, check if trainee is in any duplicate group
+  if (showDuplicatesOnly) {
+    return Array.from(duplicateGroups.values()).some(group => 
+      group.some(duplicate => duplicate.id === t.id)
+    )
+  }
+  
+  return true
+})
+
 
   return (
 
@@ -1089,6 +1160,32 @@ const handleBulkMoveSchedule = async () => {
               <DropdownMenuItem onClick={() => handleQuickAction("move")} className="cursor-pointer">
                 Move to Another Schedule
               </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => {
+                  setShowDuplicatesOnly(!showDuplicatesOnly)
+                  if (!showDuplicatesOnly) {
+                    detectDuplicates()
+                  }
+                }} 
+                className="cursor-pointer"
+              >
+                {showDuplicatesOnly ? (
+                  <>
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Show All Entries
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    View Duplicate Entries
+                    {duplicateGroups.size > 0 && (
+                      <Badge variant="destructive" className="ml-2">
+                        {Array.from(duplicateGroups.values()).reduce((sum, group) => sum + group.length, 0)}
+                      </Badge>
+                    )}
+                  </>
+                )}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -1101,6 +1198,29 @@ const handleBulkMoveSchedule = async () => {
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
       />
+
+
+{showDuplicatesOnly && (
+  <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+    <AlertCircle className="h-5 w-5 text-amber-600" />
+    <div className="flex-1">
+      <p className="text-sm font-medium text-amber-900">
+        Showing Duplicate Entries Only
+      </p>
+      <p className="text-xs text-amber-700">
+        Found {duplicateGroups.size} duplicate group(s) with {Array.from(duplicateGroups.values()).reduce((sum, group) => sum + group.length, 0)} trainee(s)
+      </p>
+    </div>
+    <Button 
+      size="sm" 
+      variant="outline" 
+      onClick={() => setShowDuplicatesOnly(false)}
+      className="cursor-pointer"
+    >
+      Clear Filter
+    </Button>
+  </div>
+)}
 
       <Card>
   <div className="max-h-[70vh] overflow-y-auto">
@@ -1191,6 +1311,24 @@ const handleBulkMoveSchedule = async () => {
                 </TableCell>
               )}
               <TableCell>{index + 1}</TableCell>
+              <TableCell>
+  <div className="flex items-center gap-2">
+    {hasPendingReceipt(trainee) && (
+      <div 
+        className="w-2 h-2 bg-orange-500 rounded-full blink-dot" 
+        title="Pending receipt approval"
+      />
+    )}
+    {Array.from(duplicateGroups.values()).some(group => 
+      group.length > 1 && group.some(t => t.id === trainee.id)
+    ) && (
+      <Badge variant="destructive" className="text-xs px-1 py-0">
+        DUP
+      </Badge>
+    )}
+    <span>{trainee.first_name} {trainee.last_name}</span>
+  </div>
+</TableCell>
              <TableCell>
                 <div className="flex items-center gap-2">
                   {hasPendingReceipt(trainee) && (
