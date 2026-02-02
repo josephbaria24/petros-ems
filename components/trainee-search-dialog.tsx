@@ -1,3 +1,4 @@
+//components\trainee-search-dialog.tsx
 "use client"
 
 import { useState } from "react"
@@ -35,6 +36,9 @@ export function TraineeSearchDialog() {
 
     setLoading(true)
     try {
+      // Split search term into words for flexible matching
+      const searchWords = searchTerm.trim().toLowerCase().split(/\s+/)
+      
       const { data: trainings, error } = await tmsDb
         .from("trainings")
         .select(`
@@ -53,12 +57,26 @@ export function TraineeSearchDialog() {
             courses (name)
           )
         `)
-        .or(`first_name.ilike.%${searchTerm}%,last_name.ilike.%${searchTerm}%`)
-        .limit(50)
+        .limit(200) // Fetch more to filter client-side
 
       if (error) throw error
 
-      const formatted: SearchResult[] = (trainings || []).map((t: any) => {
+      // Filter results client-side for flexible matching
+      const filtered = (trainings || []).filter((t: any) => {
+        const fullName = `${t.first_name || ''} ${t.last_name || ''}`.toLowerCase()
+        const firstName = (t.first_name || '').toLowerCase()
+        const lastName = (t.last_name || '').toLowerCase()
+        
+        // Check if all search words are found in the full name
+        // This allows "ken macawili" to match "Ken Gilmer Macawili"
+        return searchWords.every(word => 
+          fullName.includes(word) || 
+          firstName.includes(word) || 
+          lastName.includes(word)
+        )
+      })
+
+      const formatted: SearchResult[] = filtered.map((t: any) => {
         const schedule = t.schedules
         let scheduleDate = "N/A"
         
@@ -86,10 +104,13 @@ export function TraineeSearchDialog() {
         }
       })
 
-      setResults(formatted)
+      // Limit to 50 results for display
+      setResults(formatted.slice(0, 50))
       
       if (formatted.length === 0) {
         toast.info("No trainees found")
+      } else if (formatted.length > 50) {
+        toast.info(`Found ${formatted.length} results, showing first 50`)
       }
     } catch (error) {
       console.error("Search error:", error)
@@ -127,7 +148,7 @@ export function TraineeSearchDialog() {
           <div className="space-y-4">
             <div className="flex gap-2">
               <Input
-                placeholder="Enter trainee name..."
+                placeholder="Enter trainee name (e.g., 'ken macawili')..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
