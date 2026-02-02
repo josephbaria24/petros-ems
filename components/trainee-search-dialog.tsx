@@ -148,7 +148,7 @@ export function TraineeSearchDialog() {
           <div className="space-y-4">
             <div className="flex gap-2">
               <Input
-                placeholder="Enter trainee name (e.g., 'ken macawili')..."
+                placeholder="Enter trainee name (e.g., 'John Doe')..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearch()}
