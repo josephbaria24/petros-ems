@@ -15,7 +15,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table"
-import { ArrowUpDown, FileText, FolderOpen, ClipboardCheck, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw } from "lucide-react"
+import { ArrowUpDown, FileText, FolderOpen, ClipboardCheck, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -73,8 +73,10 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [viewDialogOpen, setViewDialogOpen] = React.useState(false)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
+  const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
   const [selectedParticipant, setSelectedParticipant] = React.useState<Participant | null>(null)
   const [isDeleting, setIsDeleting] = React.useState(false)
+  const [isCancelling, setIsCancelling] = React.useState(false)
 
   const [directoryOpen, setDirectoryOpen] = React.useState(false)
   const [directoryScheduleId, setDirectoryScheduleId] = React.useState<string | null>(null)
@@ -499,7 +501,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           </DropdownMenuItem>
           
           <DropdownMenuItem 
-            onClick={() => handleCancelSchedule(participant)} 
+            onClick={() => handleCancelScheduleClick(participant)} 
             className={`cursor-pointer ${isCancelled ? 'text-green-600 focus:text-green-600' : 'text-orange-600 focus:text-orange-600'}`}
           >
             <RefreshCcw className="mr-2 h-4 w-4" />
@@ -569,83 +571,135 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     return <Card className="p-6">Loading {status === "all" ? "all" : status} schedules...</Card>
   }
 
-
-
-
-  const handleCancelSchedule = async (participant: Participant) => {
-  const confirmMessage = participant.status === 'cancelled' 
-    ? 'Are you sure you want to restore this schedule?' 
-    : 'Are you sure you want to cancel this schedule? Trainees will be notified.'
-  
-  if (!window.confirm(confirmMessage)) return
-
-  const toastId = toast.loading(
-    participant.status === 'cancelled' ? "Restoring schedule..." : "Cancelling schedule...",
-    { description: "Updating status..." }
-  )
-
-  try {
-    const newStatus = participant.status === 'cancelled' ? 'planned' : 'cancelled'
+  const handleCancelScheduleClick = (participant: Participant) => {
+    setSelectedParticipant(participant)
     
-    const { error } = await tmsDb
-      .from("schedules")
-      .update({ status: newStatus })
-      .eq("id", participant.id)
-
-    if (error) {
-      toast.error("Failed to update schedule", {
-        id: toastId,
-        description: error.message,
-      })
-      return
+    // If restoring, just restore immediately without dialog
+    if (participant.status === 'cancelled') {
+      handleRestoreSchedule(participant)
+    } else {
+      // Show dialog for cancel options
+      setCancelDialogOpen(true)
     }
+  }
 
-    // Optionally: Send email notifications to trainees
-    if (newStatus === 'cancelled') {
-      try {
-        // Get all trainees for this schedule
-        const { data: trainees } = await tmsDb
-          .from("trainings")
-          .select("email, first_name, last_name")
-          .eq("schedule_id", participant.id)
+  const handleRestoreSchedule = async (participant: Participant) => {
+    const toastId = toast.loading("Restoring schedule...", {
+      description: "Updating status...",
+    })
 
-        // Send cancellation emails
-        if (trainees && trainees.length > 0) {
-          await fetch("/api/send-cancellation-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              trainees,
-              courseName: participant.course,
-              scheduleRange: participant.schedule,
-            }),
+    try {
+      const { error } = await tmsDb
+        .from("schedules")
+        .update({ status: 'planned' })
+        .eq("id", participant.id)
+
+      if (error) {
+        toast.error("Failed to restore schedule", {
+          id: toastId,
+          description: error.message,
+        })
+        return
+      }
+
+      toast.success("Schedule restored successfully", {
+        id: toastId,
+        description: "Schedule is now active again",
+      })
+
+      // Refresh data
+      fetchTrainings()
+    } catch (error) {
+      console.error("Error:", error)
+      toast.error("Unexpected error", {
+        id: toastId,
+        description: "An error occurred while restoring",
+      })
+    }
+  }
+
+  const handleCancelSchedule = async (sendEmail: boolean) => {
+    if (!selectedParticipant) return
+
+    setIsCancelling(true)
+    const toastId = toast.loading("Cancelling schedule...", {
+      description: sendEmail ? "Updating status and sending notifications..." : "Updating status...",
+    })
+
+    try {
+      const { error } = await tmsDb
+        .from("schedules")
+        .update({ status: 'cancelled' })
+        .eq("id", selectedParticipant.id)
+
+      if (error) {
+        toast.error("Failed to cancel schedule", {
+          id: toastId,
+          description: error.message,
+        })
+        setIsCancelling(false)
+        return
+      }
+
+      // Send email notifications if requested
+      if (sendEmail) {
+        try {
+          // Get all trainees for this schedule
+          const { data: trainees } = await tmsDb
+            .from("trainings")
+            .select("email, first_name, last_name")
+            .eq("schedule_id", selectedParticipant.id)
+
+          // Send cancellation emails
+          if (trainees && trainees.length > 0) {
+            await fetch("/api/send-cancellation-email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                trainees,
+                courseName: selectedParticipant.course,
+                scheduleRange: selectedParticipant.schedule,
+              }),
+            })
+            
+            toast.success("Schedule cancelled successfully", {
+              id: toastId,
+              description: `Notifications sent to ${trainees.length} participant(s)`,
+            })
+          } else {
+            toast.success("Schedule cancelled successfully", {
+              id: toastId,
+              description: "No participants to notify",
+            })
+          }
+        } catch (emailError) {
+          console.error("Failed to send cancellation emails:", emailError)
+          toast.success("Schedule cancelled", {
+            id: toastId,
+            description: "But failed to send email notifications",
           })
         }
-      } catch (emailError) {
-        console.error("Failed to send cancellation emails:", emailError)
+      } else {
+        toast.success("Schedule cancelled successfully", {
+          id: toastId,
+          description: "No notifications sent",
+        })
       }
-    }
 
-    toast.success(
-      newStatus === 'cancelled' ? "Schedule cancelled successfully" : "Schedule restored successfully",
-      {
+      // Refresh data
+      fetchTrainings()
+    } catch (error) {
+      console.error("Error:", error)
+      toast.error("Unexpected error", {
         id: toastId,
-        description: newStatus === 'cancelled' 
-          ? "Trainees have been notified" 
-          : "Schedule is now active again",
-      }
-    )
-
-    // Refresh data
-    fetchTrainings()
-  } catch (error) {
-    console.error("Error:", error)
-    toast.error("Unexpected error", {
-      id: toastId,
-      description: "An error occurred while updating",
-    })
+        description: "An error occurred while cancelling",
+      })
+    } finally {
+      setIsCancelling(false)
+      setCancelDialogOpen(false)
+      setSelectedParticipant(null)
+    }
   }
-}
 
   return (
     <>
@@ -823,6 +877,55 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         scheduleId={selectedParticipant?.id || null}
         onScheduleUpdated={fetchTrainings}
       />
+{/* Cancel Schedule Options Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent className="sm:max-w-lg">
+          <button
+            onClick={() => setCancelDialogOpen(false)}
+            className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground"
+            disabled={isCancelling}
+          >
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </button>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Schedule</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  You are about to cancel the schedule for{" "}
+                  <span className="font-semibold">{selectedParticipant?.course}</span>.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Would you like to notify the participants via email?
+                </p>
+                {selectedParticipant && selectedParticipant.submissionCount > 0 && (
+                  <p className="text-sm font-medium text-orange-600">
+                    {selectedParticipant.submissionCount} participant(s) registered for this schedule
+                  </p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex gap-2 sm:gap-2">
+            <Button
+              onClick={() => handleCancelSchedule(false)}
+              disabled={isCancelling}
+              variant="outline"
+              className="text-orange-600 border-orange-600 hover:bg-orange-50 flex-1"
+            >
+              {isCancelling ? "Cancelling..." : "Cancel Without Email"}
+            </Button>
+            <Button
+              onClick={() => handleCancelSchedule(true)}
+              disabled={isCancelling}
+              className="bg-orange-600 hover:bg-orange-700 flex-1"
+            >
+              {isCancelling ? "Cancelling..." : "Cancel & Email Participants"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
