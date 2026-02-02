@@ -58,15 +58,15 @@ export async function POST(req: NextRequest) {
       const fileBuffer = await response.arrayBuffer()
 
       return new NextResponse(fileBuffer, {
-        status: 200,
-        headers: {
-          "Content-Type":
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="Originals${scheduleId.slice(
-            -4
-          )}.xlsx"`,
-        },
-      })
+  status: 200,
+  headers: {
+    "Content-Type":
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "Content-Disposition": `attachment; filename="Originals${
+      batchNumber ? `_Batch${batchNumber}` : scheduleId.slice(-4)
+    }.xlsx"`,
+  },
+})
     } catch (fetchError: any) {
       clearTimeout(timeoutId)
       if (fetchError.name === 'AbortError') {

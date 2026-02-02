@@ -43,6 +43,7 @@ import { type PostgrestSingleResponse } from "@supabase/supabase-js"
 import { toast } from "sonner"
 import ParticipantDirectoryDialog from "@/components/trainee-directory-dialog"
 import { EditScheduleDialog } from "@/components/edit-schedule-dialog"
+import { TraineeSearchDialog } from "./trainee-search-dialog"
 
 type Participant = {
   id: string
@@ -649,13 +650,16 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   return (
     <>
       <Card className="p-3 border-0 shadow-md bg- ">
-        <div className="flex items-center justify-between mb-1">
-          <Input
-            placeholder="Search courses, branches, schedules, status, or types..."
-            value={globalFilter ?? ""}
-            onChange={(event) => setGlobalFilter(event.target.value)}
-            className="max-w-md"
-          />
+       <div className="flex items-center justify-between mb-1">
+          <div className="flex gap-2">
+            <Input
+              placeholder="Search courses, branches, schedules, status, or types..."
+              value={globalFilter ?? ""}
+              onChange={(event) => setGlobalFilter(event.target.value)}
+              className="max-w-md"
+            />
+            <TraineeSearchDialog />
+          </div>
           <div className="flex items-center gap-2">
             <Select
               value={(table.getColumn("course")?.getFilterValue() as string) ?? "all"}
