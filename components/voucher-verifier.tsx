@@ -213,9 +213,14 @@ export function VoucherVerifier() {
                       <span>{verificationResult.details.amount}</span>
                     </div>
                     <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Description:</span>
-                      <span className="text-right">{verificationResult.details.description}</span>
-                    </div>
+                        <span className="text-muted-foreground">Valid For:</span>
+                        <span className="text-right font-semibold">
+                          {verificationResult.details.description === "All Services" 
+                            ? <span className="text-primary">All Available Trainings</span>
+                            : verificationResult.details.description
+                          }
+                        </span>
+                      </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Expiry:</span>
                       <span>

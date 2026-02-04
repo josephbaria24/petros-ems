@@ -349,8 +349,6 @@ export default function TrainingReportsPage() {
       </Popover>
     );
   };
-  // PART 4 - PASTE THIS AFTER PART 3
-// useEffect hooks - UPDATE the applyFilters effect
 
   const syncFromTrainings = async () => {
     setSyncing(true);
@@ -377,7 +375,8 @@ export default function TrainingReportsPage() {
             company_name
           )
         `)
-        .eq('status', 'finished');
+        .eq('status', 'finished')
+        .neq('status', 'cancelled');
 
       if (schedulesError) throw schedulesError;
 

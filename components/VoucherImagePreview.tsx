@@ -1,3 +1,4 @@
+//components\VoucherImagePreview.tsx
 "use client"
 
 import Image from "next/image"
@@ -71,9 +72,12 @@ export function VoucherImagePreview({ voucher }: { voucher: Voucher }) {
             )}
 
             {/* Expiry Disclaimer */}
-            <div className="absolute bottom-[60px] right-[100px] text-gray-300 text-sm font-[Montserrat]">
-              *Exclusive for {voucher.description} Training only.
-            </div>
+           <div className="absolute bottom-[60px] right-[100px] text-gray-300 text-sm font-[Montserrat]">
+            {voucher.description === "All Services" 
+              ? "*Valid for all available trainings."
+              : `*Exclusive for ${voucher.description} Training only.`
+            }
+          </div>
 
             {/* Expiry */}
             <div className="absolute bottom-[35px] right-[100px] text-white text-base font-[Montserrat] font-normal">

@@ -102,7 +102,7 @@ export function SubmissionDialog({
   const [voucherInput, setVoucherInput] = useState("")
 const [isVerifyingVoucher, setIsVerifyingVoucher] = useState(false)
 const [voucherError, setVoucherError] = useState("")
-const [discountMode, setDiscountMode] = useState<'voucher' | 'manual'>('manual')
+const [discountMode, setDiscountMode] = useState<'voucher' | 'manual'>('voucher')
 
   const [voucherInfo, setVoucherInfo] = useState<any>(null);
   
@@ -419,7 +419,7 @@ const handleVerifyVoucher = async () => {
       return
     }
 
-    // Check if voucher is for the correct course
+    // Check if voucher is for the correct course (skip if service_id is null = all services)
     if (data.service_id && trainee.course_id !== data.service_id) {
       setVoucherError("This voucher is not valid for this course.")
       setIsVerifyingVoucher(false)

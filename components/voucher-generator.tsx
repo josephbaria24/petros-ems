@@ -145,14 +145,14 @@ export function VoucherGenerator() {
       return
     }
 
-    if (!selectedServiceId) {
-      toast({
-        title: "Missing service",
-        description: "Please select a service or course.",
-        variant: "destructive",
-      })
-      return
-    }
+    // if (!selectedServiceId) {
+    //   toast({
+    //     title: "Missing service",
+    //     description: "Please select a service or course.",
+    //     variant: "destructive",
+    //   })
+    //   return
+    // }
 
     const finalBatchCount = batchCount === "custom" 
       ? parseInt(customBatchCount) || 1 
@@ -167,38 +167,38 @@ export function VoucherGenerator() {
       return
     }
 
-   const selectedService = services.find(s => s.id === selectedServiceId)
+const selectedService = services.find(s => s.id === selectedServiceId)
 
-  const voucher: Voucher = {
-    code: generateVoucherCode(),
-    amount: voucherType === "Free" ? "Free" : amount,
-    description: selectedService?.name || "Unknown",
-    expiryDate: expiryDate || "No expiry",
-    generatedAt: new Date().toISOString(),
-    voucherType,
-    isBatch: isBatchVoucher,
-    batchCount: isBatchVoucher ? finalBatchCount : 1,
-  }
+const voucher: Voucher = {
+  code: generateVoucherCode(),
+  amount: voucherType === "Free" ? "Free" : amount,
+  description: selectedServiceId ? (selectedService?.name || "Unknown") : "All Services",
+  expiryDate: expiryDate || "No expiry",
+  generatedAt: new Date().toISOString(),
+  voucherType,
+  isBatch: isBatchVoucher,
+  batchCount: isBatchVoucher ? finalBatchCount : 1,
+}
       
     setGeneratedVoucher(voucher)
     setLoading(true)
     
-    const { error } = await tmsDb.from("vouchers").insert([
-    {
-      code: voucher.code,
-      amount: voucher.amount,
-      service: voucher.description,
-      service_id: selectedServiceId,
-      voucher_type: voucher.voucherType,
-      expiry_date: expiryDate ? expiryDate : null,
-      generated_at: voucher.generatedAt,
-      is_batch: isBatchVoucher,
-      batch_count: isBatchVoucher ? finalBatchCount : 1,
-      batch_used: 0,
-      batch_remaining: isBatchVoucher ? finalBatchCount : 1,
-      is_used: false,
-    },
-  ])
+const { error } = await tmsDb.from("vouchers").insert([
+  {
+    code: voucher.code,
+    amount: voucher.amount,
+    service: selectedServiceId ? voucher.description : "All Services",
+    service_id: selectedServiceId || null, // Allow null for all services
+    voucher_type: voucher.voucherType,
+    expiry_date: expiryDate ? expiryDate : null,
+    generated_at: voucher.generatedAt,
+    is_batch: isBatchVoucher,
+    batch_count: isBatchVoucher ? finalBatchCount : 1,
+    batch_used: 0,
+    batch_remaining: isBatchVoucher ? finalBatchCount : 1,
+    is_used: false,
+  },
+])
     
     setLoading(false)
 
@@ -323,16 +323,18 @@ export function VoucherGenerator() {
 
           {/* Service Selection */}
           <div className="space-y-2">
-            <Label htmlFor="service">Service / Course *</Label>
+            <Label htmlFor="service">Service / Course (Optional - leave blank for all services)</Label>
             <Popover open={open} onOpenChange={setOpen}>
-              <PopoverTrigger asChild>
+             <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   role="combobox"
                   className="w-full justify-between"
                 >
-                  {services.find((service) => service.id === selectedServiceId)?.name ||
-                    "Select a service or course"}
+                  {selectedServiceId === null 
+                    ? "All Services (Universal Voucher)"
+                    : services.find((service) => service.id === selectedServiceId)?.name || "Select a service or course"
+                  }
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-full p-0 max-h-64 overflow-y-auto">
@@ -340,6 +342,15 @@ export function VoucherGenerator() {
                   <CommandInput placeholder="Search services..." />
                   <CommandEmpty>No service found.</CommandEmpty>
                   <CommandGroup>
+                    <CommandItem
+                      value="all-services"
+                      onSelect={() => {
+                        setSelectedServiceId(null)
+                        setOpen(false)
+                      }}
+                    >
+                      <span className="font-semibold text-primary">All Services (Universal Voucher)</span>
+                    </CommandItem>
                     {services.map((service) => (
                       <CommandItem
                         key={service.id}

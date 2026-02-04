@@ -1347,17 +1347,6 @@ const filteredTrainees = trainees.filter((t) => {
     <span>{trainee.first_name} {trainee.last_name}</span>
   </div>
 </TableCell>
-             <TableCell>
-                <div className="flex items-center gap-2">
-                  {hasPendingReceipt(trainee) && (
-                    <div 
-                      className="w-2 h-2 bg-orange-500 rounded-full blink-dot" 
-                      title="Pending receipt approval"
-                    />
-                  )}
-                  <span>{trainee.first_name} {trainee.last_name}</span>
-                </div>
-              </TableCell>
               <TableCell>{trainee.phone_number || "N/A"}</TableCell>
               <TableCell>
                 {getStatusBadge(trainee.status || "Pending")}

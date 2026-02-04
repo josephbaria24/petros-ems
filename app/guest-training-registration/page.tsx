@@ -607,13 +607,12 @@ const handleVerifyVoucher = async () => {
     }
 
     // Check if voucher is for the correct course
-    if (data.service_id && course?.id !== data.service_id) {
-      setVoucherError("This voucher is not valid for the selected course.")
-      toast.error("Invalid voucher for this course")
-      setIsVerifyingVoucher(false)
-      return
-    }
-
+if (data.service_id && course?.id !== data.service_id) {
+  setVoucherError("This voucher is not valid for the selected course.")
+  toast.error("Invalid voucher for this course")
+  setIsVerifyingVoucher(false)
+  return
+}
     // Voucher is valid
     setVoucherDetails(data)
     
