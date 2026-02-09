@@ -1503,44 +1503,74 @@ const handleApprovePayment = async () => {
   };
 
 const handleSavePersonalDetails = async () => {
-
   // ✅ Required personal fields
-if (!validateRequired([
-  { key: "first_name", label: "First Name", value: newDetails.first_name },
-  { key: "last_name", label: "Last Name", value: newDetails.last_name },
-  { key: "email", label: "Email", value: newDetails.email },
-  { key: "phone_number", label: "Phone Number", value: newDetails.phone_number },
-  { key: "gender", label: "Gender", value: newDetails.gender },
-  { key: "age", label: "Age", value: newDetails.age },
-])) return;
+  if (!validateRequired([
+    { key: "first_name", label: "First Name", value: newDetails.first_name },
+    { key: "last_name", label: "Last Name", value: newDetails.last_name },
+    { key: "email", label: "Email", value: newDetails.email },
+    { key: "phone_number", label: "Phone Number", value: newDetails.phone_number },
+    { key: "gender", label: "Gender", value: newDetails.gender },
+    { key: "age", label: "Age", value: newDetails.age },
+  ])) return;
 
-// Extra strict checks (optional but recommended)
-const ageNum = Number(newDetails.age);
-if (!Number.isFinite(ageNum) || ageNum <= 0) {
-  alert("Please enter a valid Age.");
-  return;
-}
+  const ageNum = Number(newDetails.age);
+  if (!Number.isFinite(ageNum) || ageNum <= 0) {
+    alert("Please enter a valid Age.");
+    return;
+  }
 
-const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newDetails.email.trim());
-if (!emailOk) {
-  alert("Please enter a valid Email.");
-  return;
-}
-
-
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newDetails.email.trim());
+  if (!emailOk) {
+    alert("Please enter a valid Email.");
+    return;
+  }
 
   setUpdatingDetails(true);
   try {
+    // ✅ Helper function to convert empty strings to null for numeric fields
+    const parseNumeric = (value: any) => {
+      if (value === "" || value === null || value === undefined) return null;
+      const num = Number(value);
+      return isNaN(num) ? null : num;
+    };
+
     const { error } = await supabase
       .from("trainings")
-      .update(newDetails)
+      .update({
+        courtesy_title: newDetails.courtesy_title || null,
+        first_name: newDetails.first_name,
+        middle_initial: newDetails.middle_initial || null,
+        last_name: newDetails.last_name,
+        suffix: newDetails.suffix || null,
+        email: newDetails.email,
+        phone_number: newDetails.phone_number,
+        gender: newDetails.gender,
+        age: parseNumeric(newDetails.age), // Convert to number or null
+        employment_status: newDetails.employment_status || null,
+        company_name: newDetails.company_name || null,
+        company_position: newDetails.company_position || null,
+        company_industry: newDetails.company_industry || null,
+        company_email: newDetails.company_email || null,
+        company_landline: newDetails.company_landline || null,
+        company_city: newDetails.company_city || null,
+        company_region: newDetails.company_region || null,
+        total_workers: parseNumeric(newDetails.total_workers), // ✅ Convert to bigint or null
+        food_restriction: newDetails.food_restriction || null,
+        is_student: newDetails.is_student,
+        school_name: newDetails.school_name || null,
+        updated_at: new Date().toISOString()
+      })
       .eq("id", trainee.id);
+      
     if (error) {
+      console.error("Update error:", error);
       alert("Failed to update personal details.");
       return;
     }
+    
     setIsEditingDetails(false);
-    alert("Personal details updated.");
+    alert("Personal details updated successfully.");
+    
   } catch (err) {
     console.error("Error updating details:", err);
     alert("Failed to update personal details.");
@@ -1549,35 +1579,42 @@ if (!emailOk) {
   }
 };
 
-    const handleSaveAddress = async () => {
+const handleSaveAddress = async () => {
+  if (!validateRequired([
+    { key: "mailing_street", label: "Street", value: newAddress.mailing_street },
+    { key: "mailing_city", label: "City", value: newAddress.mailing_city },
+    { key: "mailing_province", label: "Province", value: newAddress.mailing_province },
+  ])) return;
 
-      if (!validateRequired([
-  { key: "mailing_street", label: "Street", value: newAddress.mailing_street },
-  { key: "mailing_city", label: "City", value: newAddress.mailing_city },
-  { key: "mailing_province", label: "Province", value: newAddress.mailing_province },
-])) return;
-
-
-
-      setUpdatingAddress(true);
-      try {
-        const { error } = await supabase
-          .from("trainings")
-          .update(newAddress)
-          .eq("id", trainee.id);
-        if (error) {
-          alert("Failed to update address.");
-          return;
-        }
-        setIsEditingAddress(false);
-        alert("Address updated.");
-      } catch (err) {
-        console.error("Error updating address:", err);
-        alert("Failed to update address.");
-      } finally {
-        setUpdatingAddress(false);
-      }
-    };
+  setUpdatingAddress(true);
+  try {
+    // ✅ Only update address fields that exist in trainings table
+    const { error } = await supabase
+      .from("trainings")
+      .update({
+        mailing_street: newAddress.mailing_street,
+        mailing_city: newAddress.mailing_city,
+        mailing_province: newAddress.mailing_province,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", trainee.id);
+      
+    if (error) {
+      console.error("Update error:", error);
+      alert("Failed to update address.");
+      return;
+    }
+    
+    setIsEditingAddress(false);
+    alert("Address updated successfully.");
+    
+  } catch (err) {
+    console.error("Error updating address:", err);
+    alert("Failed to update address.");
+  } finally {
+    setUpdatingAddress(false);
+  }
+};
 
 const handleUpdate2x2Photo = () => {
   const shouldReplace = window.confirm(

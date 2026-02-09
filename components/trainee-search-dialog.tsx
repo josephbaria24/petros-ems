@@ -28,97 +28,105 @@ export function TraineeSearchDialog() {
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
 
-  const handleSearch = async () => {
-    if (!searchTerm.trim()) {
-      toast.error("Please enter a search term")
-      return
-    }
-
-    setLoading(true)
-    try {
-      // Split search term into words for flexible matching
-      const searchWords = searchTerm.trim().toLowerCase().split(/\s+/)
-      
-      const { data: trainings, error } = await tmsDb
-        .from("trainings")
-        .select(`
-          id,
-          first_name,
-          last_name,
-          status,
-          schedule_id,
-          schedules (
-            id,
-            status,
-            course_id,
-            schedule_type,
-            schedule_ranges (start_date, end_date),
-            schedule_dates (date),
-            courses (name)
-          )
-        `)
-        .limit(200) // Fetch more to filter client-side
-
-      if (error) throw error
-
-      // Filter results client-side for flexible matching
-      const filtered = (trainings || []).filter((t: any) => {
-        const fullName = `${t.first_name || ''} ${t.last_name || ''}`.toLowerCase()
-        const firstName = (t.first_name || '').toLowerCase()
-        const lastName = (t.last_name || '').toLowerCase()
-        
-        // Check if all search words are found in the full name
-        // This allows "ken macawili" to match "Ken Gilmer Macawili"
-        return searchWords.every(word => 
-          fullName.includes(word) || 
-          firstName.includes(word) || 
-          lastName.includes(word)
-        )
-      })
-
-      const formatted: SearchResult[] = filtered.map((t: any) => {
-        const schedule = t.schedules
-        let scheduleDate = "N/A"
-        
-        if (schedule?.schedule_type === "regular" && schedule.schedule_ranges?.length > 0) {
-          const range = schedule.schedule_ranges[0]
-          scheduleDate = `${new Date(range.start_date).toLocaleDateString()} - ${new Date(range.end_date).toLocaleDateString()}`
-        } else if (schedule?.schedule_type === "staggered" && schedule.schedule_dates?.length > 0) {
-          scheduleDate = schedule.schedule_dates
-            .map((d: any) => new Date(d.date).toLocaleDateString())
-            .join(", ")
-        }
-
-        // Determine which tab this schedule belongs to
-        const scheduleStatus = schedule?.status || "planned"
-        const tab = scheduleStatus === "all" ? "all" : scheduleStatus
-
-        return {
-          training_id: t.id,
-          trainee_name: `${t.first_name} ${t.last_name}`,
-          course_name: schedule?.courses?.name || "Unknown",
-          schedule_id: t.schedule_id,
-          schedule_date: scheduleDate,
-          status: t.status || "Pending",
-          tab: tab
-        }
-      })
-
-      // Limit to 50 results for display
-      setResults(formatted.slice(0, 50))
-      
-      if (formatted.length === 0) {
-        toast.info("No trainees found")
-      } else if (formatted.length > 50) {
-        toast.info(`Found ${formatted.length} results, showing first 50`)
-      }
-    } catch (error) {
-      console.error("Search error:", error)
-      toast.error("Failed to search trainees")
-    } finally {
-      setLoading(false)
-    }
+const handleSearch = async () => {
+  if (!searchTerm.trim()) {
+    toast.error("Please enter a search term")
+    return
   }
+
+  setLoading(true)
+  try {
+    const searchWords = searchTerm.trim().split(/\s+/)
+    
+    // ✅ Build OR conditions for each word to search both first and last name
+    let query = tmsDb
+      .from("trainings")
+      .select(`
+        id,
+        first_name,
+        last_name,
+        status,
+        schedule_id,
+        schedules (
+          id,
+          status,
+          course_id,
+          schedule_type,
+          schedule_ranges (start_date, end_date),
+          schedule_dates (date),
+          courses (name)
+        )
+      `)
+    
+    // ✅ Search for each word in either first_name OR last_name
+    if (searchWords.length === 1) {
+      // Single word - search in both first and last name
+      query = query.or(`first_name.ilike.%${searchWords[0]}%,last_name.ilike.%${searchWords[0]}%`)
+    } else {
+      // Multiple words - more flexible matching
+      // This will find results where ANY word matches first OR last name
+      const orConditions = searchWords
+        .map(word => `first_name.ilike.%${word}%,last_name.ilike.%${word}%`)
+        .join(',')
+      query = query.or(orConditions)
+    }
+    
+    const { data: trainings, error } = await query
+      .order('created_at', { ascending: false })
+      .limit(100) // Fetch more for client-side refinement
+
+    if (error) throw error
+
+    // ✅ Client-side filtering for exact multi-word match
+    const filtered = searchWords.length > 1 
+      ? (trainings || []).filter((t: any) => {
+          const fullName = `${t.first_name || ''} ${t.last_name || ''}`.toLowerCase()
+          // All words must be present in the full name
+          return searchWords.every(word => fullName.includes(word.toLowerCase()))
+        })
+      : trainings || []
+
+    const formatted: SearchResult[] = filtered.slice(0, 50).map((t: any) => {
+      const schedule = t.schedules
+      let scheduleDate = "N/A"
+      
+      if (schedule?.schedule_type === "regular" && schedule.schedule_ranges?.length > 0) {
+        const range = schedule.schedule_ranges[0]
+        scheduleDate = `${new Date(range.start_date).toLocaleDateString()} - ${new Date(range.end_date).toLocaleDateString()}`
+      } else if (schedule?.schedule_type === "staggered" && schedule.schedule_dates?.length > 0) {
+        scheduleDate = schedule.schedule_dates
+          .map((d: any) => new Date(d.date).toLocaleDateString())
+          .join(", ")
+      }
+
+      const scheduleStatus = schedule?.status || "planned"
+      const tab = scheduleStatus === "all" ? "all" : scheduleStatus
+
+      return {
+        training_id: t.id,
+        trainee_name: `${t.first_name} ${t.last_name}`,
+        course_name: schedule?.courses?.name || "Unknown",
+        schedule_id: t.schedule_id,
+        schedule_date: scheduleDate,
+        status: t.status || "Pending",
+        tab: tab
+      }
+    })
+
+    setResults(formatted)
+    
+    if (formatted.length === 0) {
+      toast.info("No trainees found")
+    } else if (filtered.length > 50) {
+      toast.info(`Found ${filtered.length} results, showing first 50`)
+    }
+  } catch (error) {
+    console.error("Search error:", error)
+    toast.error("Failed to search trainees")
+  } finally {
+    setLoading(false)
+  }
+}
 
   const handleGoToTrainee = (result: SearchResult) => {
     router.push(`/submissions?scheduleId=${result.schedule_id}&from=${result.tab}&highlight=${result.training_id}`)
