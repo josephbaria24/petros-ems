@@ -37,28 +37,28 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2. Get training details
-   // 2. Get training details
-  const { data: training, error: trainingError } = await supabase
-    .from('trainings')
-    .select(`
-      id,
-      first_name,
-      last_name,
-      email,
-      payment_method,
-      payment_status,
-      receipt_link,
-      amount_paid,
-      course_id,
-      schedule_id,
-      discounted_fee,
-      has_discount,
-      add_pvc_id,
-      status
-    `)
-    .eq('id', bookingSummary.training_id)
-    .single();
+// 2. Get training details
+const { data: training, error: trainingError } = await supabase
+  .from('trainings')
+  .select(`
+    id,
+    first_name,
+    last_name,
+    email,
+    payment_method,
+    payment_status,
+    receipt_link,
+    amount_paid,
+    course_id,
+    schedule_id,
+    discounted_fee,
+    has_discount,
+    add_pvc_id,
+    pvc_fee,
+    status
+  `)
+  .eq('id', bookingSummary.training_id)
+  .single();
 
     if (trainingError || !training) {
       return NextResponse.json(
@@ -131,32 +131,33 @@ export async function POST(req: Request) {
       : null;
     const actualFee = hasDiscount && discountedFee !== null ? discountedFee : originalFee;
 
-        return NextResponse.json({
-      found: true,
-      data: {
-        referenceNumber: bookingSummary.reference_number,
-        traineeName: `${training.first_name} ${training.last_name}`,
-        courseName: course.name,
-        scheduleRange,
-        paymentMethod: training.payment_method || 'N/A',
-        paymentStatus: training.status || 'Pending Payment',
-        
-        // ✅ Add discount-related fields
-        originalFee: originalFee,
-        hasDiscount: hasDiscount,
-        discountedFee: discountedFee,
-        trainingFee: actualFee, // The actual fee to pay (discounted or original)
-        
-        amountPaid: totalPaid,
-        receiptLink: payments?.[0]?.receipt_link || training.receipt_link,
-        receiptUploadedBy: payments?.[0]?.receipt_uploaded_by || null,
-        bookingDate: new Date(bookingSummary.booking_date).toLocaleDateString(),
-        trainingId: training.id,
-        
-        // ✅ ADD THIS LINE:
-        addPvcId: training.add_pvc_id || false,
-      },
-    });
+     return NextResponse.json({
+  found: true,
+  data: {
+    referenceNumber: bookingSummary.reference_number,
+    traineeName: `${training.first_name} ${training.last_name}`,
+    courseName: course.name,
+    scheduleRange,
+    paymentMethod: training.payment_method || 'N/A',
+    paymentStatus: training.status || 'Pending Payment',
+    
+    // ✅ Add discount-related fields
+    originalFee: originalFee,
+    hasDiscount: hasDiscount,
+    discountedFee: discountedFee,
+    trainingFee: actualFee, // The actual fee to pay (discounted or original)
+    
+    amountPaid: totalPaid,
+    receiptLink: payments?.[0]?.receipt_link || training.receipt_link,
+    receiptUploadedBy: payments?.[0]?.receipt_uploaded_by || null,
+    bookingDate: new Date(bookingSummary.booking_date).toLocaleDateString(),
+    trainingId: training.id,
+    
+    // ✅ PVC ID fields
+    addPvcId: training.add_pvc_id || false,
+    pvcFee: training.pvc_fee || null,  // ✅ NEW: Include stored PVC fee
+  },
+});
 
   } catch (error) {
     console.error('Check booking error:', error);

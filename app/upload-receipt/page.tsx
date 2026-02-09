@@ -35,6 +35,7 @@ interface BookingStatus {
     originalFee: number;
     // PVC ID field
     addPvcId: boolean;
+    pvcFee: number | null;
   };
   error?: string;
 }
@@ -234,19 +235,22 @@ export default function UploadReceiptPage() {
   };
 
   // ✅ FIXED: Calculate total required amount (only add PVC if user has discount AND opted for it)
-  const calculateTotalRequired = () => {
-    if (!bookingStatus?.data) return 0;
-    
-    // Use discounted fee if available, otherwise use training fee
-    const courseFee = bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee !== null
-      ? bookingStatus.data.discountedFee
-      : bookingStatus.data.trainingFee;
-    
-    // ✅ FIXED: Only add PVC fee if user has discount AND explicitly opted for it
-    const pvcFee = (bookingStatus.data.hasDiscount && bookingStatus.data.addPvcId) ? 150 : 0;
-    
-    return courseFee + pvcFee;
-  };
+  // ✅ NEW VERSION
+const calculateTotalRequired = () => {
+  if (!bookingStatus?.data) return 0;
+  
+  // Use discounted fee if available, otherwise use training fee
+  const courseFee = bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee !== null
+    ? bookingStatus.data.discountedFee
+    : bookingStatus.data.trainingFee;
+  
+  // ✅ FIXED: Use stored PVC fee from database instead of hardcoded 150
+  const pvcFee = bookingStatus.data.addPvcId && bookingStatus.data.pvcFee 
+    ? bookingStatus.data.pvcFee 
+    : 0;
+  
+  return courseFee + pvcFee;
+};
 
   // ✅ Calculate remaining balance
   const calculateBalance = () => {
@@ -351,24 +355,24 @@ export default function UploadReceiptPage() {
                     <span className="text-white">{bookingStatus.data.paymentMethod}</span>
                   </div>
                   
-                  {/* ✅ FIXED: Only show PVC section if user has discount AND opted for PVC */}
-                  {bookingStatus.data.hasDiscount && bookingStatus.data.addPvcId && (
-                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mt-2">
-                      <div className="flex items-center gap-2 mb-1">
-                        <CheckCircle className="w-4 h-4 text-blue-400" />
-                        <span className="text-xs font-semibold text-blue-400">Physical PVC ID Included</span>
-                      </div>
-                      <p className="text-xs text-blue-300">
-                        You've opted for a Physical PVC ID card in addition to your Digital ID
-                      </p>
-                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-blue-500/20">
-                        <span className="text-xs text-blue-300">PVC ID Fee:</span>
-                        <span className="text-sm text-blue-400 font-bold">
-                          ₱150.00
-                        </span>
-                      </div>
-                    </div>
-                  )}
+               {/* ✅ FIXED: Show PVC section whenever user opted for it */}
+{bookingStatus.data.addPvcId && bookingStatus.data.pvcFee && (
+  <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mt-2">
+    <div className="flex items-center gap-2 mb-1">
+      <CheckCircle className="w-4 h-4 text-blue-400" />
+      <span className="text-xs font-semibold text-blue-400">Physical PVC ID Added</span>
+    </div>
+    <p className="text-xs text-blue-300">
+      You've opted for a Physical PVC ID card in addition to your Digital ID
+    </p>
+    <div className="flex justify-between items-center mt-2 pt-2 border-t border-blue-500/20">
+      <span className="text-xs text-blue-300">PVC ID Fee:</span>
+      <span className="text-sm text-blue-400 font-bold">
+        {formatCurrency(bookingStatus.data.pvcFee)}
+      </span>
+    </div>
+  </div>
+)}
 
                   {/* ✅ Discount Display */}
                   {bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee !== null && (
@@ -421,12 +425,12 @@ export default function UploadReceiptPage() {
                       )}
                     </div>
 
-                    {/* ✅ FIXED: Only show PVC fee if user has discount AND opted for it */}
-                    {bookingStatus.data.hasDiscount && bookingStatus.data.addPvcId && (
+                    {/* ✅ FIXED: Show PVC fee whenever user opted for it */}
+                    {bookingStatus.data.addPvcId && bookingStatus.data.pvcFee && (
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-400">+ PVC ID Fee:</span>
                         <span className="text-blue-400 font-semibold">
-                          ₱150.00
+                          {formatCurrency(bookingStatus.data.pvcFee)}
                         </span>
                       </div>
                     )}

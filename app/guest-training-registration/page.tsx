@@ -152,6 +152,37 @@ export default function GuestTrainingRegistration() {
 
   const [scheduleId, setScheduleId] = useState<string>("")
 
+
+  
+// First, add this helper function at the top of your component (around line 500):
+const getPvcFee = () => {
+  if (!course?.has_pvc_id) return 0;
+  
+  // If course has PVC included and no discount, PVC is free (already in price)
+  if (course.pvc_id_type === 'included' && discount === 0) {
+    return 0;
+  }
+  
+  // If course has PVC optional OR has discount, charge based on employment status
+  if (course.pvc_id_type === 'optional' || discount > 0) {
+    // Determine if user is student/unemployed
+    const isStudent = form.employment_status === 'Unemployed' && form.is_student;
+    const isUnemployed = form.employment_status === 'Unemployed';
+    
+    // Use student price for students/unemployed
+    if (isStudent || isUnemployed) {
+      return course.pvc_student_price || 150; // fallback to 150
+    }
+    
+    // Use professional price for employed
+    return course.pvc_professional_price || 300; // fallback to 300
+  }
+  
+  return 0;
+};
+
+
+
     // Add state for schedule event type
 const [scheduleEventType, setScheduleEventType] = useState<string>("")
 
@@ -410,10 +441,16 @@ useEffect(() => {
 
       if (scheduleData.course_id) {
        const { data: courseData, error: courseError } = await tmsDb
-        .from("courses")
-        .select("*, has_pvc_id")
-        .eq("id", scheduleData.course_id)
-        .single()
+          .from("courses")
+          .select(`
+            *,
+            has_pvc_id,
+            pvc_id_type,
+            pvc_student_price,
+            pvc_professional_price
+          `)
+          .eq("id", scheduleData.course_id)
+          .single()
 
         console.log("Course data:", courseData)
         
@@ -862,6 +899,7 @@ const handleSubmit = async () => {
       discounted_fee: discount > 0 ? (getApplicableFee() || 0) - discount : null,
       has_discount: discount > 0,
       add_pvc_id: form.add_pvc_id || false,
+      pvc_fee: form.add_pvc_id ? getPvcFee() : null, 
       is_student: form.employment_status === "Unemployed" ? !!form.is_student : false,
       school_name: form.employment_status === "Unemployed" && form.is_student ? form.school_name : null,
       total_workers: form.employment_status === "Employed" && form.total_workers ? parseInt(form.total_workers) : null,
@@ -1003,15 +1041,14 @@ const handleSubmit = async () => {
                     region: form.company_region,
                   }
                 : null,
-            paymentInfo: {
-              trainingFee: getApplicableFee(),
-              discount,
-              pvcIdFee: form.add_pvc_id ? 150 : 0,
-              totalAmount: getApplicableFee() - discount + (form.add_pvc_id ? 150 : 0),
-              paymentMethod,
-              paymentStatus:
-                paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
-            },
+           paymentInfo: {
+            trainingFee: getApplicableFee(),
+            discount,
+            pvcIdFee: form.add_pvc_id ? getPvcFee() : 0,  // ✅ NEW
+            totalAmount: getApplicableFee() - discount + (form.add_pvc_id ? getPvcFee() : 0),  // ✅ NEW
+            paymentMethod,
+            paymentStatus: paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+          },
           }),
         })
         console.log("Admin notification email sent")
@@ -1054,14 +1091,13 @@ const handleSubmit = async () => {
                     region: form.company_region,
                   }
                 : null,
-            paymentInfo: {
-              trainingFee: trainingFee,
+           paymentInfo: {
+              trainingFee: getApplicableFee(),
               discount,
-              pvcIdFee: form.add_pvc_id ? 150 : 0,
-              totalAmount: trainingFee - discount + (form.add_pvc_id ? 150 : 0),
+              pvcIdFee: form.add_pvc_id ? getPvcFee() : 0,  // ✅ NEW
+              totalAmount: getApplicableFee() - discount + (form.add_pvc_id ? getPvcFee() : 0),  // ✅ NEW
               paymentMethod,
-              paymentStatus:
-                paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+              paymentStatus: paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
             },
           }),
         })
@@ -1741,6 +1777,7 @@ const handleSubmit = async () => {
                           <p><strong>Phone:</strong> {form.phone_number}</p>
                           <p><strong>Address:</strong> {form.mailing_street}, {form.mailing_city}, {form.mailing_province}</p>
                         </fieldset>
+                                                  
                           <fieldset className="border border-gray-300 rounded-md px-4 pt-4 pb-2 bg-slate-50 relative">
                             <legend className="text-sm font-medium px-2 text-gray-700 flex items-center gap-1">
                               <CreditCard className="w-4 h-4 text-gray-500" />
@@ -1750,7 +1787,6 @@ const handleSubmit = async () => {
                             <p className="text-sm text-gray-900">
                               <strong>Training Fee ({getEventTypeLabel()}):</strong> ₱{getApplicableFee()?.toLocaleString() || "0.00"}
                             </p>
-
                          {/* Voucher Code Input */}
                           <div className="space-y-2 mt-3">
                             <Label htmlFor="voucher_code" className="text-sm font-medium">
@@ -1813,75 +1849,137 @@ const handleSubmit = async () => {
                               </p>
                             )}
                           </div>
-                        {/* ✅ FIXED: Only show PVC option when discount is applied */}
-                            {course?.has_pvc_id && discount > 0 && (
-                              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
-                                <p className="text-sm text-amber-900 font-medium mb-2">
-                                  ⚠️ Important: Discounted packages include Digital ID only
-                                </p>
-                                <p className="text-xs text-amber-700 mb-3">
-                                  Physical PVC ID is not included. If you wish to receive a Physical PVC ID, you can add it for an additional ₱150.
-                                </p>
-                                <div className="flex items-center gap-3">
-                                  <Checkbox
-                                    id="add_pvc"
-                                    checked={!!form.add_pvc_id}
-                                    onCheckedChange={(checked) =>
-                                      setForm((prev: any) => ({
-                                        ...prev,
-                                        add_pvc_id: Boolean(checked),
-                                      }))
-                                    }
-                                  />
-                                  <Label htmlFor="add_pvc" className="cursor-pointer text-sm font-medium">
-                                    Add Physical PVC ID (+₱150)
-                                  </Label>
-                                </div>
-                              </div>
-                            )}
 
-                          {/* Discount Display */}
-                          {discount > 0 && (
-                            <div className="mt-2">
-                              <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                                <CheckCircle2 className="w-4 h-4" />
-                                Discount Applied: -₱{discount.toLocaleString()}
-                              </p>
-                            </div>
+                         {/* ✅ NEW: PVC ID Logic Based on Course Settings */}
+  {course?.has_pvc_id && (
+    <>
+      {/* Case 1: PVC Included in original price (like BOSHSO2) */}
+      {course.pvc_id_type === 'included' && discount === 0 && (
+        <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-md">
+          <div className="flex items-center gap-2 mb-1">
+            <CheckCircle2 className="w-4 h-4 text-green-600" />
+            <span className="text-sm font-semibold text-green-900">
+              Physical PVC ID Included
+            </span>
+          </div>
+          <p className="text-xs text-green-700">
+            Your course registration includes a Physical PVC ID card at no additional cost.
+          </p>
+        </div>
+      )}
+
+      {/* Case 2: PVC Included course but WITH discount - show option */}
+      {course.pvc_id_type === 'included' && discount > 0 && (
+        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+          <p className="text-sm text-amber-900 font-medium mb-2">
+            ⚠️ Discounted Package: Digital ID Only
+          </p>
+          <p className="text-xs text-amber-700 mb-3">
+            Normally this course includes a Physical PVC ID, but discounted packages include Digital ID only. 
+            You can add Physical PVC ID for ₱{getPvcFee()}.
+          </p>
+          <div className="flex items-center gap-3">
+            <Checkbox
+              id="add_pvc"
+              checked={!!form.add_pvc_id}
+              onCheckedChange={(checked) =>
+                setForm((prev: any) => ({
+                  ...prev,
+                  add_pvc_id: Boolean(checked),
+                }))
+              }
+            />
+            <Label htmlFor="add_pvc" className="cursor-pointer text-sm font-medium">
+              Add Physical PVC ID (+₱{getPvcFee()})
+            </Label>
+          </div>
+        </div>
+      )}
+
+      {/* Case 3: PVC Optional (like BOSHSO1) - always show option */}
+      {course.pvc_id_type === 'optional' && (
+        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <p className="text-sm text-blue-900 font-medium mb-2">
+            📇 Optional: Physical PVC ID Card
+          </p>
+          <p className="text-xs text-blue-700 mb-3">
+            You can optionally add a Physical PVC ID card to your registration.
+            {form.employment_status === 'Unemployed' 
+              ? ' Student/Unemployed rate applies.' 
+              : ' Professional rate applies.'}
+          </p>
+          <div className="flex items-center gap-3">
+            <Checkbox
+              id="add_pvc"
+              checked={!!form.add_pvc_id}
+              onCheckedChange={(checked) =>
+                setForm((prev: any) => ({
+                  ...prev,
+                  add_pvc_id: Boolean(checked),
+                }))
+              }
+            />
+            <Label htmlFor="add_pvc" className="cursor-pointer text-sm font-medium">
+              Add Physical PVC ID (+₱{getPvcFee()})
+            </Label>
+          </div>
+        </div>
+      )}
+    </>
+  )}
+
+
+                         {/* Discount Display */}
+                      {discount > 0 && (
+                        <div className="mt-2">
+                          <p className="text-sm text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                            <CheckCircle2 className="w-4 h-4" />
+                            Discount Applied: -₱{discount.toLocaleString()}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* ✅ UPDATED: Total calculation */}
+                      <div className="border-t mt-3 pt-3">
+                        <div className="space-y-1">
+                          <p className="text-sm text-gray-600 flex justify-between">
+                            <span>Course Fee:</span>
+                            <span>₱{((getApplicableFee() || 0) - discount).toLocaleString()}</span>
+                          </p>
+                          
+                          {/* Show PVC fee if user opted for it */}
+                          {form.add_pvc_id && getPvcFee() > 0 && (
+                            <p className="text-sm text-gray-600 flex justify-between">
+                              <span>Physical PVC ID:</span>
+                              <span>₱{getPvcFee().toLocaleString()}</span>
+                            </p>
                           )}
 
-                           {/* ✅ FIXED: Total calculation */}
-                            <div className="border-t mt-3 pt-3">
-                              <div className="space-y-1">
-                                <p className="text-sm text-gray-600 flex justify-between">
-                                  <span>Subtotal:</span>
-                                  <span>₱{((getApplicableFee() || 0) - discount).toLocaleString()}</span>
-                                </p>
-                                {/* Only show PVC fee line if actually added by user */}
-                                {form.add_pvc_id && discount > 0 && (
-                                  <p className="text-sm text-gray-600 flex justify-between">
-                                    <span>Physical PVC ID:</span>
-                                    <span>₱150.00</span>
-                                  </p>
-                                )}
-                                <p className="text-base text-gray-900 font-bold flex justify-between pt-2 border-t">
-                                  <span>Total Payable:</span>
-                                  <span className={discount > 0 ? "text-emerald-600" : ""}>
-                                    ₱{(
-                                      (getApplicableFee() || 0) - 
-                                      discount + 
-                                      (form.add_pvc_id && discount > 0 ? 150 : 0)
-                                    ).toLocaleString()}
-                                  </span>
-                                </p>
-                              </div>
-                              {discount > 0 && (
-                                <p className="text-xs text-gray-500 line-through mt-1">
-                                  Original: ₱{getApplicableFee()?.toLocaleString() || "0.00"}
-                                </p>
-                              )}
-                            </div>
-                          </fieldset>
+                          {/* Show PVC included notice */}
+                          {course?.pvc_id_type === 'included' && discount === 0 && (
+                            <p className="text-xs text-green-600 italic">
+                              *Physical PVC ID included in course fee
+                            </p>
+                          )}
+                          
+                          <p className="text-base text-gray-900 font-bold flex justify-between pt-2 border-t">
+                            <span>Total Payable:</span>
+                            <span className={discount > 0 ? "text-emerald-600" : ""}>
+                              ₱{(
+                                (getApplicableFee() || 0) - 
+                                discount + 
+                                (form.add_pvc_id ? getPvcFee() : 0)
+                              ).toLocaleString()}
+                            </span>
+                          </p>
+                        </div>
+                        {discount > 0 && (
+                          <p className="text-xs text-gray-500 line-through mt-1">
+                            Original: ₱{getApplicableFee()?.toLocaleString() || "0.00"}
+                          </p>
+                        )}
+                      </div>
+                    </fieldset>
                         
                         <fieldset className="border border-gray-300 rounded-md px-4 pt-4 pb-2 bg-slate-50 relative">
                           <legend className="text-sm font-medium px-2 text-gray-700 flex items-center gap-1">

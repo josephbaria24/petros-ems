@@ -38,6 +38,7 @@ import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, Al
 import { tmsDb } from "@/lib/supabase-client";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Checkbox } from "./ui/checkbox";
+import { get } from "http";
 
 interface Payment {
   id: string;
@@ -194,12 +195,12 @@ const fetchPayments = async () => {
   if (!error && data) {
     setPayments(data);
     
-    // Calculate total including PVC fee if applicable
-    const paymentTotal = data.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
-    const pvcFee = getEffectivePvcFee(trainee);
+    // ✅ FIXED: Use getPvcFee helper
+    const pvcFee = getPvcFee(trainee);
     setPvcIdFee(pvcFee);
-
     
+    // Update total amount paid
+    const paymentTotal = data.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
     await supabase
       .from("trainings")
       .update({ amount_paid: paymentTotal })
@@ -213,7 +214,7 @@ const checkAndUpdatePaymentStatus = async (totalPaid: number) => {
 
   const originalFee = getTrainingFee();
   const discountedFee = discountApplied !== null ? Number(discountApplied) : null;
-  const pvcFee = getEffectivePvcFee(trainee);
+  const pvcFee = getPvcFee(trainee); // ✅ FIXED: Use getPvcFee
 
 
   const currentStatus = trainee.status?.toLowerCase();
@@ -594,6 +595,58 @@ const handleRemoveVoucher = async () => {
 
 
 
+// ✅ SIMPLIFIED: Get PVC fee from stored value or calculate
+const getPvcFee = (trainee: any) => {
+  // First try to use stored pvc_fee (most accurate)
+  if (trainee?.pvc_fee !== null && trainee?.pvc_fee !== undefined) {
+    return Number(trainee.pvc_fee);
+  }
+
+  // Fallback: Calculate based on course settings
+  if (!trainee?.courses?.has_pvc_id || !trainee?.add_pvc_id) return 0;
+
+  const course = trainee.courses;
+  
+  // PVC included without discount = free (already in price)
+  if (course.pvc_id_type === 'included' && !trainee.has_discount) {
+    return 0;
+  }
+
+  // Calculate based on employment status
+  const isStudent = trainee.employment_status === 'Unemployed' && trainee.is_student;
+  const isUnemployed = trainee.employment_status === 'Unemployed';
+  
+  if (isStudent || isUnemployed) {
+    return course.pvc_student_price || 150;
+  }
+  
+  return course.pvc_professional_price || 150;
+};
+
+// Helper to display PVC status text
+const getPvcDisplayText = (trainee: any) => {
+  if (!trainee?.courses?.has_pvc_id) {
+    return "N/A (Course doesn't offer PVC)";
+  }
+
+  const course = trainee.courses;
+
+  // PVC included without discount
+  if (course.pvc_id_type === 'included' && !trainee.has_discount) {
+    return "Included in Course Fee";
+  }
+
+  // User opted for PVC
+  if (trainee.add_pvc_id) {
+    const fee = getPvcFee(trainee);
+    const employmentLabel = trainee.employment_status === 'Unemployed' ? 'Student/Unemployed' : 'Professional';
+    return `Yes - ₱${fee.toLocaleString()} (${employmentLabel} Rate)`;
+  }
+
+  return "No (Digital ID Only)";
+};
+
+
 // Helper function to get the correct fee based on event type
 const getTrainingFee = () => {
   if (!trainee?.courses) return 0;
@@ -625,12 +678,10 @@ const getEventTypeLabel = () => {
 };
 
 
-
 // ✅ PVC AUTO RULE (UI): if no discount -> PVC is automatically YES
 const isPvcAutoYes = (t: any) => !t?.has_discount;
 
 // ✅ Actual PVC "effective" value used in computations/UI
-
 const getEffectivePvcId = (t: any) => {
   // User must have discount AND explicitly opt-in for PVC
   return !!(t?.has_discount && t?.add_pvc_id);
@@ -645,12 +696,10 @@ const getPvcDisplayLabel = (t: any) => {
 };
 
 // ✅ Fee based on effective PVC
-
 const getEffectivePvcFee = (t: any) => {
   // Only charge PVC fee if user has discount AND opted for it
   return (t?.has_discount && t?.add_pvc_id) ? 150 : 0;
 };
-
 
 
 
@@ -981,16 +1030,15 @@ const handleApplyDiscount = async () => {
 const handleApprovePayment = async () => {
   if (!selectedPaymentId) return;
 
-  // ✅ FIXED: Get the current payment to preserve receipt_uploaded_by
   const currentPayment = payments.find(p => p.id === selectedPaymentId);
   if (!currentPayment) {
     alert('Payment not found');
     return;
   }
 
-  // ✅ FIXED: Calculate with PVC fee included
+  // ✅ FIXED: Calculate with correct PVC fee
   const courseFee = discountApplied !== null ? Number(discountApplied) : getTrainingFee();
-  const pvcFee = trainee.add_pvc_id ? 150 : 0;
+  const pvcFee = getPvcFee(trainee); // ✅ NEW - Use helper
   const totalRequired = courseFee + pvcFee;
   const remainingBalance = totalRequired - totalPaid;
 
@@ -2504,48 +2552,71 @@ const handleRestoreIdOriginal = async () => {
                 {/* ✅ FIXED JSX COMMENT */}
                 {/* PVC ID Add-on Display */}
            
-{trainee.has_discount && (
+
+{trainee.courses?.has_pvc_id && (
   <div className={`p-3 border rounded-lg space-y-2 ${
-    trainee.add_pvc_id 
-      ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-300' 
+    // If PVC included without discount, show green
+    trainee.courses.pvc_id_type === 'included' && !trainee.has_discount
+      ? 'bg-green-50 dark:bg-green-950/20 border-green-300'
+      // If user opted for PVC, show blue
+      : trainee.add_pvc_id 
+      ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-300'
+      // Otherwise gray
       : 'bg-gray-50 dark:bg-gray-900 border-gray-300'
   }`}>
     <div className="flex items-center gap-2">
-      {trainee.add_pvc_id ? (
+      {trainee.courses.pvc_id_type === 'included' && !trainee.has_discount ? (
+        <>
+          <CheckCircle2 className="w-4 h-4 text-green-600" />
+          <span className="font-semibold text-green-800 dark:text-green-200">
+            Physical PVC ID Included
+          </span>
+        </>
+      ) : trainee.add_pvc_id ? (
         <>
           <CheckCircle2 className="w-4 h-4 text-blue-600" />
           <span className="font-semibold text-blue-800 dark:text-blue-200">
-            Physical PVC ID
+            Physical PVC ID Added
           </span>
         </>
       ) : (
         <>
           <XCircle className="w-4 h-4 text-gray-600" />
           <span className="font-semibold text-gray-800 dark:text-gray-200">
-            No Physical PVC ID
+            Digital ID Only
           </span>
         </>
       )}
+      
       <span className="ml-auto text-[11px] px-2 py-0.5 rounded bg-white/70 border text-gray-800">
-        {getPvcDisplayLabel(trainee)}
+        {getPvcDisplayText(trainee)}
       </span>
     </div>
 
-    {trainee.add_pvc_id && (
-      <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300">
+    {/* Show fee breakdown if applicable */}
+    {getPvcFee(trainee) > 0 && (
+      <div className="flex justify-between text-xs text-blue-700 dark:text-blue-300 pt-2 border-t border-blue-200">
         <span>PVC ID Fee:</span>
-        <span className="font-semibold">₱150.00</span>
+        <span className="font-semibold">₱{getPvcFee(trainee).toLocaleString()}</span>
       </div>
     )}
 
+    {/* Explanation text */}
     <p className="text-xs text-gray-600 dark:text-gray-400">
-      {trainee.add_pvc_id 
-        ? "User opted for Physical PVC ID with discounted package"
-        : "Digital ID only (included with discount)"}
+      {trainee.courses.pvc_id_type === 'included' && !trainee.has_discount
+        ? "Physical PVC ID is included in the course fee at no extra charge"
+        : trainee.courses.pvc_id_type === 'included' && trainee.has_discount
+        ? trainee.add_pvc_id
+          ? "Trainee opted to add Physical PVC ID to discounted package"
+          : "Discounted package includes Digital ID only"
+        : trainee.courses.pvc_id_type === 'optional'
+        ? trainee.add_pvc_id
+          ? "Trainee opted for optional Physical PVC ID"
+          : "Trainee chose Digital ID only"
+        : "No PVC option available"}
     </p>
   </div>
 )}
-
 
                 <div className="flex justify-between">
                   <span>Payment Method</span>
@@ -2875,32 +2946,43 @@ const handleRestoreIdOriginal = async () => {
                                                 
                        {/* Totals */}
                 
-                  <div className="border-t pt-2 mt-2 space-y-1">
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>Course Fee:</span>
-                      <span>
-                        {formatCurrency(
-                          (discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) as number
-                        )}
-                      </span>
-                    </div>
-                    {/* ✅ FIXED: Only show PVC fee if user has discount AND opted for it */}
-                    {trainee.has_discount && trainee.add_pvc_id && (
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>+ PVC ID:</span>
-                        <span>₱150.00</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between font-semibold text-base text-gray-900 dark:text-gray-100 pt-1 border-t">
-                      <span>Total Required:</span>
-                      <span>
-                        {formatCurrency(
-                          ((discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) as number) +
-                          getEffectivePvcFee(trainee)
-                        )}
-                      </span>
-                    </div>
-                  </div>
+                  
+<div className="border-t pt-2 mt-2 space-y-1">
+  <div className="flex justify-between text-xs text-muted-foreground">
+    <span>Course Fee:</span>
+    <span>
+      {formatCurrency(
+        (discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) as number
+      )}
+    </span>
+  </div>
+  
+  {/* Show PVC fee if applicable */}
+  {getPvcFee(trainee) > 0 && (
+    <div className="flex justify-between text-xs text-muted-foreground">
+      <span>+ PVC ID:</span>
+      <span>₱{getPvcFee(trainee).toLocaleString()}</span>
+    </div>
+  )}
+
+  {/* Show if PVC is included */}
+  {trainee.courses?.pvc_id_type === 'included' && !trainee.has_discount && (
+    <div className="flex justify-between text-xs text-green-600">
+      <span>Physical PVC:</span>
+      <span className="font-medium">Included ✓</span>
+    </div>
+  )}
+  
+  <div className="flex justify-between font-semibold text-base text-gray-900 dark:text-gray-100 pt-1 border-t">
+    <span>Total Required:</span>
+    <span>
+      {formatCurrency(
+        ((discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) as number) +
+        getPvcFee(trainee)
+      )}
+    </span>
+  </div>
+</div>
                 <div className="flex justify-between font-semibold text-green-700">
                   <span>Total Amount Paid</span>
                   <span>{formatCurrency(totalPaid)}</span>
@@ -2908,7 +2990,7 @@ const handleRestoreIdOriginal = async () => {
 
                 {(() => {
                   const courseFee = discountApplied !== null ? Number(discountApplied) : Number(trainee?.training_fee || 0);
-                  const pvcFee = trainee.add_pvc_id ? 150 : 0;
+                  const pvcFee = getPvcFee(trainee);
                   const requiredFee = courseFee + pvcFee;
                   const currentPaid = Number(totalPaid) || 0;
                   const balance = requiredFee - currentPaid;
@@ -3356,7 +3438,7 @@ const handleRestoreIdOriginal = async () => {
             {/* Payment Info */}
               {(() => {
                 const courseFee = discountApplied ?? (trainee?.training_fee || 0);
-                const pvcFee = trainee.add_pvc_id ? 150 : 0;
+                const pvcFee = getPvcFee(trainee); // ✅ NEW - Use helper
                 const totalFee = courseFee + pvcFee;
                 const remainingBalance = totalFee - totalPaid;
                 
@@ -3403,10 +3485,11 @@ const handleRestoreIdOriginal = async () => {
             <Label>Payment Amount</Label>
             
             <div className="space-y-2">
+             {/* Preview Total After Approval */}
               {(() => {
-                // ✅ FIXED: Include PVC fee in total calculation
+                // ✅ FIXED: Include correct PVC fee in preview calculation
                 const courseFee = discountApplied !== null ? discountApplied : (trainee?.training_fee || 0);
-                const pvcFee = trainee.add_pvc_id ? 150 : 0;
+                const pvcFee = getPvcFee(trainee); // ✅ NEW - Use helper
                 const totalFee = courseFee + pvcFee;
                 const remainingBalance = totalFee - totalPaid;
                 
@@ -3502,11 +3585,10 @@ const handleRestoreIdOriginal = async () => {
               </div>
             </div>
 
-            {/* Preview Total After Approval */}
-            {(() => {
-              // ✅ FIXED: Include PVC fee in preview calculation
+           {(() => {
+              // ✅ FIXED: Include correct PVC fee in total calculation
               const courseFee = discountApplied !== null ? discountApplied : (trainee?.training_fee || 0);
-              const pvcFee = trainee.add_pvc_id ? 150 : 0;
+              const pvcFee = getPvcFee(trainee); // ✅ NEW - Use helper
               const totalFee = courseFee + pvcFee;
               const remainingBalance = totalFee - totalPaid;
               const approvalAmount = 
