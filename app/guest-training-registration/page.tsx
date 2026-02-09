@@ -766,8 +766,6 @@ const handleRemoveVoucher = () => {
 
 
 
-
-// Helper function to get the correct fee
 const getApplicableFee = () => {
   if (!course) return 0;
   
@@ -1743,18 +1741,17 @@ const handleSubmit = async () => {
                           <p><strong>Phone:</strong> {form.phone_number}</p>
                           <p><strong>Address:</strong> {form.mailing_street}, {form.mailing_city}, {form.mailing_province}</p>
                         </fieldset>
+                          <fieldset className="border border-gray-300 rounded-md px-4 pt-4 pb-2 bg-slate-50 relative">
+                            <legend className="text-sm font-medium px-2 text-gray-700 flex items-center gap-1">
+                              <CreditCard className="w-4 h-4 text-gray-500" />
+                              Payment Details
+                            </legend>
 
-                        <fieldset className="border border-gray-300 rounded-md px-4 pt-4 pb-2 bg-slate-50 relative">
-                          <legend className="text-sm font-medium px-2 text-gray-700 flex items-center gap-1">
-                            <CreditCard className="w-4 h-4 text-gray-500" />
-                            Payment Details
-                          </legend>
+                            <p className="text-sm text-gray-900">
+                              <strong>Training Fee ({getEventTypeLabel()}):</strong> ₱{getApplicableFee()?.toLocaleString() || "0.00"}
+                            </p>
 
-                          <p className="text-sm text-gray-900">
-                           <strong>Training Fee ({getEventTypeLabel()}):</strong> ₱{getApplicableFee()?.toLocaleString() || "0.00"}
-                          </p>
-
-                          {/* Voucher Code Input */}
+                         {/* Voucher Code Input */}
                           <div className="space-y-2 mt-3">
                             <Label htmlFor="voucher_code" className="text-sm font-medium">
                               Have a voucher code?
@@ -1816,34 +1813,32 @@ const handleSubmit = async () => {
                               </p>
                             )}
                           </div>
-
-
-                         {/* PVC ID Add-on Option - Only show if course offers PVC ID */}
-                          {course?.has_pvc_id && discount > 0 && (
-                            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
-                              <p className="text-sm text-amber-900 font-medium mb-2">
-                                ⚠️ Important: Discounted packages include Digital ID only
-                              </p>
-                              <p className="text-xs text-amber-700 mb-3">
-                                Physical PVC ID is not included. If you wish to receive a Physical PVC ID, you can add it for an additional ₱150.
-                              </p>
-                              <div className="flex items-center gap-3">
-                                <Checkbox
-                                  id="add_pvc"
-                                  checked={!!form.add_pvc_id}
-                                  onCheckedChange={(checked) =>
-                                    setForm((prev: any) => ({
-                                      ...prev,
-                                      add_pvc_id: Boolean(checked),
-                                    }))
-                                  }
-                                />
-                                <Label htmlFor="add_pvc" className="cursor-pointer text-sm font-medium">
-                                  Add Physical PVC ID (+₱150)
-                                </Label>
+                        {/* ✅ FIXED: Only show PVC option when discount is applied */}
+                            {course?.has_pvc_id && discount > 0 && (
+                              <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-md">
+                                <p className="text-sm text-amber-900 font-medium mb-2">
+                                  ⚠️ Important: Discounted packages include Digital ID only
+                                </p>
+                                <p className="text-xs text-amber-700 mb-3">
+                                  Physical PVC ID is not included. If you wish to receive a Physical PVC ID, you can add it for an additional ₱150.
+                                </p>
+                                <div className="flex items-center gap-3">
+                                  <Checkbox
+                                    id="add_pvc"
+                                    checked={!!form.add_pvc_id}
+                                    onCheckedChange={(checked) =>
+                                      setForm((prev: any) => ({
+                                        ...prev,
+                                        add_pvc_id: Boolean(checked),
+                                      }))
+                                    }
+                                  />
+                                  <Label htmlFor="add_pvc" className="cursor-pointer text-sm font-medium">
+                                    Add Physical PVC ID (+₱150)
+                                  </Label>
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            )}
 
                           {/* Discount Display */}
                           {discount > 0 && (
@@ -1855,32 +1850,38 @@ const handleSubmit = async () => {
                             </div>
                           )}
 
-                          <div className="border-t mt-3 pt-3">
-                            <div className="space-y-1">
-                              <p className="text-sm text-gray-600 flex justify-between">
-                                <span>Subtotal:</span>
-                                <span>₱{((getApplicableFee() || 0) - discount).toLocaleString()}</span>
-                              </p>
-                              {form.add_pvc_id && (
+                           {/* ✅ FIXED: Total calculation */}
+                            <div className="border-t mt-3 pt-3">
+                              <div className="space-y-1">
                                 <p className="text-sm text-gray-600 flex justify-between">
-                                  <span>Physical PVC ID:</span>
-                                  <span>₱150.00</span>
+                                  <span>Subtotal:</span>
+                                  <span>₱{((getApplicableFee() || 0) - discount).toLocaleString()}</span>
+                                </p>
+                                {/* Only show PVC fee line if actually added by user */}
+                                {form.add_pvc_id && discount > 0 && (
+                                  <p className="text-sm text-gray-600 flex justify-between">
+                                    <span>Physical PVC ID:</span>
+                                    <span>₱150.00</span>
+                                  </p>
+                                )}
+                                <p className="text-base text-gray-900 font-bold flex justify-between pt-2 border-t">
+                                  <span>Total Payable:</span>
+                                  <span className={discount > 0 ? "text-emerald-600" : ""}>
+                                    ₱{(
+                                      (getApplicableFee() || 0) - 
+                                      discount + 
+                                      (form.add_pvc_id && discount > 0 ? 150 : 0)
+                                    ).toLocaleString()}
+                                  </span>
+                                </p>
+                              </div>
+                              {discount > 0 && (
+                                <p className="text-xs text-gray-500 line-through mt-1">
+                                  Original: ₱{getApplicableFee()?.toLocaleString() || "0.00"}
                                 </p>
                               )}
-                              <p className="text-base text-gray-900 font-bold flex justify-between pt-2 border-t">
-                                <span>Total Payable:</span>
-                                <span className={discount > 0 ? "text-emerald-600" : ""}>
-                                  ₱{((getApplicableFee() || 0) - discount + (form.add_pvc_id ? 150 : 0)).toLocaleString()}
-                                </span>
-                              </p>
                             </div>
-                            {discount > 0 && (
-                              <p className="text-xs text-gray-500 line-through mt-1">
-                                Original: ₱{getApplicableFee()?.toLocaleString() || "0.00"}
-                              </p>
-                            )}
-                          </div>
-                        </fieldset>
+                          </fieldset>
                         
                         <fieldset className="border border-gray-300 rounded-md px-4 pt-4 pb-2 bg-slate-50 relative">
                           <legend className="text-sm font-medium px-2 text-gray-700 flex items-center gap-1">

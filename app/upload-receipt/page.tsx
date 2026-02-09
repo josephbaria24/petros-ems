@@ -1,4 +1,4 @@
-// app/upload-receipt/page.tsx - WITH PVC ID FEE AND DISCOUNT DISPLAY
+// app/upload-receipt/page.tsx - FIXED: Only show PVC fee when user has discount AND opted for PVC
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -34,7 +34,7 @@ interface BookingStatus {
     discountedFee: number | null;
     originalFee: number;
     // PVC ID field
-    addPvcId: boolean; // ✅ Add this
+    addPvcId: boolean;
   };
   error?: string;
 }
@@ -56,7 +56,6 @@ export default function UploadReceiptPage() {
   const [showHistory, setShowHistory] = useState(false);
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-  const PVC_ID_FEE = 150; // ✅ PVC ID fee constant
 
   const fetchPaymentHistory = async (trainingId: string) => {
     setLoadingHistory(true);
@@ -234,19 +233,21 @@ export default function UploadReceiptPage() {
     return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
   };
 
-  // ✅ Calculate total required amount (course fee + PVC fee)
+  // ✅ FIXED: Calculate total required amount (only add PVC if user has discount AND opted for it)
   const calculateTotalRequired = () => {
-  if (!bookingStatus?.data) return 0;
-  
-  // ✅ FIXED: Use !== null to properly handle free vouchers (discountedFee = 0)
-  const courseFee = bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee !== null
-    ? bookingStatus.data.discountedFee
-    : bookingStatus.data.trainingFee;
-  
-  const pvcFee = bookingStatus.data.addPvcId ? PVC_ID_FEE : 0;
-  
-  return courseFee + pvcFee;
-};
+    if (!bookingStatus?.data) return 0;
+    
+    // Use discounted fee if available, otherwise use training fee
+    const courseFee = bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee !== null
+      ? bookingStatus.data.discountedFee
+      : bookingStatus.data.trainingFee;
+    
+    // ✅ FIXED: Only add PVC fee if user has discount AND explicitly opted for it
+    const pvcFee = (bookingStatus.data.hasDiscount && bookingStatus.data.addPvcId) ? 150 : 0;
+    
+    return courseFee + pvcFee;
+  };
+
   // ✅ Calculate remaining balance
   const calculateBalance = () => {
     if (!bookingStatus?.data) return 0;
@@ -350,8 +351,8 @@ export default function UploadReceiptPage() {
                     <span className="text-white">{bookingStatus.data.paymentMethod}</span>
                   </div>
                   
-                  {/* ✅ PVC ID Display */}
-                  {bookingStatus.data.addPvcId && (
+                  {/* ✅ FIXED: Only show PVC section if user has discount AND opted for PVC */}
+                  {bookingStatus.data.hasDiscount && bookingStatus.data.addPvcId && (
                     <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mt-2">
                       <div className="flex items-center gap-2 mb-1">
                         <CheckCircle className="w-4 h-4 text-blue-400" />
@@ -363,15 +364,15 @@ export default function UploadReceiptPage() {
                       <div className="flex justify-between items-center mt-2 pt-2 border-t border-blue-500/20">
                         <span className="text-xs text-blue-300">PVC ID Fee:</span>
                         <span className="text-sm text-blue-400 font-bold">
-                          {formatCurrency(PVC_ID_FEE)}
+                          ₱150.00
                         </span>
                       </div>
                     </div>
                   )}
 
-               {/* ✅ Discount Display - FIXED for Free vouchers */}
-{bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee !== null && (
-  <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 mt-2">
+                  {/* ✅ Discount Display */}
+                  {bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee !== null && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 mt-2">
                       <div className="flex items-center gap-2 mb-2">
                         <CheckCircle className="w-4 h-4 text-emerald-400" />
                         <span className="text-xs font-semibold text-emerald-400">Discount Applied!</span>
@@ -399,14 +400,12 @@ export default function UploadReceiptPage() {
                     </div>
                   )}
                   
-            
-                  {/* ✅ Training Fee Breakdown */}
-                 {/* ✅ Training Fee Breakdown */}
-<div className="border-t border-slate-600 pt-2 mt-2 space-y-2">
-  {/* Course Fee */}
-  <div className="flex justify-between text-xs">
-    <span className="text-slate-400">Course Fee:</span>
-    {bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee !== null ? (
+                  {/* ✅ FIXED: Training Fee Breakdown */}
+                  <div className="border-t border-slate-600 pt-2 mt-2 space-y-2">
+                    {/* Course Fee */}
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-400">Course Fee:</span>
+                      {bookingStatus.data.hasDiscount && bookingStatus.data.discountedFee !== null ? (
                         <div className="flex flex-col items-end">
                           <span className="text-slate-500 line-through text-xs">
                             {formatCurrency(bookingStatus.data.originalFee)}
@@ -422,12 +421,12 @@ export default function UploadReceiptPage() {
                       )}
                     </div>
 
-                    {/* PVC ID Fee Line Item */}
-                    {bookingStatus.data.addPvcId && (
+                    {/* ✅ FIXED: Only show PVC fee if user has discount AND opted for it */}
+                    {bookingStatus.data.hasDiscount && bookingStatus.data.addPvcId && (
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-400">+ PVC ID Fee:</span>
                         <span className="text-blue-400 font-semibold">
-                          {formatCurrency(PVC_ID_FEE)}
+                          ₱150.00
                         </span>
                       </div>
                     )}
