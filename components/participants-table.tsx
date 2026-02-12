@@ -4,6 +4,7 @@
 
 import { tmsDb } from "@/lib/supabase-client"
 import * as React from "react"
+import QRCode from "qrcode"
 import {
   useReactTable,
   getCoreRowModel,
@@ -15,7 +16,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table"
-import { ArrowUpDown, FileText, FolderOpen, ClipboardCheck, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X } from "lucide-react"
+import { ArrowUpDown, FileText, FolderOpen, ClipboardCheck, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -68,7 +69,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const [data, setData] = React.useState<Participant[]>([])
   const [loading, setLoading] = React.useState(true)
   const [globalFilter, setGlobalFilter] = React.useState("")
-  
+
   // Alert dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
   const [viewDialogOpen, setViewDialogOpen] = React.useState(false)
@@ -95,7 +96,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     // Build the registration link with schedule_id (matching the registration page parameter)
     const baseUrl = window.location.origin
     const registrationUrl = `${baseUrl}/guest-training-registration?schedule_id=${participant.id}`
-    
+
     // Copy to clipboard
     navigator.clipboard.writeText(registrationUrl).then(() => {
       toast.success("Registration link copied!", {
@@ -107,6 +108,81 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         description: "Please try again",
       })
     })
+  }
+
+  const handleDownloadQRCode = async (participant: Participant) => {
+    // Build the registration link
+    const baseUrl = window.location.origin
+    const registrationUrl = `${baseUrl}/guest-training-registration?schedule_id=${participant.id}`
+
+    try {
+      // 1. Create a temporary canvas for the QR code
+      const qrCanvas = document.createElement("canvas")
+      const qrSize = 1024
+
+      await QRCode.toCanvas(qrCanvas, registrationUrl, {
+        width: qrSize,
+        margin: 2,
+        color: {
+          dark: "#000000",
+          light: "#ffffff",
+        },
+      })
+
+      // 2. Create the final canvas with extra space for text
+      const finalCanvas = document.createElement("canvas")
+      const ctx = finalCanvas.getContext("2d")
+      if (!ctx) throw new Error("Could not get canvas context")
+
+      const padding = 60
+      const textLineHeight = 50
+      const extraHeight = 250 // Space for 3 lines of text + padding
+
+      finalCanvas.width = qrSize
+      finalCanvas.height = qrSize + extraHeight
+
+      // 3. Fill background with white
+      ctx.fillStyle = "#ffffff"
+      ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height)
+
+      // 4. Draw QR code
+      ctx.drawImage(qrCanvas, 0, 0)
+
+      // 5. Draw Text Labels
+      ctx.textAlign = "center"
+      ctx.fillStyle = "#000000"
+
+      // Course Name
+      ctx.font = "bold 44px Arial, sans-serif"
+      ctx.fillText(participant.course, qrSize / 2, qrSize + padding)
+
+      // Date Range
+      ctx.font = "36px Arial, sans-serif"
+      ctx.fillText(participant.schedule, qrSize / 2, qrSize + padding + textLineHeight + 10)
+
+      // Petrosphere Inc.
+      ctx.font = "bold 40px Arial, sans-serif"
+      ctx.fillStyle = "#1a1f71" // Use the brand navy blue
+      ctx.fillText("Petrosphere Inc.", qrSize / 2, qrSize + padding + (textLineHeight * 2) + 30)
+
+      // 6. Trigger Download
+      const dataUrl = finalCanvas.toDataURL("image/png")
+      const link = document.createElement("a")
+      link.href = dataUrl
+      link.download = `QR-Registration-${participant.course.replace(/[^a-z0-9]/gi, "-")}-${participant.id.slice(0, 8)}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      toast.success("QR Code downloaded!", {
+        description: `QR for ${participant.course} with details is ready.`,
+      })
+    } catch (err) {
+      console.error("Failed to generate labeled QR code:", err)
+      toast.error("Failed to generate QR code", {
+        description: "Please try again",
+      })
+    }
   }
 
   function formatScheduleDateRange(start: string, end: string) {
@@ -288,7 +364,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           let scheduleDisplay = ""
           let sortDate: Date | null = null
           let scheduleMonth: string | undefined = undefined
-          
+
           if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length) {
             const range = schedule.schedule_ranges[0]
             scheduleDisplay = formatScheduleDateRange(range.start_date, range.end_date)
@@ -317,39 +393,39 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           }
         })
         .sort((a, b) => {
-  // Priority 1: Sort by status (ongoing should always be first)
-  const statusPriority: Record<string, number> = {
-    ongoing: 0,
-    confirmed: 1,
-    planned: 2,
-    cancelled: 3,
-    finished: 4
-  }
-  
-  const aPriority = statusPriority[a.status] ?? 5
-  const bPriority = statusPriority[b.status] ?? 5
-  
-  // If different status priorities, sort by status
-  if (aPriority !== bPriority) {
-    return aPriority - bPriority
-  }
-  
-  // Priority 2: Within same status, sort by date
-  if (!a.sortDate && !b.sortDate) return 0
-  if (!a.sortDate) return 1
-  if (!b.sortDate) return -1
-  
-  const now = new Date()
-  const aFuture = a.sortDate >= now
-  const bFuture = b.sortDate >= now
-  
-  // Both future: sort ascending (nearest first)
-  if (aFuture && bFuture) return a.sortDate.getTime() - b.sortDate.getTime()
-  // Both past: sort descending (most recent first)
-  if (!aFuture && !bFuture) return b.sortDate.getTime() - a.sortDate.getTime()
-  // One future, one past: future comes first
-  return aFuture ? -1 : 1
-})
+          // Priority 1: Sort by status (ongoing should always be first)
+          const statusPriority: Record<string, number> = {
+            ongoing: 0,
+            confirmed: 1,
+            planned: 2,
+            cancelled: 3,
+            finished: 4
+          }
+
+          const aPriority = statusPriority[a.status] ?? 5
+          const bPriority = statusPriority[b.status] ?? 5
+
+          // If different status priorities, sort by status
+          if (aPriority !== bPriority) {
+            return aPriority - bPriority
+          }
+
+          // Priority 2: Within same status, sort by date
+          if (!a.sortDate && !b.sortDate) return 0
+          if (!a.sortDate) return 1
+          if (!b.sortDate) return -1
+
+          const now = new Date()
+          const aFuture = a.sortDate >= now
+          const bFuture = b.sortDate >= now
+
+          // Both future: sort ascending (nearest first)
+          if (aFuture && bFuture) return a.sortDate.getTime() - b.sortDate.getTime()
+          // Both past: sort descending (most recent first)
+          if (!aFuture && !bFuture) return b.sortDate.getTime() - a.sortDate.getTime()
+          // One future, one past: future comes first
+          return aFuture ? -1 : 1
+        })
 
       setData(mapped)
     }
@@ -362,82 +438,82 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   }, [status, refreshTrigger, fetchTrainings])
 
   const columns: ColumnDef<Participant>[] = [
-   {
-  accessorKey: "course",
-  header: "Course",
-  cell: ({ row }) => {
-    const submissionCount = row.original.submissionCount
-    const isCancelled = row.original.status === 'cancelled'
-    
-    return (
-      <div className="space-y-2">
-        <div className={`font-medium text-card-foreground ${isCancelled ? 'line-through text-muted-foreground' : ''}`}>
-          {row.getValue("course")}
-        </div>
-        <div className="flex gap-2">
-          <Link
-            href={`/submissions?scheduleId=${row.original.id}&from=${status}`}
-            className="flex items-center gap-1 text-xs hover:bg-muted rounded-md px-2 py-1.5 cursor-pointer"
-          >
-            <FileText className="h-3 w-3" />
-            Submission
-            {submissionCount > 0 && (
-              <Badge variant="destructive" className="ml-1 h-4 px-1 text-xs">
-                {submissionCount}
-              </Badge>
-            )}
-          </Link>
+    {
+      accessorKey: "course",
+      header: "Course",
+      cell: ({ row }) => {
+        const submissionCount = row.original.submissionCount
+        const isCancelled = row.original.status === 'cancelled'
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
-            onClick={() => {
-              setDirectoryScheduleId(row.original.id)
-              setDirectoryCourseName(row.original.course)
-              setDirectoryRange(row.original.schedule)
-              setDirectoryOpen(true)
-            }}
-          >
-            <FolderOpen className="h-3 w-3" />
-            Directory
-          </Button>
+        return (
+          <div className="space-y-2">
+            <div className={`font-medium text-card-foreground ${isCancelled ? 'line-through text-muted-foreground' : ''}`}>
+              {row.getValue("course")}
+            </div>
+            <div className="flex gap-2">
+              <Link
+                href={`/submissions?scheduleId=${row.original.id}&from=${status}`}
+                className="flex items-center gap-1 text-xs hover:bg-muted rounded-md px-2 py-1.5 cursor-pointer"
+              >
+                <FileText className="h-3 w-3" />
+                Submission
+                {submissionCount > 0 && (
+                  <Badge variant="destructive" className="ml-1 h-4 px-1 text-xs">
+                    {submissionCount}
+                  </Badge>
+                )}
+              </Link>
 
-          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer">
-            <ClipboardCheck className="h-3 w-3" />
-            Exam Result
-          </Button>
-        </div>
-      </div>
-    )
-  },
-},
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
+                onClick={() => {
+                  setDirectoryScheduleId(row.original.id)
+                  setDirectoryCourseName(row.original.course)
+                  setDirectoryRange(row.original.schedule)
+                  setDirectoryOpen(true)
+                }}
+              >
+                <FolderOpen className="h-3 w-3" />
+                Directory
+              </Button>
+
+              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer">
+                <ClipboardCheck className="h-3 w-3" />
+                Exam Result
+              </Button>
+            </div>
+          </div>
+        )
+      },
+    },
     {
       accessorKey: "branch",
       header: "Branch",
       cell: ({ row }) => <div className="text-card-foreground">{row.getValue("branch")}</div>,
     },
-   {
-  accessorKey: "schedule",
-  header: "Schedule",
-  cell: ({ row }) => {
-    const scheduleText = row.getValue("schedule") as string
-    return (
-      <div 
-        className="text-card-foreground max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap" 
-        title={scheduleText}
-      >
-        {scheduleText}
-      </div>
-    )
-  },
-},
+    {
+      accessorKey: "schedule",
+      header: "Schedule",
+      cell: ({ row }) => {
+        const scheduleText = row.getValue("schedule") as string
+        return (
+          <div
+            className="text-card-foreground max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap"
+            title={scheduleText}
+          >
+            {scheduleText}
+          </div>
+        )
+      },
+    },
     {
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => {
         const statusValue = row.getValue("status") as string
-        
+
         // Color-coded badges based on status
         const statusStyles = {
           planned: "bg-yellow-100 text-yellow-800 border-yellow-300",
@@ -446,9 +522,9 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           cancelled: "bg-red-100 text-red-800 border-red-300",
           finished: "bg-gray-100 text-gray-800 border-gray-300"
         }
-        
+
         const style = statusStyles[statusValue as keyof typeof statusStyles] || "bg-gray-100 text-gray-800 border-gray-300"
-        
+
         return (
           <Badge className={`${style} border`}>
             {statusValue.charAt(0).toUpperCase() + statusValue.slice(1)}
@@ -469,57 +545,62 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       },
     },
     {
-  id: "actions",
-  header: "Actions",
-  cell: ({ row }) => {
-    const participant = row.original
-    const isCancelled = participant.status === 'cancelled'
-    
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-            <MoreVertical className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => handleView(participant)} className="cursor-pointer">
-            <Eye className="mr-2 h-4 w-4" />
-            View
-          </DropdownMenuItem>
-          
-          {!isCancelled && (
-            <DropdownMenuItem onClick={() => handleEdit(participant)} className="cursor-pointer">
-              <Edit className="mr-2 h-4 w-4" />
-              Edit
-            </DropdownMenuItem>
-          )}
-          
-          <DropdownMenuItem onClick={() => handleCopyRegistrationLink(participant)} className="cursor-pointer">
-            <Link2 className="mr-2 h-4 w-4" />
-            Copy Registration Link
-          </DropdownMenuItem>
-          
-          <DropdownMenuItem 
-            onClick={() => handleCancelScheduleClick(participant)} 
-            className={`cursor-pointer ${isCancelled ? 'text-green-600 focus:text-green-600' : 'text-orange-600 focus:text-orange-600'}`}
-          >
-            <RefreshCcw className="mr-2 h-4 w-4" />
-            {isCancelled ? 'Restore Schedule' : 'Cancel Schedule'}
-          </DropdownMenuItem>
-          
-          <DropdownMenuItem 
-            onClick={() => handleDeleteClick(participant)} 
-            className="cursor-pointer text-destructive focus:text-destructive"
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete Permanently
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    )
-  },
-},
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }) => {
+        const participant = row.original
+        const isCancelled = participant.status === 'cancelled'
+
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleView(participant)} className="cursor-pointer">
+                <Eye className="mr-2 h-4 w-4" />
+                View
+              </DropdownMenuItem>
+
+              {!isCancelled && (
+                <DropdownMenuItem onClick={() => handleEdit(participant)} className="cursor-pointer">
+                  <Edit className="mr-2 h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+              )}
+
+              <DropdownMenuItem onClick={() => handleCopyRegistrationLink(participant)} className="cursor-pointer">
+                <Link2 className="mr-2 h-4 w-4" />
+                Copy Registration Link
+              </DropdownMenuItem>
+
+              <DropdownMenuItem onClick={() => handleDownloadQRCode(participant)} className="cursor-pointer">
+                <QrCode className="mr-2 h-4 w-4" />
+                Download QR Code
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={() => handleCancelScheduleClick(participant)}
+                className={`cursor-pointer ${isCancelled ? 'text-green-600 focus:text-green-600' : 'text-orange-600 focus:text-orange-600'}`}
+              >
+                <RefreshCcw className="mr-2 h-4 w-4" />
+                {isCancelled ? 'Restore Schedule' : 'Cancel Schedule'}
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={() => handleDeleteClick(participant)}
+                className="cursor-pointer text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete Permanently
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
+      },
+    },
   ]
 
   const table = useReactTable({
@@ -534,19 +615,19 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     onGlobalFilterChange: setGlobalFilter,
     globalFilterFn: (row, columnId, filterValue) => {
       const search = filterValue.toLowerCase()
-      
+
       // Search in course, branch, schedule (including month names), status, and type
       const course = String(row.getValue("course")).toLowerCase()
       const branch = String(row.getValue("branch")).toLowerCase()
       const schedule = String(row.getValue("schedule")).toLowerCase()
       const status = String(row.getValue("status")).toLowerCase()
       const type = String(row.getValue("type")).toLowerCase()
-      
-      return course.includes(search) || 
-             branch.includes(search) || 
-             schedule.includes(search) ||
-             status.includes(search) ||
-             type.includes(search)
+
+      return course.includes(search) ||
+        branch.includes(search) ||
+        schedule.includes(search) ||
+        status.includes(search) ||
+        type.includes(search)
     },
     state: {
       sorting,
@@ -573,7 +654,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
 
   const handleCancelScheduleClick = (participant: Participant) => {
     setSelectedParticipant(participant)
-    
+
     // If restoring, just restore immediately without dialog
     if (participant.status === 'cancelled') {
       handleRestoreSchedule(participant)
@@ -661,7 +742,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                 scheduleRange: selectedParticipant.schedule,
               }),
             })
-            
+
             toast.success("Schedule cancelled successfully", {
               id: toastId,
               description: `Notifications sent to ${trainees.length} participant(s)`,
@@ -704,7 +785,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   return (
     <>
       <Card className="p-3 border-0 shadow-md bg- ">
-       <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center justify-between mb-1">
           <div className="flex gap-2">
             <Input
               placeholder="Search courses, branches, schedules, status, or types..."
@@ -877,7 +958,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         scheduleId={selectedParticipant?.id || null}
         onScheduleUpdated={fetchTrainings}
       />
-{/* Cancel Schedule Options Dialog */}
+      {/* Cancel Schedule Options Dialog */}
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
         <AlertDialogContent className="sm:max-w-lg">
           <button

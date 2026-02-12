@@ -52,9 +52,10 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
   const [batchNumber, setBatchNumber] = React.useState<number | null>(null)
   const [courseSearch, setCourseSearch] = React.useState("")
   const [courseOpen, setCourseOpen] = React.useState(false)
+  const [registrationFormType, setRegistrationFormType] = React.useState<string>("default")
 
   const [selectedCourseData, setSelectedCourseData] = React.useState<any>(null)
-  
+
   // Close dropdown when clicking outside
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -69,70 +70,70 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
 
 
   React.useEffect(() => {
-  const fetchCourses = async () => {
-    const { data, error } = await tmsDb
-      .from("courses")
-      .select("id, name, online_fee, face_to_face_fee, elearning_fee")
-      .order("name")
-    if (error) {
-      console.error("Failed to load courses", error)
-      toast.error("Failed to load courses", {
-        description: error.message,
-      })
-    } else {
-      setCourseOptions(data)
+    const fetchCourses = async () => {
+      const { data, error } = await tmsDb
+        .from("courses")
+        .select("id, name, online_fee, face_to_face_fee, elearning_fee")
+        .order("name")
+      if (error) {
+        console.error("Failed to load courses", error)
+        toast.error("Failed to load courses", {
+          description: error.message,
+        })
+      } else {
+        setCourseOptions(data)
+      }
+      setLoadingCourses(false)
     }
-    setLoadingCourses(false)
-  }
 
-  fetchCourses()
-}, [])
+    fetchCourses()
+  }, [])
 
 
 
-React.useEffect(() => {
-  if (!course) {
-    setSelectedCourseData(null)
-    return
-  }
+  React.useEffect(() => {
+    if (!course) {
+      setSelectedCourseData(null)
+      return
+    }
 
-  const fetchedCourse = courseOptions.find(c => c.id === course)
-  if (fetchedCourse) {
-    setSelectedCourseData(fetchedCourse)
-  }
-}, [course, courseOptions])
+    const fetchedCourse = courseOptions.find(c => c.id === course)
+    if (fetchedCourse) {
+      setSelectedCourseData(fetchedCourse)
+    }
+  }, [course, courseOptions])
 
 
   React.useEffect(() => {
     if (!course) return
-  
+
     const fetchNextBatchNumber = async () => {
       const { data, error } = await tmsDb
         .from("schedules")
         .select("batch_number")
         .eq("course_id", course)
         .not("batch_number", "is", null)
-  
+
       if (error) {
         console.error("Error fetching batches:", error)
         return
       }
-  
+
       const existingBatches = data.map(b => b.batch_number).filter(Boolean) as number[]
       const nextBatch = existingBatches.length > 0 ? Math.max(...existingBatches) + 1 : 1
       setBatchNumber(nextBatch)
     }
-  
+
     fetchNextBatchNumber()
   }, [course])
-  
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-  
+
     const isRegularValid = scheduleType === "regular" && rangeDates?.from && rangeDates?.to
     const isStaggeredValid = scheduleType === "staggered" && multiDates.length > 0
-  
+
     if (!eventType || !course || (isBranchRequired && !branch) || (!isRegularValid && !isStaggeredValid)) {
       toast.error("Missing Information", {
         description: "Please fill in all required fields.",
@@ -144,7 +145,7 @@ React.useEffect(() => {
     const toastId = toast.loading("Creating schedule...", {
       description: "Please wait while we save your training schedule.",
     })
-  
+
     try {
       // Step 1: Insert into schedules
       const { data: scheduleData, error: scheduleError } = await tmsDb
@@ -154,11 +155,12 @@ React.useEffect(() => {
           schedule_type: scheduleType,
           event_type: eventType,
           branch: branch,
-          batch_number: batchNumber, 
+          batch_number: batchNumber,
+          registration_form_type: registrationFormType,
         })
         .select()
         .single()
-    
+
       if (scheduleError || !scheduleData) {
         toast.error("Error Creating Schedule", {
           id: toastId,
@@ -167,9 +169,9 @@ React.useEffect(() => {
         setIsSubmitting(false)
         return
       }
-    
+
       const scheduleId = scheduleData.id
-    
+
       // Step 2: Insert dates
       if (scheduleType === "regular" && rangeDates?.from && rangeDates?.to) {
         const { error: rangeError } = await tmsDb
@@ -209,16 +211,16 @@ React.useEffect(() => {
           return
         }
       }
-    
+
       // Final Success Toast
       const courseName = courseOptions.find(c => c.id === course)?.name || "Course"
-      const eventTypeLabel = eventType === 'face-to-face' ? 'Face-to-Face' : 
-                            eventType === 'elearning' ? 'E-Learning' : 'Online'
+      const eventTypeLabel = eventType === 'face-to-face' ? 'Face-to-Face' :
+        eventType === 'elearning' ? 'E-Learning' : 'Online'
       toast.success("Schedule Created Successfully", {
         id: toastId,
         description: `${courseName} ${eventTypeLabel} training schedule has been created${branch ? ` for ${branch}` : ''}.`,
       })
-    
+
       // Reset form
       setEventType("")
       setCourse("")
@@ -226,9 +228,10 @@ React.useEffect(() => {
       setScheduleType("regular")
       setRangeDates(undefined)
       setMultiDates([])
+      setRegistrationFormType("default")
       setIsSubmitting(false)
       onOpenChange(false)
-      
+
       // Notify parent to refresh data
       onScheduleCreated?.()
     } catch (error) {
@@ -240,7 +243,7 @@ React.useEffect(() => {
       setIsSubmitting(false)
     }
   }
-  
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-5xl max-w-full p-6">
@@ -257,89 +260,89 @@ React.useEffect(() => {
           <div className="flex flex-col md:flex-row gap-6 mt-6">
             {/* LEFT COLUMN: Inputs */}
             {/* Training Type + Course (same row) */}
-<div className="grid gap-6 md:grid-cols-2">
-  {/* Event Type */}
-  <div className="grid gap-2">
-    <Label htmlFor="event-type">Training Type *</Label>
-    <Select value={eventType} onValueChange={setEventType} disabled={isSubmitting}>
-      <SelectTrigger id="event-type" className="w-full">
-        <SelectValue placeholder="Select training type" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="online">Online</SelectItem>
-        <SelectItem value="face-to-face">Face-to-Face</SelectItem>
-        <SelectItem value="elearning">E-Learning</SelectItem>
-      </SelectContent>
-    </Select>
-  </div>
-
-  {/* Course - Searchable */}
-  <div className="grid gap-2">
-    <Label htmlFor="course">Course *</Label>
-    <div className="relative w-full">
-      <Button
-        type="button"
-        variant="outline"
-        disabled={isSubmitting || loadingCourses}
-        onClick={() => setCourseOpen(!courseOpen)}
-        className="w-full justify-between text-left"
-      >
-        <span className="truncate block">
-          {course
-            ? courseOptions.find((c) => c.id === course)?.name
-            : loadingCourses
-            ? "Loading..."
-            : "Select course"}
-        </span>
-        <CalendarIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-      </Button>
-
-      {courseOpen && (
-        <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
-          <div className="p-2 border-b">
-            <Input
-              placeholder="Search course..."
-              value={courseSearch}
-              onChange={(e) => setCourseSearch(e.target.value)}
-              className="h-9"
-              autoFocus
-            />
-          </div>
-          <div
-            className="max-h-[300px] overflow-y-auto overscroll-contain"
-            onWheel={(e) => e.stopPropagation()}
-          >
-            {courseOptions
-              .filter((c) => c.name.toLowerCase().includes(courseSearch.toLowerCase()))
-              .map((c) => (
-                <div
-                  key={c.id}
-                  className={cn(
-                    "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
-                    course === c.id && "bg-accent"
-                  )}
-                  onClick={() => {
-                    setCourse(c.id)
-                    setCourseOpen(false)
-                    setCourseSearch("")
-                  }}
-                >
-                  {c.name}
-                </div>
-              ))}
-
-            {courseOptions.filter((c) =>
-              c.name.toLowerCase().includes(courseSearch.toLowerCase())
-            ).length === 0 && (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                No courses found
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Event Type */}
+              <div className="grid gap-2">
+                <Label htmlFor="event-type">Training Type *</Label>
+                <Select value={eventType} onValueChange={setEventType} disabled={isSubmitting}>
+                  <SelectTrigger id="event-type" className="w-full">
+                    <SelectValue placeholder="Select training type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="online">Online</SelectItem>
+                    <SelectItem value="face-to-face">Face-to-Face</SelectItem>
+                    <SelectItem value="elearning">E-Learning</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  </div>
+
+              {/* Course - Searchable */}
+              <div className="grid gap-2">
+                <Label htmlFor="course">Course *</Label>
+                <div className="relative w-full">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isSubmitting || loadingCourses}
+                    onClick={() => setCourseOpen(!courseOpen)}
+                    className="w-full justify-between text-left"
+                  >
+                    <span className="truncate block">
+                      {course
+                        ? courseOptions.find((c) => c.id === course)?.name
+                        : loadingCourses
+                          ? "Loading..."
+                          : "Select course"}
+                    </span>
+                    <CalendarIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+
+                  {courseOpen && (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+                      <div className="p-2 border-b">
+                        <Input
+                          placeholder="Search course..."
+                          value={courseSearch}
+                          onChange={(e) => setCourseSearch(e.target.value)}
+                          className="h-9"
+                          autoFocus
+                        />
+                      </div>
+                      <div
+                        className="max-h-[300px] overflow-y-auto overscroll-contain"
+                        onWheel={(e) => e.stopPropagation()}
+                      >
+                        {courseOptions
+                          .filter((c) => c.name.toLowerCase().includes(courseSearch.toLowerCase()))
+                          .map((c) => (
+                            <div
+                              key={c.id}
+                              className={cn(
+                                "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
+                                course === c.id && "bg-accent"
+                              )}
+                              onClick={() => {
+                                setCourse(c.id)
+                                setCourseOpen(false)
+                                setCourseSearch("")
+                              }}
+                            >
+                              {c.name}
+                            </div>
+                          ))}
+
+                        {courseOptions.filter((c) =>
+                          c.name.toLowerCase().includes(courseSearch.toLowerCase())
+                        ).length === 0 && (
+                            <div className="py-6 text-center text-sm text-muted-foreground">
+                              No courses found
+                            </div>
+                          )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {selectedCourseData && (
                 <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md space-y-2">
@@ -348,23 +351,20 @@ React.useEffect(() => {
                   </p>
                   <div className="space-y-2">
                     {/* Online Fee */}
-                    <div 
-                      className={`p-2 rounded-md transition-all ${
-                        eventType === 'online' 
-                          ? 'bg-emerald-100 dark:bg-emerald-950 border-2 border-emerald-500 ring-2 ring-emerald-200' 
+                    <div
+                      className={`p-2 rounded-md transition-all ${eventType === 'online'
+                          ? 'bg-emerald-100 dark:bg-emerald-950 border-2 border-emerald-500 ring-2 ring-emerald-200'
                           : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
-                      }`}
+                        }`}
                     >
                       <div className="flex justify-between items-center">
-                        <span className={`text-xs font-medium ${
-                          eventType === 'online' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'
-                        }`}>
+                        <span className={`text-xs font-medium ${eventType === 'online' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'
+                          }`}>
                           Online:
                         </span>
-                        <p className={`font-bold text-sm ${
-                          eventType === 'online' ? 'text-emerald-900 dark:text-emerald-300' : 'text-slate-900 dark:text-slate-100'
-                        }`}>
-                          {selectedCourseData.online_fee !== null 
+                        <p className={`font-bold text-sm ${eventType === 'online' ? 'text-emerald-900 dark:text-emerald-300' : 'text-slate-900 dark:text-slate-100'
+                          }`}>
+                          {selectedCourseData.online_fee !== null
                             ? `₱${Number(selectedCourseData.online_fee).toLocaleString()}`
                             : "N/A"}
                         </p>
@@ -377,23 +377,20 @@ React.useEffect(() => {
                     </div>
 
                     {/* Face-to-Face Fee */}
-                    <div 
-                      className={`p-2 rounded-md transition-all ${
-                        eventType === 'face-to-face' 
-                          ? 'bg-blue-100 dark:bg-blue-950 border-2 border-blue-500 ring-2 ring-blue-200' 
+                    <div
+                      className={`p-2 rounded-md transition-all ${eventType === 'face-to-face'
+                          ? 'bg-blue-100 dark:bg-blue-950 border-2 border-blue-500 ring-2 ring-blue-200'
                           : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
-                      }`}
+                        }`}
                     >
                       <div className="flex justify-between items-center">
-                        <span className={`text-xs font-medium ${
-                          eventType === 'face-to-face' ? 'text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400'
-                        }`}>
+                        <span className={`text-xs font-medium ${eventType === 'face-to-face' ? 'text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400'
+                          }`}>
                           Face-to-Face:
                         </span>
-                        <p className={`font-bold text-sm ${
-                          eventType === 'face-to-face' ? 'text-blue-900 dark:text-blue-300' : 'text-slate-900 dark:text-slate-100'
-                        }`}>
-                          {selectedCourseData.face_to_face_fee !== null 
+                        <p className={`font-bold text-sm ${eventType === 'face-to-face' ? 'text-blue-900 dark:text-blue-300' : 'text-slate-900 dark:text-slate-100'
+                          }`}>
+                          {selectedCourseData.face_to_face_fee !== null
                             ? `₱${Number(selectedCourseData.face_to_face_fee).toLocaleString()}`
                             : "N/A"}
                         </p>
@@ -406,23 +403,20 @@ React.useEffect(() => {
                     </div>
 
                     {/* E-Learning Fee */}
-                    <div 
-                      className={`p-2 rounded-md transition-all ${
-                        eventType === 'elearning' 
-                          ? 'bg-purple-100 dark:bg-purple-950 border-2 border-purple-500 ring-2 ring-purple-200' 
+                    <div
+                      className={`p-2 rounded-md transition-all ${eventType === 'elearning'
+                          ? 'bg-purple-100 dark:bg-purple-950 border-2 border-purple-500 ring-2 ring-purple-200'
                           : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
-                      }`}
+                        }`}
                     >
                       <div className="flex justify-between items-center">
-                        <span className={`text-xs font-medium ${
-                          eventType === 'elearning' ? 'text-purple-700 dark:text-purple-400' : 'text-slate-600 dark:text-slate-400'
-                        }`}>
+                        <span className={`text-xs font-medium ${eventType === 'elearning' ? 'text-purple-700 dark:text-purple-400' : 'text-slate-600 dark:text-slate-400'
+                          }`}>
                           E-Learning:
                         </span>
-                        <p className={`font-bold text-sm ${
-                          eventType === 'elearning' ? 'text-purple-900 dark:text-purple-300' : 'text-slate-900 dark:text-slate-100'
-                        }`}>
-                          {selectedCourseData.elearning_fee !== null 
+                        <p className={`font-bold text-sm ${eventType === 'elearning' ? 'text-purple-900 dark:text-purple-300' : 'text-slate-900 dark:text-slate-100'
+                          }`}>
+                          {selectedCourseData.elearning_fee !== null
                             ? `₱${Number(selectedCourseData.elearning_fee).toLocaleString()}`
                             : "N/A"}
                         </p>
@@ -464,8 +458,29 @@ React.useEffect(() => {
                 )}
               </div>
 
+              {/* Registration Form Type */}
+              <div className="grid gap-2">
+                <Label htmlFor="registration_form_type">Registration Form Type *</Label>
+                <Select value={registrationFormType} onValueChange={setRegistrationFormType} disabled={isSubmitting}>
+                  <SelectTrigger id="registration_form_type">
+                    <SelectValue placeholder="Select form type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default</SelectItem>
+                    <SelectItem value="acls">ACLS</SelectItem>
+                    <SelectItem value="bls">BLS</SelectItem>
+                    <SelectItem value="ivt_therapy">IVT Therapy</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {registrationFormType === "default" && "Standard registration form with employment details"}
+                  {registrationFormType === "acls" && "CLASS ROSTER format for ACLS training"}
+                  {registrationFormType === "bls" && "CLASS ROSTER format for BLS training"}
+                  {registrationFormType === "ivt_therapy" && "CLASS ROSTER format for IVT Therapy training"}
+                </p>
+              </div>
 
-             {/* Branch */}
+              {/* Branch */}
               {eventType !== "online" && eventType !== "elearning" && (
                 <div className="grid gap-2">
                   <Label htmlFor="branch">Branch *</Label>
