@@ -338,7 +338,7 @@ export default function BLSRegistrationForm() {
                                                 name="first_name"
                                                 value={form.first_name}
                                                 onChange={handleChange}
-                                                placeholder="JOSEPH"
+                                                placeholder="JUAN"
                                                 className="mt-2"
                                             />
                                         </div>
@@ -352,7 +352,7 @@ export default function BLSRegistrationForm() {
                                                 name="last_name"
                                                 value={form.last_name}
                                                 onChange={handleChange}
-                                                placeholder="BARIA"
+                                                placeholder="DELA CRUZ"
                                                 className="mt-2"
                                             />
                                         </div>
