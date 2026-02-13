@@ -72,9 +72,8 @@ function NewsCarousel() {
         {news.map((item, idx) => (
           <div
             key={idx}
-            className={`absolute inset-0 transition-opacity duration-500 ${
-              idx === currentSlide ? "opacity-100" : "opacity-0"
-            }`}
+            className={`absolute inset-0 transition-opacity duration-500 ${idx === currentSlide ? "opacity-100" : "opacity-0"
+              }`}
           >
             <div className="relative h-32 bg-muted">
               <Image
@@ -102,11 +101,10 @@ function NewsCarousel() {
           <button
             key={idx}
             onClick={() => setCurrentSlide(idx)}
-            className={`w-2 h-2 rounded-full transition-all ${
-              idx === currentSlide
-                ? "bg-primary w-4"
-                : "bg-muted-foreground/30"
-            }`}
+            className={`w-2 h-2 rounded-full transition-all ${idx === currentSlide
+              ? "bg-primary w-4"
+              : "bg-muted-foreground/30"
+              }`}
           />
         ))}
       </div>
@@ -124,16 +122,16 @@ export default function TrainingCalendar() {
   const [hoveredEventId, setHoveredEventId] = useState<string | null>(null)
   const router = useRouter()
   const { theme, setTheme } = useTheme()
-  
+
   useEffect(() => {
     fetchSchedules()
   }, [])
 
-const fetchSchedules = async () => {
-  setLoading(true)
-  const { data, error } = await tmsDb
-    .from('schedules')
-    .select(`
+  const fetchSchedules = async () => {
+    setLoading(true)
+    const { data, error } = await tmsDb
+      .from('schedules')
+      .select(`
       id,
       branch,
       status,
@@ -143,54 +141,54 @@ const fetchSchedules = async () => {
       schedule_dates (date)
     `)
 
-  if (!error && data) {
-    const mapped = data
-      .map((s: any): ScheduleEvent | null => {
-        const course = s.courses?.name || 'Unknown'
-        const cover_image = s.courses?.cover_image || null
-        
-        if (s.schedule_type === 'regular' && s.schedule_ranges?.[0]) {
-          return {
-            id: s.id,
-            course,
-            branch: s.branch,
-            status: s.status || 'planned',
-            startDate: new Date(s.schedule_ranges[0].start_date),
-            endDate: new Date(s.schedule_ranges[0].end_date),
-            scheduleType: 'regular',
-            cover_image
+    if (!error && data) {
+      const mapped = data
+        .map((s: any): ScheduleEvent | null => {
+          const course = s.courses?.name || 'Unknown'
+          const cover_image = s.courses?.cover_image || null
+
+          if (s.schedule_type === 'regular' && s.schedule_ranges?.[0]) {
+            return {
+              id: s.id,
+              course,
+              branch: s.branch,
+              status: s.status || 'planned',
+              startDate: new Date(s.schedule_ranges[0].start_date),
+              endDate: new Date(s.schedule_ranges[0].end_date),
+              scheduleType: 'regular',
+              cover_image
+            }
           }
-        }
-    
-        if (s.schedule_type === 'staggered' && s.schedule_dates?.length) {
-          const dates = s.schedule_dates.map((d: any) => new Date(d.date))
-          return {
-            id: s.id,
-            course,
-            branch: s.branch,
-            status: s.status || 'planned',
-            startDate: dates[0],
-            endDate: dates[dates.length - 1],
-            dates,
-            scheduleType: 'staggered',
-            cover_image
+
+          if (s.schedule_type === 'staggered' && s.schedule_dates?.length) {
+            const dates = s.schedule_dates.map((d: any) => new Date(d.date))
+            return {
+              id: s.id,
+              course,
+              branch: s.branch,
+              status: s.status || 'planned',
+              startDate: dates[0],
+              endDate: dates[dates.length - 1],
+              dates,
+              scheduleType: 'staggered',
+              cover_image
+            }
           }
-        }
-    
-        return null
-      })
-      .filter((event): event is ScheduleEvent => event !== null)
-    
-    setEvents(mapped)
+
+          return null
+        })
+        .filter((event): event is ScheduleEvent => event !== null)
+
+      setEvents(mapped)
+    }
+    setLoading(false)
   }
-  setLoading(false)
-}
 
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December']
-  
+
   const monthNamesShort = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
-  
+
   const daysInMonth = (date: Date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
   }
@@ -214,7 +212,7 @@ const fetchSchedules = async () => {
   const getEventsForDay = (day: number) => {
     const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
     date.setHours(12, 0, 0, 0)
-  
+
     const dayEvents = events.filter(event => {
       if (event.scheduleType === 'staggered' && event.dates) {
         return event.dates.some(d => d.toDateString() === date.toDateString())
@@ -226,10 +224,10 @@ const fetchSchedules = async () => {
         return date >= eventStart && date <= eventEnd
       }
     })
-  
+
     return dayEvents.sort((a, b) => a.startDate.getTime() - b.startDate.getTime())
   }
-  
+
 
   const getAllEventsForMonth = () => {
     return events.filter(event => {
@@ -239,59 +237,59 @@ const fetchSchedules = async () => {
           d.getMonth() === currentDate.getMonth()
         )
       }
-  
+
       const eventStart = new Date(event.startDate)
       const eventEnd = new Date(event.endDate)
-  
+
       return (
         (eventStart.getFullYear() === currentDate.getFullYear() &&
-         eventStart.getMonth() === currentDate.getMonth()) ||
+          eventStart.getMonth() === currentDate.getMonth()) ||
         (eventEnd.getFullYear() === currentDate.getFullYear() &&
-         eventEnd.getMonth() === currentDate.getMonth()) ||
+          eventEnd.getMonth() === currentDate.getMonth()) ||
         (eventStart <= new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0) &&
-         eventEnd >= new Date(currentDate.getFullYear(), currentDate.getMonth(), 1))
+          eventEnd >= new Date(currentDate.getFullYear(), currentDate.getMonth(), 1))
       )
     }).sort((a, b) => a.startDate.getTime() - b.startDate.getTime())
   }
-  
 
- const getStatusColor = (event: ScheduleEvent) => {
-  const now = new Date()
-  now.setHours(0, 0, 0, 0)
-  
-  // Check cancelled status first
-  if (event.status === 'cancelled') return '#ef4444' // red
-  if (event.status === 'finished') return '#94a3b8'
-  
-  const eventEnd = new Date(event.endDate)
-  eventEnd.setHours(0, 0, 0, 0)
-  
-  const eventStart = new Date(event.startDate)
-  eventStart.setHours(0, 0, 0, 0)
-  
-  if (now > eventEnd) return '#94a3b8'
-  if (now >= eventStart && now <= eventEnd) return '#f59e0b'
-  return '#10b981'
-}
 
-const getStatusLabel = (event: ScheduleEvent) => {
-  const now = new Date()
-  now.setHours(0, 0, 0, 0)
-  
-  // Check cancelled status first
-  if (event.status === 'cancelled') return 'Cancelled'
-  if (event.status === 'finished') return 'Finished'
-  
-  const eventEnd = new Date(event.endDate)
-  eventEnd.setHours(0, 0, 0, 0)
-  
-  const eventStart = new Date(event.startDate)
-  eventStart.setHours(0, 0, 0, 0)
-  
-  if (now > eventEnd) return 'Finished'
-  if (now >= eventStart && now <= eventEnd) return 'Ongoing'
-  return 'Upcoming'
-}
+  const getStatusColor = (event: ScheduleEvent) => {
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+
+    // Check cancelled status first
+    if (event.status === 'cancelled') return '#ef4444' // red
+    if (event.status === 'finished') return '#94a3b8'
+
+    const eventEnd = new Date(event.endDate)
+    eventEnd.setHours(0, 0, 0, 0)
+
+    const eventStart = new Date(event.startDate)
+    eventStart.setHours(0, 0, 0, 0)
+
+    if (now > eventEnd) return '#94a3b8'
+    if (now >= eventStart && now <= eventEnd) return '#f59e0b'
+    return '#10b981'
+  }
+
+  const getStatusLabel = (event: ScheduleEvent) => {
+    const now = new Date()
+    now.setHours(0, 0, 0, 0)
+
+    // Check cancelled status first
+    if (event.status === 'cancelled') return 'Cancelled'
+    if (event.status === 'finished') return 'Finished'
+
+    const eventEnd = new Date(event.endDate)
+    eventEnd.setHours(0, 0, 0, 0)
+
+    const eventStart = new Date(event.startDate)
+    eventStart.setHours(0, 0, 0, 0)
+
+    if (now > eventEnd) return 'Finished'
+    if (now >= eventStart && now <= eventEnd) return 'Ongoing'
+    return 'Upcoming'
+  }
 
 
   const openModal = (event: ScheduleEvent) => {
@@ -311,6 +309,38 @@ const getStatusLabel = (event: ScheduleEvent) => {
     const cells = []
     const allMonthEvents = getAllEventsForMonth()
 
+    // 1. Assign tracks to all events in the month
+    const eventTracks: Record<string, number> = {}
+
+    allMonthEvents.forEach(event => {
+      let track = 0
+      while (true) {
+        const conflict = allMonthEvents.some(otherEvent => {
+          if (eventTracks[otherEvent.id] !== track || otherEvent.id === event.id) return false
+
+          if (event.scheduleType === 'staggered' && otherEvent.scheduleType === 'staggered') {
+            return event.dates?.some(d1 => otherEvent.dates?.some(d2 => d1.toDateString() === d2.toDateString()))
+          } else if (event.scheduleType === 'regular' && otherEvent.scheduleType === 'regular') {
+            return event.startDate <= otherEvent.endDate && event.endDate >= otherEvent.startDate
+          } else {
+            const reg = event.scheduleType === 'regular' ? event : otherEvent
+            const stag = event.scheduleType === 'staggered' ? event : otherEvent
+            return stag.dates?.some(d => {
+              const ds = new Date(d)
+              ds.setHours(12, 0, 0, 0)
+              return ds >= reg.startDate && ds <= reg.endDate
+            })
+          }
+        })
+
+        if (!conflict) {
+          eventTracks[event.id] = track
+          break
+        }
+        track++
+      }
+    })
+
     for (let i = firstDay - 1; i >= 0; i--) {
       cells.push(
         <div key={`prev-${i}`} className="min-h-20 bg-muted/30 text-muted-foreground text-sm border-r border-b">
@@ -321,11 +351,20 @@ const getStatusLabel = (event: ScheduleEvent) => {
 
     for (let day = 1; day <= days; day++) {
       const dayEvents = getEventsForDay(day)
-      const isToday = day === new Date().getDate() && 
-                      currentDate.getMonth() === new Date().getMonth() &&
-                      currentDate.getFullYear() === new Date().getFullYear()
-      
+      const isToday = day === new Date().getDate() &&
+        currentDate.getMonth() === new Date().getMonth() &&
+        currentDate.getFullYear() === new Date().getFullYear()
+
       const isWeekend = new Date(currentDate.getFullYear(), currentDate.getMonth(), day).getDay() % 6 === 0
+
+      // Get events for this day sorted by track
+      const dayEventsWithTracks = dayEvents
+        .map(event => ({ event, track: eventTracks[event.id] }))
+        .sort((a, b) => a.track - b.track)
+
+      const maxTrack = dayEventsWithTracks.length > 0
+        ? Math.max(...dayEventsWithTracks.map(e => e.track))
+        : -1
 
       cells.push(
         <div key={day} className={`border-r border-b ${isToday ? 'bg-blue-50 dark:bg-cyan-900' : ''} relative ${dayEvents.length === 0 ? 'min-h-20' : ''}`}>
@@ -333,50 +372,47 @@ const getStatusLabel = (event: ScheduleEvent) => {
             {day}
           </div>
           <div className="px-1 pb-1 relative">
-            {dayEvents.length > 0 && allMonthEvents.map((event, idx) => {
+            {maxTrack >= 0 && Array.from({ length: maxTrack + 1 }).map((_, trackIdx) => {
+              const trackEvent = dayEventsWithTracks.find(e => e.track === trackIdx)
+
+              if (!trackEvent) {
+                // Placeholder for empty track to maintain alignment
+                return (
+                  <div key={`placeholder-${day}-${trackIdx}`} style={{ height: '28px', marginBottom: '4px' }} />
+                )
+              }
+
+              const { event } = trackEvent
               const eventDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day)
               const eventStart = new Date(event.startDate)
               const eventEnd = new Date(event.endDate)
               eventDate.setHours(12, 0, 0, 0)
               eventStart.setHours(0, 0, 0, 0)
               eventEnd.setHours(23, 59, 59, 999)
-              
-              let isInRange = false
 
-              if (event.scheduleType === 'staggered' && event.dates) {
-                isInRange = event.dates.some(d => d.toDateString() === eventDate.toDateString())
-              } else {
-                isInRange = eventDate >= eventStart && eventDate <= eventEnd
-              }
-              
-              
-              if (!isInRange) {
-                return null
-              }
-              
               const isStart = event.scheduleType === 'staggered'
-              ? true
-              : eventStart.getDate() === day && eventStart.getMonth() === currentDate.getMonth()
-            
-            const isEnd = event.scheduleType === 'staggered'
-              ? true
-              : eventEnd.getDate() === day && eventEnd.getMonth() === currentDate.getMonth()
-            
+                ? true
+                : eventStart.getDate() === day && eventStart.getMonth() === currentDate.getMonth()
+
+              const isEnd = event.scheduleType === 'staggered'
+                ? true
+                : eventEnd.getDate() === day && eventEnd.getMonth() === currentDate.getMonth()
+
               const color = getStatusColor(event)
               const displayStatus = getStatusLabel(event)
-              
+
               return (
                 <div
-                  key={`${event.id}-${idx}`}
+                  key={`${event.id}-${trackIdx}`}
                   className={`text-xs px-2 py-1.5 text-white cursor-pointer 
                     transition-all duration-200 ease-in-out 
                     ${isStart ? 'rounded-l ml-1' : '-ml-1'} 
                     ${isEnd ? 'rounded-r mr-1' : '-mr-1'} 
-                    ${hoveredEventId === event.id ? 'ring-3 ring-black dark:ring-white ring-offset-0 scale-[1.02]' : 'scale-100'}
+                    ${hoveredEventId === event.id ? 'ring-3 ring-black dark:ring-white ring-offset-0 scale-[1.02] z-10' : 'scale-100'}
                   `}
-                  style={{ 
-                    backgroundColor: color, 
-                    height: '28px', 
+                  style={{
+                    backgroundColor: color,
+                    height: '28px',
                     lineHeight: '16px',
                     marginBottom: '4px'
                   }}
@@ -392,7 +428,7 @@ const getStatusLabel = (event: ScheduleEvent) => {
                       </span>
                     )}
                   </div>
-                      </div>
+                </div>
               )
             })}
           </div>
@@ -415,7 +451,7 @@ const getStatusLabel = (event: ScheduleEvent) => {
 
   const renderListView = () => {
     const eventsByCourse: { [key: string]: ScheduleEvent[] } = {}
-    
+
     events.forEach(event => {
       if (!eventsByCourse[event.course]) {
         eventsByCourse[event.course] = []
@@ -443,30 +479,30 @@ const getStatusLabel = (event: ScheduleEvent) => {
               <tr key={courseName} className="border-b border-border hover:bg-muted/50">
                 <td className="p-3 font-medium border border-border">{courseName}</td>
                 {[...Array(12)].map((_, monthIdx) => {
-                  const monthEvents = eventsByCourse[courseName].filter(event => 
+                  const monthEvents = eventsByCourse[courseName].filter(event =>
                     new Date(event.startDate).getMonth() === monthIdx
                   )
-                  
+
                   return (
                     <td key={monthIdx} className="p-2 text-center border border-border align-top">
                       {monthEvents.map((event, idx) => {
                         const startDay = new Date(event.startDate).getDate()
                         const endDay = new Date(event.endDate).getDate()
                         const color = getStatusColor(event)
-                        
+
                         return (
                           <div key={idx} className="mb-2">
                             <div
-                            className="inline-block px-2 py-1 text-white rounded cursor-pointer hover:opacity-80 text-xs"
-                            style={{ backgroundColor: color }}
-                            onClick={() => openModal(event)}
-                            title={`${event.course} - ${event.branch}`}
+                              className="inline-block px-2 py-1 text-white rounded cursor-pointer hover:opacity-80 text-xs"
+                              style={{ backgroundColor: color }}
+                              onClick={() => openModal(event)}
+                              title={`${event.course} - ${event.branch}`}
                             >
-                            {event.scheduleType === 'staggered' && event.dates
+                              {event.scheduleType === 'staggered' && event.dates
                                 ? event.dates
-                                    .filter(d => d.getMonth() === monthIdx && d.getFullYear() === currentDate.getFullYear())
-                                    .map(d => d.getDate())
-                                    .join(', ')
+                                  .filter(d => d.getMonth() === monthIdx && d.getFullYear() === currentDate.getFullYear())
+                                  .map(d => d.getDate())
+                                  .join(', ')
                                 : `${startDay} - ${endDay}`}
                             </div>
 
@@ -616,13 +652,13 @@ const getStatusLabel = (event: ScheduleEvent) => {
           {/* Contact Section */}
           <Card className="p-4 space-y-1">
             <h3 className="text-lg font-bold">Need Help?</h3>
-            
+
             <div className="space-y-3">
               <h4 className="font-semibold text-sm">Contact Us</h4>
               <p className="text-sm text-muted-foreground">
                 For media inquiries, interviews, or partnership opportunities, please contact:
               </p>
-              
+
               <div className="space-y-2 text-sm">
                 <p className="font-medium">Petrosphere Public Relations Office</p>
                 <a href="mailto:training@petrosphere.com.ph" className="block text-blue-600 dark:text-blue-400 hover:underline">
@@ -639,7 +675,7 @@ const getStatusLabel = (event: ScheduleEvent) => {
 
             <div className="pt-2 border-t space-y-2">
               <p className="text-sm font-medium">Submit a ticket or check our FAQ:</p>
-              <Button 
+              <Button
                 className="w-full cursor-pointer"
                 onClick={() => window.open('https://petrosphere.tawk.help/', '_blank')}
               >
@@ -676,7 +712,7 @@ const getStatusLabel = (event: ScheduleEvent) => {
               <div className="absolute bottom-0 left-0 w-full p-5 bg-gradient-to-t from-black/90 via-black/70 to-transparent text-white space-y-0">
                 <h2 className="text-xl font-bold">{selectedEvent.course}</h2>
                 <p className="text-sm">{selectedEvent.branch === 'online' ? 'Online' : selectedEvent.branch}</p>
-               {selectedEvent.scheduleType === 'staggered' && selectedEvent.dates ? (
+                {selectedEvent.scheduleType === 'staggered' && selectedEvent.dates ? (
                   <div className="text-sm space-y-1">
                     {selectedEvent.dates
                       .sort((a, b) => a.getTime() - b.getTime())
@@ -713,10 +749,10 @@ const getStatusLabel = (event: ScheduleEvent) => {
                   {getStatusLabel(selectedEvent)}
                 </Badge>
 
-               <div className="mt-4">
-                  {new Date() > new Date(selectedEvent.endDate) || 
-                  getStatusLabel(selectedEvent) === 'Ongoing' ||
-                  selectedEvent.status === 'cancelled' ? (
+                <div className="mt-4">
+                  {new Date() > new Date(selectedEvent.endDate) ||
+                    getStatusLabel(selectedEvent) === 'Ongoing' ||
+                    selectedEvent.status === 'cancelled' ? (
                     <Button variant="outline" disabled className="w-full text-black cursor-not-allowed dark:text-white">
                       {selectedEvent.status === 'cancelled' ? 'Training Cancelled' : 'Enrollment Closed'}
                     </Button>

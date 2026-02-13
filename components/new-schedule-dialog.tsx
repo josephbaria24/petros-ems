@@ -353,8 +353,8 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                     {/* Online Fee */}
                     <div
                       className={`p-2 rounded-md transition-all ${eventType === 'online'
-                          ? 'bg-emerald-100 dark:bg-emerald-950 border-2 border-emerald-500 ring-2 ring-emerald-200'
-                          : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                        ? 'bg-emerald-100 dark:bg-emerald-950 border-2 border-emerald-500 ring-2 ring-emerald-200'
+                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
                         }`}
                     >
                       <div className="flex justify-between items-center">
@@ -379,8 +379,8 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                     {/* Face-to-Face Fee */}
                     <div
                       className={`p-2 rounded-md transition-all ${eventType === 'face-to-face'
-                          ? 'bg-blue-100 dark:bg-blue-950 border-2 border-blue-500 ring-2 ring-blue-200'
-                          : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                        ? 'bg-blue-100 dark:bg-blue-950 border-2 border-blue-500 ring-2 ring-blue-200'
+                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
                         }`}
                     >
                       <div className="flex justify-between items-center">
@@ -405,8 +405,8 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                     {/* E-Learning Fee */}
                     <div
                       className={`p-2 rounded-md transition-all ${eventType === 'elearning'
-                          ? 'bg-purple-100 dark:bg-purple-950 border-2 border-purple-500 ring-2 ring-purple-200'
-                          : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                        ? 'bg-purple-100 dark:bg-purple-950 border-2 border-purple-500 ring-2 ring-purple-200'
+                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
                         }`}
                     >
                       <div className="flex justify-between items-center">
