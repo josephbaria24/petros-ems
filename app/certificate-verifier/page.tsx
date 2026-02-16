@@ -190,16 +190,12 @@ export default function AdminCertificateVerifierPage() {
             if (sourceFilter === "import") {
                 query = query.or("source.is.null,source.eq.import")
             } else if (sourceFilter === "duplicates") {
-                const dupes = Array.from(duplicateSerials)
-                if (dupes.length > 0) {
-                    query = query.in("serial_number", dupes)
-                } else {
-                    // No duplicates, return empty
-                    setRecords([])
-                    setTotalCount(0)
-                    setIsLoading(false)
-                    return
-                }
+                // Use the database view for efficient filtering without huge URLs
+                query = tmsDb
+                    .from("duplicate_certificates_view")
+                    .select("*", { count: "exact" })
+                    .order("created_at", { ascending: false })
+                    .range(from, to)
             } else {
                 query = query.eq("source", sourceFilter)
             }
@@ -212,21 +208,27 @@ export default function AdminCertificateVerifierPage() {
         } else {
             setRecords(data || [])
             setTotalCount(count || 0)
+
+            // Tag duplicates for the current page
+            if (data && data.length > 0) {
+                const serials = data.map(r => r.serial_number)
+                const { data: dupeData } = await tmsDb.rpc("check_duplicates_in_list", { serials })
+                if (dupeData) {
+                    setDuplicateSerials(new Set(dupeData.map((r: any) => r.serial_number)))
+                } else {
+                    setDuplicateSerials(new Set())
+                }
+            } else {
+                setDuplicateSerials(new Set())
+            }
         }
         setIsLoading(false)
     }, [currentPage, searchQuery, trainingFilter, sourceFilter])
 
-    // Fetch duplicate serial numbers
+    // Fetch duplicate serial numbers - DEPRECATED for page-level tagging
     const fetchDuplicates = useCallback(async () => {
-        const { data } = await tmsDb.rpc("get_duplicate_serials").select("*")
-        if (data) {
-            setDuplicateSerials(new Set(data.map((r: any) => r.serial_number)))
-        }
+        // Now handled inside fetchRecords to be page-specific
     }, [])
-
-    useEffect(() => {
-        fetchDuplicates()
-    }, [fetchDuplicates])
 
     useEffect(() => {
         fetchRecords()
@@ -357,11 +359,12 @@ export default function AdminCertificateVerifierPage() {
             .eq("id", selectedRecord.id)
 
         if (error) {
-            toast.error("Failed to delete: " + error.message)
+            toast.error("Delete failed: " + error.message)
         } else {
-            toast.success("Record deleted successfully")
+            toast.success("Record deleted")
             await logActivity("DELETE", `Deleted certificate ${selectedRecord.serial_number}`, selectedRecord.serial_number)
             setShowDeleteDialog(false)
+            setSelectedRecord(null) // Clear selected record after deletion
             fetchRecords()
         }
         setIsSaving(false)
@@ -519,9 +522,9 @@ export default function AdminCertificateVerifierPage() {
             </div>
 
             {/* Main layout: side-by-side */}
-            <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-6 min-w-0">
                 {/* Left: Records Table */}
-                <Card>
+                <Card className="min-w-0">
                     <CardHeader className="pb-3">
                         <div className="flex items-center justify-between gap-4">
                             <div>
@@ -586,8 +589,8 @@ export default function AdminCertificateVerifierPage() {
                                 </div>
                             </div>
                         )}
-                        <div className="overflow-auto">
-                            <Table>
+                        <div className="max-w-full overflow-x-auto">
+                            <Table className="whitespace-nowrap">
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="w-[40px]">
