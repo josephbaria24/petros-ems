@@ -18,7 +18,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // Define which routes are public (don't require auth)
   const publicRoutes = ["/login", "/auth/callback", "/guest", "/reupload", "/upload-receipt"]
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
-  
+
   // Define which routes should hide sidebar and header
   const isGuestPage = pathname.startsWith("/guest") || pathname === "/login" || pathname === "/auth/callback"
 
@@ -81,7 +81,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (!isPublicRoute && !isAuthenticated) {
     return null
   }
-const isFullBleed = pathname.startsWith("/upload-receipt")
+  const isFullBleed = pathname.startsWith("/upload-receipt") || pathname.startsWith("/guest-certificate-verifier")
 
   return (
     <div className="flex h-screen overflow-hidden">

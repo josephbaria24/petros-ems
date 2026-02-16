@@ -22,6 +22,9 @@ import {
 import { DateFilter, type DateRange, type FilterPreset } from "@/components/date-filter"
 import { isWithinInterval } from "date-fns"
 import { CourseDetailsModal } from "@/components/modals/course-details-modal"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
 
 export default function DashboardPage() {
   const supabase = tmsDb
@@ -45,7 +48,7 @@ export default function DashboardPage() {
     date: string
     participants: number
   }
-  
+
   const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([])
   const [enrollmentData, setEnrollmentData] = useState<any[]>([])
   const [genderData, setGenderData] = useState<any[]>([])
@@ -55,18 +58,42 @@ export default function DashboardPage() {
   const [ageDistributionData, setAgeDistributionData] = useState<any[]>([])
   const [monthlyComparisonData, setMonthlyComparisonData] = useState<any[]>([])
   const [employmentStatusData, setEmploymentStatusData] = useState<any[]>([])
-  
 
 
 
-const [selectedCourse, setSelectedCourse] = useState<string | null>(null)
-const [showCourseModal, setShowCourseModal] = useState(false)
+
+  const [selectedCourse, setSelectedCourse] = useState<string | null>(null)
+  const [showCourseModal, setShowCourseModal] = useState(false)
 
 
-  // Chart selection states
   const [chart1Type, setChart1Type] = useState("coursePopularity")
   const [chart2Type, setChart2Type] = useState("revenue")
   const [chart3Type, setChart3Type] = useState("coursePopularity")
+
+  const [monthlyTarget, setMonthlyTarget] = useState<number>(1000000)
+  const [isSavingTarget, setIsSavingTarget] = useState(false)
+
+  const saveMonthlyTarget = async () => {
+    setIsSavingTarget(true)
+    try {
+      const { error } = await supabase
+        .from("system_settings")
+        .upsert(
+          { setting_key: "monthly_revenue_target", setting_value: { amount: monthlyTarget } },
+          { onConflict: "setting_key" }
+        )
+
+      if (error) throw error
+      toast.success("Monthly target updated successfully!")
+      // Refetch stats to update the chart immediately
+      fetchStats()
+    } catch (error: any) {
+      console.error("Error saving target:", error)
+      toast.error("Failed to save target: " + error.message)
+    } finally {
+      setIsSavingTarget(false)
+    }
+  }
 
   // Colors for gender chart
   const [genderColors, setGenderColors] = useState({
@@ -84,7 +111,7 @@ const [showCourseModal, setShowCourseModal] = useState(false)
   useEffect(() => {
     const root = document.documentElement
     const styles = getComputedStyle(root)
-    
+
     const getVar = (variable: string) => {
       return styles.getPropertyValue(variable).trim() || null
     }
@@ -121,257 +148,246 @@ const [showCourseModal, setShowCourseModal] = useState(false)
     const checkDate = new Date(date)
     return isWithinInterval(checkDate, { start: dateRange.from, end: dateRange.to })
   }
-  
+
 
 
   const handleCourseClick = (courseName: string) => {
-  setSelectedCourse(courseName)
-  setShowCourseModal(true)
-}
+    setSelectedCourse(courseName)
+    setShowCourseModal(true)
+  }
 
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      const [trainingsRes, coursesRes, schedulesRes, scheduleDatesRes, scheduleRangesRes, paymentsRes] = await Promise.all([
-        supabase.from("trainings").select("*, courses(name, training_fee), schedules(*)"),
-        supabase.from("courses").select("*"),
-        supabase.from("schedules").select(`
-          id,
-          created_at,
-          course_id,
-          courses ( name )
-        `).order("created_at", { ascending: false }),
-        supabase.from("schedule_dates").select("*, schedules(*)"),
-        supabase.from("schedule_ranges").select("*, schedules(*)"),
-        supabase.from("payments").select("amount_paid, payment_date, training_id, trainings(courses(training_fee), add_pvc_id, discounted_fee, has_discount)"),
-      ])
+  const fetchStats = async () => {
+    // Fetch system settings first
+    const { data: settingsData } = await supabase
+      .from("system_settings")
+      .select("setting_value")
+      .eq("setting_key", "monthly_revenue_target")
+      .maybeSingle()
 
-      const allTrainings = trainingsRes.data || []
-      const courses = coursesRes.data || []
-      const allEvents = schedulesRes.data || []
-      const scheduleDates = scheduleDatesRes.data || []
-      const scheduleRanges = scheduleRangesRes.data || []
-      const allPayments = paymentsRes.data || []
-
-      // Filter data by date range
-      const trainings = allTrainings.filter(t => isInDateRange(t.created_at))
-      const events = allEvents.filter(e => isInDateRange(e.created_at))
-      const payments = allPayments.filter(p => isInDateRange(p.payment_date))
-
-      const participants = trainings.length
-      const totalRevenue = payments.reduce((sum, p) => sum + (Number(p.amount_paid) || 0), 0)
-
-      setStats([
-        { title: "Total Participants", value: participants.toString(), change: "+12.5%", icon: Users, color: "text-primary" },
-        { title: "Active Courses", value: courses.length.toString(), change: "+3", icon: BookOpen, color: "text-secondary" },
-        { title: "Scheduled Events", value: events.length.toString(), change: "+8.2%", icon: Calendar, color: "text-chart-2" },
-        { title: "Total Revenue", value: `₱${totalRevenue.toLocaleString()}`, change: "+15.3%", icon: TrendingUp, color: "text-chart-4" },
-      ])
-
-      const formattedEvents = events.slice(0, 3).map((event: any) => ({
-        course: event.courses?.name || "Unnamed Course",
-        date: new Date(event.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-        participants: trainings.filter(t => t.schedule_id === event.id).length,
-      }))
-
-      setRecentEvents(formattedEvents)
-      
-      const allMonths = Array.from({ length: 12 }, (_, i) =>
-        new Date(0, i).toLocaleString("en-US", { month: "short" })
-      )
-
-      // Monthly enrollments (filtered)
-      const monthlyEnrollments: Record<string, number> = {}
-      
-      trainings.forEach((training: any) => {
-        const scheduleId = training.schedule_id
-        
-        const matchingDates = scheduleDates.filter((sd: any) => sd.schedule_id === scheduleId)
-        if (matchingDates.length > 0) {
-          const month = new Date(matchingDates[0].date).toLocaleString("en-US", { month: "short" })
-          monthlyEnrollments[month] = (monthlyEnrollments[month] || 0) + 1
-        } else {
-          const matchingRange = scheduleRanges.find((sr: any) => sr.schedule_id === scheduleId)
-          if (matchingRange) {
-            const month = new Date(matchingRange.start_date).toLocaleString("en-US", { month: "short" })
-            monthlyEnrollments[month] = (monthlyEnrollments[month] || 0) + 1
-          }
-        }
-      })
-
-      const enrollmentTrend = allMonths.map((month) => {
-        const date = new Date(`1 ${month} ${new Date().getFullYear()}`)
-        return {
-          date: date.toISOString(),
-          enrollments: monthlyEnrollments[month] || 0
-        }
-      })
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        .slice(-6)
-
-      const now = new Date()
-      const filteredTrend = enrollmentTrend.filter(d => new Date(d.date) <= now)
-
-      setEnrollmentData(filteredTrend)
-
-      // Course popularity (Top 5) - filtered
-      const courseCounts = trainings.reduce((acc: any, training: any) => {
-        const courseName = training.courses?.name || "Other"
-        acc[courseName] = (acc[courseName] || 0) + 1
-        return acc
-      }, {})
-
-      const popularity = Object.entries(courseCounts)
-        .map(([name, value]) => ({ name, value }))
-        .sort((a: any, b: any) => b.value - a.value)
-        .slice(0, 5)
-
-      setCoursePopularityData(popularity)
-
-      // Gender distribution - filtered
-      const genderCounts = trainings.reduce((acc: any, training: any) => {
-        const gender = training.gender || "Unspecified"
-        acc[gender] = (acc[gender] || 0) + 1
-        return acc
-      }, {})
-
-      const genderDist = Object.entries(genderCounts).map(([name, value]) => ({
-        name,
-        value
-      }))
-
-      setGenderData(genderDist)
-
-      // Revenue data (monthly) - filtered
-      const monthlyRevenue: Record<string, number> = {}
-      const monthlyTarget: Record<string, number> = {}
-
-      payments.forEach((payment: any) => {
-        const month = new Date(payment.payment_date).toLocaleString("en-US", { month: "short" })
-        monthlyRevenue[month] = (monthlyRevenue[month] || 0) + Number(payment.amount_paid || 0)
-      })
-
-      trainings.forEach((training: any) => {
-        const scheduleId = training.schedule_id
-        const matchingDates = scheduleDates.filter((sd: any) => sd.schedule_id === scheduleId)
-        
-        let month = ""
-        if (matchingDates.length > 0) {
-          month = new Date(matchingDates[0].date).toLocaleString("en-US", { month: "short" })
-        } else {
-          const matchingRange = scheduleRanges.find((sr: any) => sr.schedule_id === scheduleId)
-          if (matchingRange) {
-            month = new Date(matchingRange.start_date).toLocaleString("en-US", { month: "short" })
-          }
-        }
-        
-        if (month) {
-          const expectedRevenue = training.has_discount && training.discounted_fee
-            ? Number(training.discounted_fee) + (training.add_pvc_id ? 150 : 0)
-            : Number(training.courses?.training_fee || 0) + (training.add_pvc_id ? 150 : 0)
-          
-          monthlyTarget[month] = (monthlyTarget[month] || 0) + expectedRevenue
-        }
-      })
-
-      const revenueChartData = allMonths.map(month => ({
-        month,
-        revenue: monthlyRevenue[month] || 0,
-        target: monthlyTarget[month] || 0
-      })).slice(-6)
-
-      setRevenueData(revenueChartData)
-
-      // Payment status distribution - filtered
-      const statusCounts = trainings.reduce((acc: any, training: any) => {
-        const status = training.status || "Unknown"
-        const normalizedStatus = status.toLowerCase()
-        
-        let category = "Other"
-        if (normalizedStatus.includes("pending")) category = "Pending Payment"
-        else if (normalizedStatus.includes("partial")) category = "Partially Paid"
-        else if (normalizedStatus.includes("completed")) category = "Completed"
-        else if (normalizedStatus.includes("declined")) category = "Declined"
-        
-        acc[category] = (acc[category] || 0) + 1
-        return acc
-      }, {})
-
-      const paymentDist = Object.entries(statusCounts).map(([name, value]) => ({
-        name,
-        value
-      }))
-
-      setPaymentStatusData(paymentDist)
-
-      // Age distribution - filtered
-      const ageRanges = {
-        "18-25": 0,
-        "26-35": 0,
-        "36-45": 0,
-        "46-55": 0,
-        "56+": 0
-      }
-
-      trainings.forEach((training: any) => {
-        const age = training.age
-        if (!age) return
-        
-        if (age >= 18 && age <= 25) ageRanges["18-25"]++
-        else if (age >= 26 && age <= 35) ageRanges["26-35"]++
-        else if (age >= 36 && age <= 45) ageRanges["36-45"]++
-        else if (age >= 46 && age <= 55) ageRanges["46-55"]++
-        else if (age >= 56) ageRanges["56+"]++
-      })
-
-      const ageDist = Object.entries(ageRanges).map(([range, count]) => ({
-        range,
-        count
-      }))
-
-      setAgeDistributionData(ageDist)
-
-      // Monthly comparison (2025 vs 2026) - filtered
-      const currentYearData: Record<string, number> = {}
-      const previousYearData: Record<string, number> = {}
-
-      allTrainings.forEach((training: any) => {
-        const createdDate = new Date(training.created_at)
-        if (!isInDateRange(createdDate)) return
-        
-        const month = createdDate.toLocaleString("en-US", { month: "short" })
-        const year = createdDate.getFullYear()
-        
-        if (year === 2026) {
-          currentYearData[month] = (currentYearData[month] || 0) + 1
-        } else if (year === 2025) {
-          previousYearData[month] = (previousYearData[month] || 0) + 1
-        }
-      })
-
-      const comparisonData = allMonths.map(month => ({
-        month,
-        currentYear: currentYearData[month] || 0,
-        previousYear: previousYearData[month] || 0
-      })).slice(-6)
-
-      setMonthlyComparisonData(comparisonData)
-
-      // Employment status distribution - filtered
-      const employmentCounts = trainings.reduce((acc: any, training: any) => {
-        const status = training.employment_status || "Unknown"
-        acc[status] = (acc[status] || 0) + 1
-        return acc
-      }, {})
-
-      const employmentDist = Object.entries(employmentCounts).map(([name, value]) => ({
-        name,
-        value
-      }))
-
-      setEmploymentStatusData(employmentDist)
+    let currentManualTarget = 1000000
+    if (settingsData?.setting_value?.amount) {
+      currentManualTarget = Number(settingsData.setting_value.amount)
+      setMonthlyTarget(currentManualTarget)
     }
 
+    const [trainingsRes, coursesRes, schedulesRes, scheduleDatesRes, scheduleRangesRes, paymentsRes] = await Promise.all([
+      supabase.from("trainings").select("*, courses(name, training_fee), schedules(*)"),
+      supabase.from("courses").select("*"),
+      supabase.from("schedules").select(`
+        id,
+        created_at,
+        course_id,
+        courses ( name )
+      `).order("created_at", { ascending: false }),
+      supabase.from("schedule_dates").select("*, schedules(*)"),
+      supabase.from("schedule_ranges").select("*, schedules(*)"),
+      supabase.from("payments").select("amount_paid, payment_date, training_id, trainings(courses(training_fee), add_pvc_id, discounted_fee, has_discount)"),
+    ])
+
+    const allTrainings = trainingsRes.data || []
+    const courses = coursesRes.data || []
+    const allEvents = schedulesRes.data || []
+    const scheduleDates = scheduleDatesRes.data || []
+    const scheduleRanges = scheduleRangesRes.data || []
+    const allPayments = paymentsRes.data || []
+
+    // Filter data by date range
+    const trainings = allTrainings.filter(t => isInDateRange(t.created_at))
+    const events = allEvents.filter(e => isInDateRange(e.created_at))
+    const payments = allPayments.filter(p => isInDateRange(p.payment_date))
+
+    const participants = trainings.length
+    const totalRevenue = payments.reduce((sum, p) => sum + (Number(p.amount_paid) || 0), 0)
+
+    setStats([
+      { title: "Total Participants", value: participants.toString(), change: "+12.5%", icon: Users, color: "text-primary" },
+      { title: "Active Courses", value: courses.length.toString(), change: "+3", icon: BookOpen, color: "text-secondary" },
+      { title: "Scheduled Events", value: events.length.toString(), change: "+8.2%", icon: Calendar, color: "text-chart-2" },
+      { title: "Total Revenue", value: `₱${totalRevenue.toLocaleString()}`, change: "+15.3%", icon: TrendingUp, color: "text-chart-4" },
+    ])
+
+    const formattedEvents = events.slice(0, 3).map((event: any) => ({
+      course: event.courses?.name || "Unnamed Course",
+      date: new Date(event.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+      participants: trainings.filter(t => t.schedule_id === event.id).length,
+    }))
+
+    setRecentEvents(formattedEvents)
+
+    const allMonths = Array.from({ length: 12 }, (_, i) =>
+      new Date(0, i).toLocaleString("en-US", { month: "short" })
+    )
+
+    // Monthly enrollments (filtered)
+    const monthlyEnrollments: Record<string, number> = {}
+
+    trainings.forEach((training: any) => {
+      const scheduleId = training.schedule_id
+
+      const matchingDates = scheduleDates.filter((sd: any) => sd.schedule_id === scheduleId)
+      if (matchingDates.length > 0) {
+        const month = new Date(matchingDates[0].date).toLocaleString("en-US", { month: "short" })
+        monthlyEnrollments[month] = (monthlyEnrollments[month] || 0) + 1
+      } else {
+        const matchingRange = scheduleRanges.find((sr: any) => sr.schedule_id === scheduleId)
+        if (matchingRange) {
+          const month = new Date(matchingRange.start_date).toLocaleString("en-US", { month: "short" })
+          monthlyEnrollments[month] = (monthlyEnrollments[month] || 0) + 1
+        }
+      }
+    })
+
+    const enrollmentTrend = allMonths.map((month) => {
+      const date = new Date(`1 ${month} ${new Date().getFullYear()}`)
+      return {
+        date: date.toISOString(),
+        enrollments: monthlyEnrollments[month] || 0
+      }
+    })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(-6)
+
+    const now = new Date()
+    const filteredTrend = enrollmentTrend.filter(d => new Date(d.date) <= now)
+
+    setEnrollmentData(filteredTrend)
+
+    // Course popularity (Top 5) - filtered
+    const courseCounts = trainings.reduce((acc: any, training: any) => {
+      const courseName = training.courses?.name || "Other"
+      acc[courseName] = (acc[courseName] || 0) + 1
+      return acc
+    }, {})
+
+    const popularity = Object.entries(courseCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a: any, b: any) => b.value - a.value)
+      .slice(0, 5)
+
+    setCoursePopularityData(popularity)
+
+    // Gender distribution - filtered
+    const genderCounts = trainings.reduce((acc: any, training: any) => {
+      const gender = training.gender || "Unspecified"
+      acc[gender] = (acc[gender] || 0) + 1
+      return acc
+    }, {})
+
+    const genderDist = Object.entries(genderCounts).map(([name, value]) => ({
+      name,
+      value
+    }))
+
+    setGenderData(genderDist)
+
+    // Revenue data (monthly) - filtered
+    const monthlyRevenue: Record<string, number> = {}
+
+    payments.forEach((payment: any) => {
+      const month = new Date(payment.payment_date).toLocaleString("en-US", { month: "short" })
+      monthlyRevenue[month] = (monthlyRevenue[month] || 0) + Number(payment.amount_paid || 0)
+    })
+
+    const revenueChartData = allMonths.map(month => ({
+      month,
+      revenue: monthlyRevenue[month] || 0,
+      target: currentManualTarget
+    })).slice(-6)
+
+    setRevenueData(revenueChartData)
+
+    // Payment status distribution - filtered
+    const statusCounts = trainings.reduce((acc: any, training: any) => {
+      const status = training.status || "Unknown"
+      const normalizedStatus = status.toLowerCase()
+
+      let category = "Other"
+      if (normalizedStatus.includes("pending")) category = "Pending Payment"
+      else if (normalizedStatus.includes("partial")) category = "Partially Paid"
+      else if (normalizedStatus.includes("completed")) category = "Completed"
+      else if (normalizedStatus.includes("declined")) category = "Declined"
+
+      acc[category] = (acc[category] || 0) + 1
+      return acc
+    }, {})
+
+    const paymentDist = Object.entries(statusCounts).map(([name, value]) => ({
+      name,
+      value
+    }))
+
+    setPaymentStatusData(paymentDist)
+
+    // Age distribution - filtered
+    const ageRanges = {
+      "18-25": 0,
+      "26-35": 0,
+      "36-45": 0,
+      "46-55": 0,
+      "56+": 0
+    }
+
+    trainings.forEach((training: any) => {
+      const age = training.age
+      if (!age) return
+
+      if (age >= 18 && age <= 25) ageRanges["18-25"]++
+      else if (age >= 26 && age <= 35) ageRanges["26-35"]++
+      else if (age >= 36 && age <= 45) ageRanges["36-45"]++
+      else if (age >= 46 && age <= 55) ageRanges["46-55"]++
+      else if (age >= 56) ageRanges["56+"]++
+    })
+
+    const ageDist = Object.entries(ageRanges).map(([range, count]) => ({
+      range,
+      count
+    }))
+
+    setAgeDistributionData(ageDist)
+
+    // Monthly comparison (2025 vs 2026) - filtered
+    const currentYearData: Record<string, number> = {}
+    const previousYearData: Record<string, number> = {}
+
+    allTrainings.forEach((training: any) => {
+      const createdDate = new Date(training.created_at)
+      if (!isInDateRange(createdDate)) return
+
+      const month = createdDate.toLocaleString("en-US", { month: "short" })
+      const year = createdDate.getFullYear()
+
+      if (year === 2026) {
+        currentYearData[month] = (currentYearData[month] || 0) + 1
+      } else if (year === 2025) {
+        previousYearData[month] = (previousYearData[month] || 0) + 1
+      }
+    })
+
+    const comparisonData = allMonths.map(month => ({
+      month,
+      currentYear: currentYearData[month] || 0,
+      previousYear: previousYearData[month] || 0
+    })).slice(-6)
+
+    setMonthlyComparisonData(comparisonData)
+
+    // Employment status distribution - filtered
+    const employmentCounts = trainings.reduce((acc: any, training: any) => {
+      const status = training.employment_status || "Unknown"
+      acc[status] = (acc[status] || 0) + 1
+      return acc
+    }, {})
+
+    const employmentDist = Object.entries(employmentCounts).map(([name, value]) => ({
+      name,
+      value
+    }))
+
+    setEmploymentStatusData(employmentDist)
+  }
+
+  useEffect(() => {
     fetchStats()
   }, [supabase, dateRange]) // Re-fetch when date range changes
 
@@ -416,13 +432,13 @@ const [showCourseModal, setShowCourseModal] = useState(false)
                       const radius = outerRadius + 25
                       const x = cx + radius * Math.cos(-midAngle * RADIAN)
                       const y = cy + radius * Math.sin(-midAngle * RADIAN)
-                      
+
                       return (
-                        <text 
-                          x={x} 
-                          y={y} 
-                          fill={genderColors.foreground} 
-                          textAnchor={x > cx ? 'start' : 'end'} 
+                        <text
+                          x={x}
+                          y={y}
+                          fill={genderColors.foreground}
+                          textAnchor={x > cx ? 'start' : 'end'}
                           dominantBaseline="central"
                           fontSize={12}
                         >
@@ -440,8 +456,8 @@ const [showCourseModal, setShowCourseModal] = useState(false)
                       />
                     ))}
                   </Pie>
-                  <Tooltip 
-                    contentStyle={{ 
+                  <Tooltip
+                    contentStyle={{
                       backgroundColor: genderColors.popover,
                       border: `1px solid ${genderColors.border}`,
                       borderRadius: '8px',
@@ -449,7 +465,7 @@ const [showCourseModal, setShowCourseModal] = useState(false)
                     }}
                     itemStyle={{ color: genderColors.popoverForeground }}
                   />
-                  <Legend 
+                  <Legend
                     wrapperStyle={{ color: genderColors.foreground }}
                     iconType="circle"
                   />
@@ -487,7 +503,7 @@ const [showCourseModal, setShowCourseModal] = useState(false)
     }
     return descriptions[type] || ""
   }
-  
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -495,9 +511,9 @@ const [showCourseModal, setShowCourseModal] = useState(false)
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
           <p className="text-muted-foreground mt-2">Welcome back! Here's an overview of your training programs.</p>
         </div>
-        
+
         {/* Date Filter */}
-        <DateFilter 
+        <DateFilter
           value={filterPreset}
           dateRange={dateRange}
           onChange={handleDateFilterChange}
@@ -528,11 +544,33 @@ const [showCourseModal, setShowCourseModal] = useState(false)
       {/* Chart 1 */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
             <div>
               <CardTitle>{chartOptions.find(opt => opt.value === chart1Type)?.label}</CardTitle>
               <CardDescription>{getChartDescription(chart1Type)}</CardDescription>
             </div>
+            {chart1Type === "revenue" && (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 border rounded-md px-2 bg-background">
+                  <span className="text-sm text-muted-foreground mr-1">Target:</span>
+                  <Input
+                    type="number"
+                    value={monthlyTarget}
+                    onChange={(e) => setMonthlyTarget(Number(e.target.value))}
+                    className="w-24 h-8 border-none focus-visible:ring-0 px-0"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8"
+                  onClick={saveMonthlyTarget}
+                  disabled={isSavingTarget}
+                >
+                  {isSavingTarget ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            )}
             <Select value={chart1Type} onValueChange={setChart1Type}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue />
@@ -557,11 +595,33 @@ const [showCourseModal, setShowCourseModal] = useState(false)
         {/* Chart 2 */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <div className="flex-1">
                 <CardTitle className="text-base">{chartOptions.find(opt => opt.value === chart2Type)?.label}</CardTitle>
                 <CardDescription className="text-xs">{getChartDescription(chart2Type)}</CardDescription>
               </div>
+              {chart2Type === "revenue" && (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 border rounded-md px-2 bg-background">
+                    <span className="text-sm text-muted-foreground mr-1">Target:</span>
+                    <Input
+                      type="number"
+                      value={monthlyTarget}
+                      onChange={(e) => setMonthlyTarget(Number(e.target.value))}
+                      className="w-24 h-8 border-none focus-visible:ring-0 px-0"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={saveMonthlyTarget}
+                    disabled={isSavingTarget}
+                  >
+                    {isSavingTarget ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+              )}
               <Select value={chart2Type} onValueChange={setChart2Type}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue />
@@ -584,11 +644,33 @@ const [showCourseModal, setShowCourseModal] = useState(false)
         {/* Chart 3 */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <div className="flex-1">
                 <CardTitle className="text-base">{chartOptions.find(opt => opt.value === chart3Type)?.label}</CardTitle>
                 <CardDescription className="text-xs">{getChartDescription(chart3Type)}</CardDescription>
               </div>
+              {chart3Type === "revenue" && (
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 border rounded-md px-2 bg-background">
+                    <span className="text-sm text-muted-foreground mr-1">Target:</span>
+                    <Input
+                      type="number"
+                      value={monthlyTarget}
+                      onChange={(e) => setMonthlyTarget(Number(e.target.value))}
+                      className="w-24 h-8 border-none focus-visible:ring-0 px-0"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8"
+                    onClick={saveMonthlyTarget}
+                    disabled={isSavingTarget}
+                  >
+                    {isSavingTarget ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+              )}
               <Select value={chart3Type} onValueChange={setChart3Type}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue />
@@ -609,36 +691,36 @@ const [showCourseModal, setShowCourseModal] = useState(false)
         </Card>
       </div>
       {/* Recent Events */}
-  <Card>
-    <CardHeader>
-      <CardTitle>Recent Training Events</CardTitle>
-      <CardDescription>Latest scheduled training sessions</CardDescription>
-    </CardHeader>
-    <CardContent>
-      <div className="space-y-4">
-        {recentEvents.length > 0 ? (
-          recentEvents.map((event, i) => (
-            <div
-              key={i}
-              className="flex items-center justify-between border-b border-border pb-3 last:border-0 last:pb-0"
-            >
-              <div>
-                <p className="font-medium text-card-foreground">{event.course}</p>
-                <p className="text-sm text-muted-foreground">{event.date}</p>
-              </div>
-              <div className="text-sm font-medium text-primary">
-                {event.participants} participants
-              </div>
-            </div>
-          ))
-        ) : (
-          <p className="text-sm text-muted-foreground">No recent events found.</p>
-        )}
-      </div>
-    </CardContent>
-  </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Training Events</CardTitle>
+          <CardDescription>Latest scheduled training sessions</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {recentEvents.length > 0 ? (
+              recentEvents.map((event, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between border-b border-border pb-3 last:border-0 last:pb-0"
+                >
+                  <div>
+                    <p className="font-medium text-card-foreground">{event.course}</p>
+                    <p className="text-sm text-muted-foreground">{event.date}</p>
+                  </div>
+                  <div className="text-sm font-medium text-primary">
+                    {event.participants} participants
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No recent events found.</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
-{/* Course Details Modal */}
+      {/* Course Details Modal */}
       {selectedCourse && (
         <CourseDetailsModal
           isOpen={showCourseModal}

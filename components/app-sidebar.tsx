@@ -11,6 +11,7 @@ import {
   LucideAward,
   MapPin,
   BadgePercent,
+  ShieldCheck,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -54,7 +55,7 @@ const menuItems = [
     type: "separator",
     title: "Certificates & IDs",
   },
- 
+
 
   {
     title: "Certs & ID Management",
@@ -66,11 +67,16 @@ const menuItems = [
     icon: MapPin,
     href: "/cert-tracker",
   },
-   {
+  {
+    title: "Certificate Verifier",
+    icon: ShieldCheck,
+    href: "/certificate-verifier",
+  },
+  {
     type: "separator",
     title: "Voucher Manager",
   },
-   {
+  {
     title: "Voucher Manager",
     icon: BadgePercent,
     href: "/voucher-manager",
@@ -91,7 +97,7 @@ const menuItems = [
 
 export function AppSidebar() {
   const [collapsed, setCollapsed] = React.useState(false)
-const [openDropdown, setOpenDropdown] = React.useState<string | null>("Trainings")
+  const [openDropdown, setOpenDropdown] = React.useState<string | null>("Trainings")
 
   const pathname = usePathname()
 
@@ -186,7 +192,7 @@ const [openDropdown, setOpenDropdown] = React.useState<string | null>("Trainings
                   )}
                 >
                   <span className="flex items-center gap-3">
-                  {Icon && <Icon className="h-5 w-5" />}
+                    {Icon && <Icon className="h-5 w-5" />}
                     {!collapsed && item.title}
                   </span>
 
@@ -234,7 +240,7 @@ const [openDropdown, setOpenDropdown] = React.useState<string | null>("Trainings
           // Regular link
           if (!item.href) return null
 
-return (
+          return (
             <Link
               key={item.href}
               href={item.href}
@@ -249,7 +255,7 @@ return (
                 collapsed && "justify-center"
               )}
             >
-             {Icon && <Icon className="h-5 w-5" />}
+              {Icon && <Icon className="h-5 w-5" />}
               {!collapsed && item.title}
             </Link>
           )
