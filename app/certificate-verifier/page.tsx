@@ -41,6 +41,9 @@ import {
     ShieldCheck,
     Clock,
     Filter,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown,
 } from "lucide-react"
 import { tmsDb } from "@/lib/supabase-client"
 import { createClient } from "@/lib/supabase-client"
@@ -50,6 +53,7 @@ import { formatDistanceToNow } from "date-fns"
 
 type CertificateRecord = {
     id: string
+    course_code: string | null
     training: string | null
     serial_number: string
     last_name: string | null
@@ -108,11 +112,16 @@ export default function AdminCertificateVerifierPage() {
     const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
     const [bulkDeleteConfirmText, setBulkDeleteConfirmText] = useState("")
 
+    // Sorting
+    const [sortColumn, setSortColumn] = useState("start_date")
+    const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
+
     // Current user
     const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null)
 
     // Form state
     const [formData, setFormData] = useState({
+        course_code: "",
         training: "",
         serial_number: "",
         last_name: "",
@@ -174,7 +183,7 @@ export default function AdminCertificateVerifierPage() {
         let query = tmsDb
             .from("certificate_records")
             .select("*", { count: "exact" })
-            .order("created_at", { ascending: false })
+            .order(sortColumn, { ascending: sortDirection === "asc" })
             .range(from, to)
 
         if (searchQuery.trim()) {
@@ -194,7 +203,7 @@ export default function AdminCertificateVerifierPage() {
                 query = tmsDb
                     .from("duplicate_certificates_view")
                     .select("*", { count: "exact" })
-                    .order("created_at", { ascending: false })
+                    .order(sortColumn, { ascending: sortDirection === "asc" })
                     .range(from, to)
             } else {
                 query = query.eq("source", sourceFilter)
@@ -223,7 +232,17 @@ export default function AdminCertificateVerifierPage() {
             }
         }
         setIsLoading(false)
-    }, [currentPage, searchQuery, trainingFilter, sourceFilter])
+    }, [currentPage, searchQuery, trainingFilter, sourceFilter, sortColumn, sortDirection])
+
+    const handleSort = (column: string) => {
+        if (sortColumn === column) {
+            setSortDirection(sortDirection === "asc" ? "desc" : "asc")
+        } else {
+            setSortColumn(column)
+            setSortDirection("asc")
+        }
+        setCurrentPage(1)
+    }
 
     // Fetch duplicate serial numbers - DEPRECATED for page-level tagging
     const fetchDuplicates = useCallback(async () => {
@@ -248,6 +267,7 @@ export default function AdminCertificateVerifierPage() {
 
     const resetForm = () => {
         setFormData({
+            course_code: "",
             training: "",
             serial_number: "",
             last_name: "",
@@ -274,6 +294,7 @@ export default function AdminCertificateVerifierPage() {
     const handleEdit = (record: CertificateRecord) => {
         setSelectedRecord(record)
         setFormData({
+            course_code: record.course_code || "",
             training: record.training || "",
             serial_number: record.serial_number,
             last_name: record.last_name || "",
@@ -388,6 +409,43 @@ export default function AdminCertificateVerifierPage() {
 
             let synced = 0
             for (const training of trainings) {
+                // Fetch schedule info for date and venue
+                const { data: schedule } = await tmsDb
+                    .from("schedules")
+                    .select(`
+                        branch,
+                        schedule_ranges(start_date, end_date),
+                        schedule_dates(date)
+                    `)
+                    .eq("id", training.schedule_id)
+                    .single()
+
+                let trainingDateText = ""
+                let startDate = null
+                let endDate = null
+
+                if (schedule) {
+                    if (schedule.schedule_ranges && schedule.schedule_ranges.length > 0) {
+                        const range = schedule.schedule_ranges[0]
+                        startDate = range.start_date
+                        endDate = range.end_date
+                        const s = new Date(startDate)
+                        const e = new Date(endDate)
+                        if (s.toDateString() === e.toDateString()) {
+                            trainingDateText = s.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+                        } else if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
+                            trainingDateText = `${s.toLocaleString("en-US", { month: "long" })} ${s.getDate()}-${e.getDate()}, ${s.getFullYear()}`
+                        } else {
+                            trainingDateText = `${s.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${e.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                        }
+                    } else if (schedule.schedule_dates && schedule.schedule_dates.length > 0) {
+                        const dates = schedule.schedule_dates.map((d: any) => new Date(d.date)).sort((a: any, b: any) => a - b)
+                        startDate = schedule.schedule_dates[0].date
+                        endDate = schedule.schedule_dates[schedule.schedule_dates.length - 1].date
+                        trainingDateText = dates.map(d => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })).join(", ")
+                    }
+                }
+
                 const { data: existing } = await tmsDb
                     .from("certificate_records")
                     .select("id")
@@ -409,6 +467,11 @@ export default function AdminCertificateVerifierPage() {
                             company: training.company_name,
                             email_address: training.email,
                             contact_number: training.phone_number,
+                            course_code: training.training_program || "",
+                            training_venue: schedule?.branch || "",
+                            training_date: trainingDateText,
+                            start_date: startDate,
+                            end_date: endDate,
                             source: "synced",
                         })
 
@@ -428,13 +491,17 @@ export default function AdminCertificateVerifierPage() {
     // Form dialog content (reused for add/edit)
     const renderFormContent = () => (
         <div className="grid grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto py-2">
-            <div className="col-span-2">
+            <div>
+                <Label>Course Code</Label>
+                <Input value={formData.course_code} onChange={(e) => setFormData({ ...formData, course_code: e.target.value })} placeholder="BOSH SO2" />
+            </div>
+            <div>
                 <Label>Serial Number *</Label>
                 <Input value={formData.serial_number} onChange={(e) => setFormData({ ...formData, serial_number: e.target.value })} placeholder="PSI-BOSH-BTS-17-001" />
             </div>
             <div className="col-span-2">
-                <Label>Training / Course</Label>
-                <Input value={formData.training} onChange={(e) => setFormData({ ...formData, training: e.target.value })} placeholder="BOSH SO2" />
+                <Label>Training / Course Name</Label>
+                <Input value={formData.training} onChange={(e) => setFormData({ ...formData, training: e.target.value })} placeholder="Basic Occupational Safety and Health..." />
             </div>
             <div>
                 <Label>First Name</Label>
@@ -607,19 +674,69 @@ export default function AdminCertificateVerifierPage() {
                                                 }}
                                             />
                                         </TableHead>
-                                        <TableHead className="w-[180px]">Serial Number</TableHead>
-                                        <TableHead>Name</TableHead>
-                                        <TableHead>Training</TableHead>
-                                        <TableHead>Venue</TableHead>
-                                        <TableHead>Training Date</TableHead>
-                                        <TableHead>Source</TableHead>
+                                        <TableHead className="w-[120px] cursor-pointer hover:text-foreground" onClick={() => handleSort("course_code")}>
+                                            <div className="flex items-center gap-1">
+                                                Code
+                                                {sortColumn === "course_code" ? (
+                                                    sortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                                ) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                                            </div>
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer hover:text-foreground" onClick={() => handleSort("training")}>
+                                            <div className="flex items-center gap-1">
+                                                Training
+                                                {sortColumn === "training" ? (
+                                                    sortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                                ) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                                            </div>
+                                        </TableHead>
+                                        <TableHead className="w-[180px] cursor-pointer hover:text-foreground" onClick={() => handleSort("serial_number")}>
+                                            <div className="flex items-center gap-1">
+                                                Serial Number
+                                                {sortColumn === "serial_number" ? (
+                                                    sortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                                ) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                                            </div>
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer hover:text-foreground" onClick={() => handleSort("last_name")}>
+                                            <div className="flex items-center gap-1">
+                                                Name
+                                                {sortColumn === "last_name" ? (
+                                                    sortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                                ) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                                            </div>
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer hover:text-foreground" onClick={() => handleSort("training_venue")}>
+                                            <div className="flex items-center gap-1">
+                                                Venue
+                                                {sortColumn === "training_venue" ? (
+                                                    sortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                                ) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                                            </div>
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer hover:text-foreground" onClick={() => handleSort("start_date")}>
+                                            <div className="flex items-center gap-1">
+                                                Training Date
+                                                {sortColumn === "start_date" ? (
+                                                    sortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                                ) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                                            </div>
+                                        </TableHead>
+                                        <TableHead className="cursor-pointer hover:text-foreground" onClick={() => handleSort("source")}>
+                                            <div className="flex items-center gap-1">
+                                                Source
+                                                {sortColumn === "source" ? (
+                                                    sortDirection === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                                                ) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                                            </div>
+                                        </TableHead>
                                         <TableHead className="w-[100px] text-right">Actions</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {isLoading ? (
                                         <TableRow>
-                                            <TableCell colSpan={8} className="h-32 text-center">
+                                            <TableCell colSpan={9} className="h-32 text-center">
                                                 <div className="flex items-center justify-center gap-2">
                                                     <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                                                     Loading...
@@ -628,7 +745,7 @@ export default function AdminCertificateVerifierPage() {
                                         </TableRow>
                                     ) : records.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                                            <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
                                                 No certificate records found
                                             </TableCell>
                                         </TableRow>
@@ -653,13 +770,14 @@ export default function AdminCertificateVerifierPage() {
                                                             }}
                                                         />
                                                     </TableCell>
-                                                    <TableCell className="font-mono text-xs">{record.serial_number}</TableCell>
-                                                    <TableCell className="font-medium">{fullName || "—"}</TableCell>
-                                                    <TableCell>
+                                                    <TableCell className="w-[120px] truncate">{record.course_code || "—"}</TableCell>
+                                                    <TableCell className="max-w-[250px] truncate">
                                                         <Badge variant="secondary" className="text-xs font-normal">
                                                             {record.training || "—"}
                                                         </Badge>
                                                     </TableCell>
+                                                    <TableCell className="font-mono text-xs w-[180px] truncate">{record.serial_number}</TableCell>
+                                                    <TableCell className="font-medium whitespace-nowrap">{fullName || "—"}</TableCell>
                                                     <TableCell className="text-sm">{record.training_venue || "—"}</TableCell>
                                                     <TableCell className="text-sm">{record.training_date || "—"}</TableCell>
                                                     <TableCell>
@@ -895,6 +1013,7 @@ function LiveVerifier() {
         serial_number?: string
         name?: string
         training?: string
+        course_code?: string
         venue?: string
         date?: string
     } | null>(null)
@@ -922,6 +1041,7 @@ function LiveVerifier() {
                 serial_number: data.serial_number,
                 name: fullName,
                 training: data.training,
+                course_code: data.course_code,
                 venue: data.training_venue,
                 date: data.training_date,
             })
@@ -957,6 +1077,7 @@ function LiveVerifier() {
                                 <p><span className="text-muted-foreground">Serial:</span> <span className="font-mono">{result.serial_number}</span></p>
                                 <p><span className="text-muted-foreground">Name:</span> {result.name}</p>
                                 <p><span className="text-muted-foreground">Training:</span> {result.training}</p>
+                                {result.course_code && <p><span className="text-muted-foreground">Course Code:</span> {result.course_code}</p>}
                                 {result.venue && <p><span className="text-muted-foreground">Venue:</span> {result.venue}</p>}
                                 {result.date && <p><span className="text-muted-foreground">Date:</span> {result.date}</p>}
                             </div>
