@@ -56,6 +56,7 @@ type Participant = {
   submissionCount: number
   sortDate?: Date | null
   scheduleMonth?: string
+  trainerName?: string
 }
 
 interface ParticipantsTableProps {
@@ -321,6 +322,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         event_type,
         schedule_type,
         status,
+        trainer_name,
         courses (
           name
         ),
@@ -390,6 +392,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
             submissionCount: schedule.trainings?.length ?? 0,
             sortDate,
             scheduleMonth,
+            trainerName: schedule.trainer_name || "",
           }
         })
         .sort((a, b) => {
@@ -487,6 +490,11 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           </div>
         )
       },
+    },
+    {
+      accessorKey: "trainerName",
+      header: "Trainer",
+      cell: ({ row }) => <div className="text-card-foreground">{row.getValue("trainerName") || "—"}</div>,
     },
     {
       accessorKey: "branch",
@@ -622,12 +630,14 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       const schedule = String(row.getValue("schedule")).toLowerCase()
       const status = String(row.getValue("status")).toLowerCase()
       const type = String(row.getValue("type")).toLowerCase()
+      const trainer = String(row.getValue("trainerName")).toLowerCase()
 
       return course.includes(search) ||
         branch.includes(search) ||
         schedule.includes(search) ||
         status.includes(search) ||
-        type.includes(search)
+        type.includes(search) ||
+        trainer.includes(search)
     },
     state: {
       sorting,

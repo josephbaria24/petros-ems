@@ -53,6 +53,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
   const [courseSearch, setCourseSearch] = React.useState("")
   const [courseOpen, setCourseOpen] = React.useState(false)
   const [registrationFormType, setRegistrationFormType] = React.useState<string>("default")
+  const [trainerName, setTrainerName] = React.useState<string>("")
 
   const [selectedCourseData, setSelectedCourseData] = React.useState<any>(null)
 
@@ -157,6 +158,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
           branch: branch,
           batch_number: batchNumber,
           registration_form_type: registrationFormType,
+          trainer_name: trainerName,
         })
         .select()
         .single()
@@ -229,6 +231,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
       setRangeDates(undefined)
       setMultiDates([])
       setRegistrationFormType("default")
+      setTrainerName("")
       setIsSubmitting(false)
       onOpenChange(false)
 
@@ -478,6 +481,18 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                   {registrationFormType === "bls" && "CLASS ROSTER format for BLS training"}
                   {registrationFormType === "ivt_therapy" && "CLASS ROSTER format for IVT Therapy training"}
                 </p>
+              </div>
+
+              {/* Trainer Name */}
+              <div className="grid gap-2">
+                <Label htmlFor="trainer_name">Trainer Name</Label>
+                <Input
+                  id="trainer_name"
+                  value={trainerName}
+                  onChange={(e) => setTrainerName(e.target.value)}
+                  placeholder="Enter trainer's name"
+                  disabled={isSubmitting}
+                />
               </div>
 
               {/* Branch */}
