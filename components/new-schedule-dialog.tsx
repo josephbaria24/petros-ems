@@ -4,7 +4,7 @@
 
 import * as React from "react"
 import { CalendarIcon } from "lucide-react"
-import { format } from "date-fns"
+import { format, eachDayOfInterval } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Calendar03 } from "@/components/calendar-03"
 import { Calendar05 } from "@/components/calendar-05"
@@ -53,7 +53,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
   const [courseSearch, setCourseSearch] = React.useState("")
   const [courseOpen, setCourseOpen] = React.useState(false)
   const [registrationFormType, setRegistrationFormType] = React.useState<string>("default")
-  const [trainerName, setTrainerName] = React.useState<string>("")
+  const [dayTrainers, setDayTrainers] = React.useState<Record<string, string>>({})
 
   const [selectedCourseData, setSelectedCourseData] = React.useState<any>(null)
 
@@ -128,6 +128,29 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
     fetchNextBatchNumber()
   }, [course])
 
+  const scheduleDays = React.useMemo(() => {
+    if (scheduleType === "regular") {
+      if (rangeDates?.from && rangeDates?.to) {
+        try {
+          return eachDayOfInterval({ start: rangeDates.from, end: rangeDates.to })
+        } catch (e) {
+          return []
+        }
+      }
+    } else {
+      return [...multiDates].sort((a, b) => a.getTime() - b.getTime())
+    }
+    return []
+  }, [scheduleType, rangeDates, multiDates])
+
+  const handleApplyToAll = (name: string) => {
+    const newTrainers: Record<string, string> = {}
+    scheduleDays.forEach(day => {
+      newTrainers[formatDateForDB(day)] = name
+    })
+    setDayTrainers(newTrainers)
+  }
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -158,7 +181,8 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
           branch: branch,
           batch_number: batchNumber,
           registration_form_type: registrationFormType,
-          trainer_name: trainerName,
+          trainer_name: Object.values(dayTrainers).filter(Boolean)[0] || "",
+          day_trainers: dayTrainers,
         })
         .select()
         .single()
@@ -231,7 +255,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
       setRangeDates(undefined)
       setMultiDates([])
       setRegistrationFormType("default")
-      setTrainerName("")
+      setDayTrainers({})
       setIsSubmitting(false)
       onOpenChange(false)
 
@@ -483,17 +507,46 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                 </p>
               </div>
 
-              {/* Trainer Name */}
-              <div className="grid gap-2">
-                <Label htmlFor="trainer_name">Trainer Name</Label>
-                <Input
-                  id="trainer_name"
-                  value={trainerName}
-                  onChange={(e) => setTrainerName(e.target.value)}
-                  placeholder="Enter trainer's name"
-                  disabled={isSubmitting}
-                />
-              </div>
+              {/* Per-Day Trainer Assignment */}
+              {scheduleDays.length > 0 && (
+                <div className="grid gap-3 p-4 bg-muted/30 border rounded-md">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-bold">Trainers per Day</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const firstTrainer = dayTrainers[formatDateForDB(scheduleDays[0])]
+                        if (firstTrainer) handleApplyToAll(firstTrainer)
+                      }}
+                      className="h-7 text-xs"
+                      disabled={!dayTrainers[formatDateForDB(scheduleDays[0])]}
+                    >
+                      Apply first to all days
+                    </Button>
+                  </div>
+                  <div className="grid gap-4 max-h-[300px] overflow-y-auto pr-2">
+                    {scheduleDays.map((day, idx) => {
+                      const dateStr = formatDateForDB(day)
+                      return (
+                        <div key={dateStr} className="grid grid-cols-[120px_1fr] items-center gap-4">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            Day {idx + 1}: {format(day, "MMM dd")}
+                          </span>
+                          <Input
+                            placeholder="Assign trainer"
+                            value={dayTrainers[dateStr] || ""}
+                            onChange={(e) => setDayTrainers(prev => ({ ...prev, [dateStr]: e.target.value }))}
+                            className="h-9"
+                            disabled={isSubmitting}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Branch */}
               {eventType !== "online" && eventType !== "elearning" && (

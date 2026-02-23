@@ -3,7 +3,7 @@
 
 import * as React from "react"
 import { CalendarIcon } from "lucide-react"
-import { format } from "date-fns"
+import { format, eachDayOfInterval } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Calendar03 } from "@/components/calendar-03"
 import { Calendar05 } from "@/components/calendar-05"
@@ -81,7 +81,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
   const isBranchRequired = eventType !== "online" && eventType !== "elearning"
   const [selectedCourseData, setSelectedCourseData] = React.useState<any>(null)
   const [batchNumber, setBatchNumber] = React.useState<number | null>(null)
-  const [trainerName, setTrainerName] = React.useState<string>("")
+  const [dayTrainers, setDayTrainers] = React.useState<Record<string, string>>({})
   // Fetch courses with fee information
   React.useEffect(() => {
     const fetchCourses = async () => {
@@ -148,7 +148,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
         setScheduleType(scheduleData.schedule_type)
         setBranch(scheduleData.branch)
         setBatchNumber(scheduleData.batch_number)
-        setTrainerName(scheduleData.trainer_name || "")
+        setDayTrainers(scheduleData.day_trainers || {})
         setCourse(scheduleData.course_id || "")
         setBranch(scheduleData.branch || "")
         setScheduleType(scheduleData.schedule_type || "regular")
@@ -177,6 +177,29 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
 
     fetchScheduleData()
   }, [scheduleId, open])
+
+  const scheduleDays = React.useMemo(() => {
+    if (scheduleType === "regular") {
+      if (rangeDates?.from && rangeDates?.to) {
+        try {
+          return eachDayOfInterval({ start: rangeDates.from, end: rangeDates.to })
+        } catch (e) {
+          return []
+        }
+      }
+    } else {
+      return [...multiDates].sort((a, b) => a.getTime() - b.getTime())
+    }
+    return []
+  }, [scheduleType, rangeDates, multiDates])
+
+  const handleApplyToAll = (name: string) => {
+    const newTrainers: Record<string, string> = {}
+    scheduleDays.forEach(day => {
+      newTrainers[formatDateForDB(day)] = name
+    })
+    setDayTrainers(newTrainers)
+  }
 
   const handleSubmit = async (e: React.FormEvent, sendEmail: boolean = false) => {
     e.preventDefault()
@@ -213,7 +236,8 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
           event_type: eventType,
           branch: branch,
           batch_number: batchNumber, // ✅ Update batch number
-          trainer_name: trainerName,
+          trainer_name: Object.values(dayTrainers).filter(Boolean)[0] || "",
+          day_trainers: dayTrainers,
         })
         .eq("id", scheduleId)
 
@@ -414,65 +438,90 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Trainer Name */}
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="trainer-name">Trainer Name</Label>
-                    <Input
-                      id="trainer-name"
-                      value={trainerName}
-                      onChange={(e) => setTrainerName(e.target.value)}
-                      placeholder="Trainer's name"
-                      disabled={isSubmitting}
-                      className="h-9"
-                    />
-                  </div>
-
-                  {/* Course - Searchable */}
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="course">Course *</Label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          role="combobox"
-                          disabled={isSubmitting}
-                          className="w-full h-9 justify-between truncate text-left"
-                        >
-                          <span className="truncate block">
-                            {course
-                              ? courseOptions.find((c) => c.id === course)?.name
-                              : loadingCourses
-                                ? "Loading..."
-                                : "Select course"}
-                          </span>
-                        </Button>
-                      </PopoverTrigger>
-
-                      <PopoverContent
-                        className="w-full max-w-sm p-0"
-                        side="bottom"
-                        align="start"
+                {/* Per-Day Trainer Assignment */}
+                {scheduleDays.length > 0 && (
+                  <div className="grid gap-2 p-3 bg-muted/30 border rounded-md">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Trainers per Day</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const firstTrainer = dayTrainers[formatDateForDB(scheduleDays[0])]
+                          if (firstTrainer) handleApplyToAll(firstTrainer)
+                        }}
+                        className="h-6 text-[10px] px-2"
+                        disabled={!dayTrainers[formatDateForDB(scheduleDays[0])]}
                       >
-                        <Command>
-                          <CommandInput placeholder="Search course..." />
-                          <CommandEmpty>No course found.</CommandEmpty>
-                          <CommandGroup className="max-h-60 overflow-y-auto">
-                            {courseOptions.map((c) => (
-                              <CommandItem
-                                key={c.id}
-                                value={c.name}
-                                onSelect={() => setCourse(c.id)}
-                              >
-                                {c.name}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
+                        Apply first to all
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 max-h-[200px] overflow-y-auto pr-2">
+                      {scheduleDays.map((day, idx) => {
+                        const dateStr = formatDateForDB(day)
+                        return (
+                          <div key={dateStr} className="flex items-center gap-2">
+                            <span className="text-[10px] font-medium text-muted-foreground w-20 shrink-0">
+                              {format(day, "MMM dd")}
+                            </span>
+                            <Input
+                              placeholder="Trainer"
+                              value={dayTrainers[dateStr] || ""}
+                              onChange={(e) => setDayTrainers(prev => ({ ...prev, [dateStr]: e.target.value }))}
+                              className="h-7 text-xs"
+                              disabled={isSubmitting}
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
+                )}
+
+                <div className="grid gap-1.5">
+                  <Label htmlFor="course">Course *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        disabled={isSubmitting}
+                        className="w-full h-9 justify-between truncate text-left"
+                      >
+                        <span className="truncate block">
+                          {course
+                            ? courseOptions.find((c) => c.id === course)?.name
+                            : loadingCourses
+                              ? "Loading..."
+                              : "Select course"}
+                        </span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="w-full max-w-sm p-0"
+                      side="bottom"
+                      align="start"
+                    >
+                      <Command>
+                        <CommandInput placeholder="Search course..." />
+                        <CommandEmpty>No course found.</CommandEmpty>
+                        <CommandGroup className="max-h-60 overflow-y-auto">
+                          {courseOptions.map((c) => (
+                            <CommandItem
+                              key={c.id}
+                              value={c.name}
+                              onSelect={() => setCourse(c.id)}
+                            >
+                              {c.name}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
+
 
                 {/* Training Fees Display - Compact Mode */}
                 {selectedCourseData && (
@@ -625,6 +674,6 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
           </form>
         )}
       </DialogContent>
-    </Dialog>
+    </Dialog >
   )
 }

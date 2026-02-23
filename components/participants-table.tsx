@@ -45,6 +45,7 @@ import { toast } from "sonner"
 import ParticipantDirectoryDialog from "@/components/trainee-directory-dialog"
 import { EditScheduleDialog } from "@/components/edit-schedule-dialog"
 import { TraineeSearchDialog } from "./trainee-search-dialog"
+import { ScheduleDetailDialog } from "./schedule-detail-dialog"
 
 type Participant = {
   id: string
@@ -88,9 +89,6 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const handleView = (participant: Participant) => {
     setSelectedParticipant(participant)
     setViewDialogOpen(true)
-    toast.info("Viewing schedule details", {
-      description: `${participant.course} - ${participant.branch}`,
-    })
   }
 
   const handleCopyRegistrationLink = (participant: Participant) => {
@@ -323,6 +321,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         schedule_type,
         status,
         trainer_name,
+        day_trainers,
         courses (
           name
         ),
@@ -392,7 +391,10 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
             submissionCount: schedule.trainings?.length ?? 0,
             sortDate,
             scheduleMonth,
-            trainerName: schedule.trainer_name || "",
+            trainerName: schedule.day_trainers && Object.keys(schedule.day_trainers).length > 0
+              ? Array.from(new Set(Object.values(schedule.day_trainers as Record<string, string>).filter(Boolean)))
+                .join(", ")
+              : schedule.trainer_name || "",
           }
         })
         .sort((a, b) => {
@@ -457,6 +459,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               <Link
                 href={`/submissions?scheduleId=${row.original.id}&from=${status}`}
                 className="flex items-center gap-1 text-xs hover:bg-muted rounded-md px-2 py-1.5 cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
               >
                 <FileText className="h-3 w-3" />
                 Submission
@@ -471,7 +474,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                 variant="ghost"
                 size="sm"
                 className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation()
                   setDirectoryScheduleId(row.original.id)
                   setDirectoryCourseName(row.original.course)
                   setDirectoryRange(row.original.schedule)
@@ -482,7 +486,12 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                 Directory
               </Button>
 
-              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <ClipboardCheck className="h-3 w-3" />
                 Exam Result
               </Button>
@@ -494,7 +503,17 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     {
       accessorKey: "trainerName",
       header: "Trainer",
-      cell: ({ row }) => <div className="text-card-foreground">{row.getValue("trainerName") || "—"}</div>,
+      cell: ({ row }) => {
+        const trainerName = row.getValue("trainerName") as string || "—"
+        return (
+          <div
+            className="text-card-foreground max-w-[150px] overflow-hidden text-ellipsis whitespace-nowrap"
+            title={trainerName}
+          >
+            {trainerName}
+          </div>
+        )
+      },
     },
     {
       accessorKey: "branch",
@@ -562,7 +581,12 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         return (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -892,7 +916,12 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
             <TableBody>
               {table.getRowModel().rows?.length ? (
                 table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
+                  <TableRow
+                    key={row.id}
+                    data-state={row.getIsSelected() && "selected"}
+                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => handleView(row.original)}
+                  >
                     {row.getVisibleCells().map((cell) => (
                       <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
                     ))}
@@ -927,39 +956,11 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         </div>
       </Card>
 
-      {/* View Dialog */}
-      <AlertDialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Schedule Details</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3 pt-4">
-                <div>
-                  <span className="font-semibold">Course:</span> {selectedParticipant?.course}
-                </div>
-                <div>
-                  <span className="font-semibold">Branch:</span> {selectedParticipant?.branch}
-                </div>
-                <div>
-                  <span className="font-semibold">Schedule:</span> {selectedParticipant?.schedule}
-                </div>
-                <div>
-                  <span className="font-semibold">Status:</span> {selectedParticipant?.status}
-                </div>
-                <div>
-                  <span className="font-semibold">Type:</span> {selectedParticipant?.type}
-                </div>
-                <div>
-                  <span className="font-semibold">Submissions:</span> {selectedParticipant?.submissionCount}
-                </div>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Close</AlertDialogCancel>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ScheduleDetailDialog
+        open={viewDialogOpen}
+        onOpenChange={setViewDialogOpen}
+        scheduleId={selectedParticipant?.id || null}
+      />
 
       {/* Edit Dialog */}
       <EditScheduleDialog

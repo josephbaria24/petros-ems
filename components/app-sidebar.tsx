@@ -44,6 +44,10 @@ const menuItems = [
         title: "Directory of Trainees",
         href: "/directory-of-trainees",
       },
+      {
+        title: "Trainer Repository",
+        href: "/trainer-repository",
+      },
     ],
   },
   {
@@ -210,7 +214,7 @@ export function AppSidebar() {
                 <div
                   className={cn(
                     "overflow-hidden transition-all ml-6",
-                    collapsed ? "max-h-0" : isDropdownOpen ? "max-h-40" : "max-h-0"
+                    collapsed ? "max-h-0" : isDropdownOpen ? "max-h-96" : "max-h-0"
                   )}
                 >
                   <div className="mt-1 space-y-1 rounded-md border border-border bg-muted p-1">

@@ -45,8 +45,8 @@ interface TrainingReport {
   month: string;
   course: string;
   type: string;
-  start_date: string;
-  end_date: string;
+  start_date: string | null;
+  end_date: string | null;
   participants: number;
   male: number;
   female: number;
@@ -78,21 +78,21 @@ export default function TrainingReportsPage() {
     month: '',
     course: '',
     type: '',
-    start_date: '',
-    end_date: '',
+    start_date: null,
+    end_date: null,
     participants: 0,
     male: 0,
     female: 0,
     company: 0,
     notes: '',
   });
-  
+
   // Existing filters
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [selectedCourse, setSelectedCourse] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
-  
+
   // NEW: Column-based filters (Excel-style)
   const [columnFilters, setColumnFilters] = useState<ColumnFilter>({
     month: new Set(),
@@ -104,25 +104,25 @@ export default function TrainingReportsPage() {
     course: new Set(),
     type: new Set(),
   });
-  const [filterSearchTerms, setFilterSearchTerms] = useState<{[key: string]: string}>({
+  const [filterSearchTerms, setFilterSearchTerms] = useState<{ [key: string]: string }>({
     month: '',
     course: '',
     type: '',
   });
   const [activeFilterColumn, setActiveFilterColumn] = useState<string | null>(null);
-  
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
-  
+
   const [stats, setStats] = useState({
     totalTrainings: 0,
     totalParticipants: 0,
   });
-  
+
   const supabase = tmsDb;
   // PART 3 - PASTE THIS AFTER PART 2
-// Helper functions for column filters
+  // Helper functions for column filters
 
   // Get unique values for a column
   const getUniqueColumnValues = (columnName: keyof TrainingReport): string[] => {
@@ -139,6 +139,7 @@ export default function TrainingReportsPage() {
     // Year filter
     if (selectedYear !== 'all') {
       filtered = filtered.filter(report => {
+        if (!report.start_date) return false;
         const year = new Date(report.start_date).getFullYear();
         return year.toString() === selectedYear;
       });
@@ -147,7 +148,7 @@ export default function TrainingReportsPage() {
     // Column filters (Excel-style)
     Object.entries(columnFilters).forEach(([column, selectedValues]) => {
       if (selectedValues.size > 0) {
-        filtered = filtered.filter(report => 
+        filtered = filtered.filter(report =>
           selectedValues.has(String(report[column as keyof TrainingReport]))
         );
       }
@@ -157,7 +158,7 @@ export default function TrainingReportsPage() {
 
     const totalTrainings = filtered.length;
     const totalParticipants = filtered.reduce((sum, report) => sum + (report.participants || 0), 0);
-    
+
     setStats({
       totalTrainings,
       totalParticipants,
@@ -207,11 +208,11 @@ export default function TrainingReportsPage() {
   };
 
   // Column Filter Popover Component
-  const ColumnFilterPopover = ({ 
-    column, 
-    displayName 
-  }: { 
-    column: keyof TrainingReport; 
+  const ColumnFilterPopover = ({
+    column,
+    displayName
+  }: {
+    column: keyof TrainingReport;
     displayName: string;
   }) => {
     const uniqueValues = getUniqueColumnValues(column);
@@ -219,10 +220,10 @@ export default function TrainingReportsPage() {
       value.toLowerCase().includes(filterSearchTerms[column]?.toLowerCase() || '')
     );
     const hasActiveFilter = columnFilters[column].size > 0;
-    
+
     return (
-      <Popover 
-        open={activeFilterColumn === column} 
+      <Popover
+        open={activeFilterColumn === column}
         onOpenChange={(open) => {
           if (open) {
             setActiveFilterColumn(column);
@@ -240,9 +241,9 @@ export default function TrainingReportsPage() {
         }}
       >
         <PopoverTrigger asChild>
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             className={`h-6 px-2 ${hasActiveFilter ? 'text-blue-600 dark:text-blue-400' : ''}`}
           >
             <Filter className={`h-3 w-3 ${hasActiveFilter ? 'fill-current' : ''}`} />
@@ -353,7 +354,7 @@ export default function TrainingReportsPage() {
   const syncFromTrainings = async () => {
     setSyncing(true);
     const toastId = toast.loading('Syncing training reports from database...');
-    
+
     try {
       const { data: schedules, error: schedulesError } = await supabase
         .from('schedules')
@@ -362,6 +363,7 @@ export default function TrainingReportsPage() {
           branch,
           event_type,
           status,
+          schedule_type,
           courses!inner (
             name
           ),
@@ -369,14 +371,16 @@ export default function TrainingReportsPage() {
             start_date,
             end_date
           ),
+          schedule_dates (
+            date
+          ),
           trainings (
             id,
             gender,
             company_name
           )
         `)
-        .eq('status', 'finished')
-        .neq('status', 'cancelled');
+        .eq('status', 'finished');
 
       if (schedulesError) throw schedulesError;
 
@@ -385,28 +389,37 @@ export default function TrainingReportsPage() {
       for (const schedule of schedules || []) {
         if (!schedule.trainings || schedule.trainings.length === 0) continue;
 
-        let startDate = '';
-        let endDate = '';
+        let startDate: string | null = null;
+        let endDate: string | null = null;
         let monthName = '';
 
-        if (schedule.schedule_ranges && schedule.schedule_ranges.length > 0) {
+        if (schedule.schedule_type === 'staggered' && schedule.schedule_dates && schedule.schedule_dates.length > 0) {
+          const sortedDates = [...schedule.schedule_dates].sort((a: any, b: any) =>
+            new Date(a.date).getTime() - new Date(b.date).getTime()
+          );
+          startDate = sortedDates[0].date;
+          endDate = sortedDates[sortedDates.length - 1].date;
+
+          const date = new Date(startDate as string);
+          monthName = date.toLocaleString('en-US', { month: 'long' });
+        } else if (schedule.schedule_ranges && schedule.schedule_ranges.length > 0) {
           const range = schedule.schedule_ranges[0];
           startDate = range.start_date;
           endDate = range.end_date;
-          
+
           const date = new Date(range.start_date);
           monthName = date.toLocaleString('en-US', { month: 'long' });
         }
 
-        const maleCount = schedule.trainings.filter((t: any) => 
+        const maleCount = schedule.trainings.filter((t: any) =>
           t.gender?.toLowerCase() === 'male'
         ).length;
-        
-        const femaleCount = schedule.trainings.filter((t: any) => 
+
+        const femaleCount = schedule.trainings.filter((t: any) =>
           t.gender?.toLowerCase() === 'female'
         ).length;
 
-        const companyCount = schedule.trainings.filter((t: any) => 
+        const companyCount = schedule.trainings.filter((t: any) =>
           t.company_name && t.company_name.trim() !== ''
         ).length;
 
@@ -547,8 +560,8 @@ export default function TrainingReportsPage() {
       month: '',
       course: '',
       type: '',
-      start_date: '',
-      end_date: '',
+      start_date: null,
+      end_date: null,
       participants: 0,
       male: 0,
       female: 0,
@@ -607,7 +620,7 @@ export default function TrainingReportsPage() {
     }
   };
   // PART 5 - PASTE THIS AFTER PART 4
-// All remaining handler functions
+  // All remaining handler functions
 
   const toggleSelectAll = () => {
     const paginatedReports = filteredReports.slice((currentPage - 1) * rowsPerPage, (currentPage - 1) * rowsPerPage + rowsPerPage);
@@ -660,7 +673,7 @@ export default function TrainingReportsPage() {
       try {
         const text = e.target?.result as string;
         const lines = text.split('\n').filter(line => line.trim());
-        
+
         if (lines.length < 2) {
           toast.error('CSV file is empty or invalid');
           return;
@@ -671,7 +684,7 @@ export default function TrainingReportsPage() {
 
         for (const line of dataLines) {
           const values = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
-          
+
           if (values.length >= 13) {
             newReports.push({
               cert: values[0].toLowerCase() === 'true',
@@ -680,8 +693,8 @@ export default function TrainingReportsPage() {
               month: values[3] || '',
               course: values[4] || '',
               type: values[5] || '',
-              start_date: values[6] || '',
-              end_date: values[7] || '',
+              start_date: values[6] || null,
+              end_date: values[7] || null,
               participants: parseInt(values[8]) || 0,
               male: parseInt(values[9]) || 0,
               female: parseInt(values[10]) || 0,
@@ -719,7 +732,7 @@ export default function TrainingReportsPage() {
       toast.error('Failed to read CSV file');
     };
     reader.readAsText(file);
-    
+
     event.target.value = '';
   };
 
@@ -751,14 +764,14 @@ export default function TrainingReportsPage() {
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
-      
+
       link.setAttribute('href', url);
       link.setAttribute('download', `training_reports_${selectedYear}_${new Date().toISOString().split('T')[0]}.csv`);
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+
       toast.success(`Exported ${filteredReports.length} training reports to CSV`);
     } catch (error) {
       console.error('Error exporting:', error);
@@ -766,16 +779,20 @@ export default function TrainingReportsPage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return '—';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
     });
   };
 
-  const uniqueYears = Array.from(new Set(reports.map(r => new Date(r.start_date).getFullYear()))).sort((a, b) => b - a);
+  const uniqueYears = Array.from(new Set(reports.map(r => {
+    if (!r.start_date) return null;
+    return new Date(r.start_date).getFullYear();
+  }))).filter((year): year is number => year !== null).sort((a, b) => b - a);
   const currentYear = new Date().getFullYear();
   if (!uniqueYears.includes(currentYear)) {
     uniqueYears.unshift(currentYear);
@@ -798,7 +815,7 @@ export default function TrainingReportsPage() {
     );
   }
   // PART 6 - PASTE THIS AFTER PART 5
-// The main return JSX - UPDATED filter section
+  // The main return JSX - UPDATED filter section
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -880,8 +897,8 @@ export default function TrainingReportsPage() {
           </div>
 
           <div className="flex gap-2">
-            <Button 
-              onClick={syncFromTrainings} 
+            <Button
+              onClick={syncFromTrainings}
               disabled={syncing}
               className='bg-blue-600 cursor-pointer hover:bg-blue-700'
             >
@@ -960,7 +977,7 @@ export default function TrainingReportsPage() {
                   <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">cert</th>
                   <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">ID</th>
                   <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">ptr</th>
-                  
+
                   {/* Month column with filter */}
                   <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">
                     <div className="flex items-center justify-between">
@@ -968,7 +985,7 @@ export default function TrainingReportsPage() {
                       <ColumnFilterPopover column="month" displayName="Month" />
                     </div>
                   </th>
-                  
+
                   {/* Course column with filter */}
                   <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">
                     <div className="flex items-center justify-between">
@@ -976,7 +993,7 @@ export default function TrainingReportsPage() {
                       <ColumnFilterPopover column="course" displayName="Course" />
                     </div>
                   </th>
-                  
+
                   {/* Type column with filter */}
                   <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">
                     <div className="flex items-center justify-between">
@@ -984,7 +1001,7 @@ export default function TrainingReportsPage() {
                       <ColumnFilterPopover column="type" displayName="Type" />
                     </div>
                   </th>
-                  
+
                   <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">start_date</th>
                   <th className="text-white font-semibold px-3 py-2 text-left border-r border-[#141454] text-xs">end_date</th>
                   <th className="text-white font-semibold px-3 py-2 text-center border-r border-[#141454] text-xs">participants</th>
@@ -1003,8 +1020,8 @@ export default function TrainingReportsPage() {
                   </tr>
                 ) : (
                   paginatedReports.map((report, index) => (
-                    <tr 
-                      key={report.id} 
+                    <tr
+                      key={report.id}
                       className={`hover:bg-secondary ${index % 2 === 0 ? 'bg-card' : 'bg-muted/50'}`}
                     >
                       {deleteMode && (
@@ -1121,43 +1138,43 @@ export default function TrainingReportsPage() {
               <div className="grid grid-cols-2 gap-4 py-4">
                 <div>
                   <label className="text-sm font-medium">Month</label>
-                  <Input value={editingReport.month} onChange={(e) => setEditingReport({...editingReport, month: e.target.value})} />
+                  <Input value={editingReport.month} onChange={(e) => setEditingReport({ ...editingReport, month: e.target.value })} />
                 </div>
                 <div>
                   <label className="text-sm font-medium">Course</label>
-                  <Input value={editingReport.course} onChange={(e) => setEditingReport({...editingReport, course: e.target.value})} />
+                  <Input value={editingReport.course} onChange={(e) => setEditingReport({ ...editingReport, course: e.target.value })} />
                 </div>
                 <div>
                   <label className="text-sm font-medium">Type</label>
-                  <Input value={editingReport.type} onChange={(e) => setEditingReport({...editingReport, type: e.target.value})} />
+                  <Input value={editingReport.type} onChange={(e) => setEditingReport({ ...editingReport, type: e.target.value })} />
                 </div>
                 <div>
                   <label className="text-sm font-medium">Start Date</label>
-                  <Input type="date" value={editingReport.start_date} onChange={(e) => setEditingReport({...editingReport, start_date: e.target.value})} />
+                  <Input type="date" value={editingReport.start_date || ""} onChange={(e) => setEditingReport({ ...editingReport, start_date: e.target.value || null })} />
                 </div>
                 <div>
                   <label className="text-sm font-medium">End Date</label>
-                  <Input type="date" value={editingReport.end_date} onChange={(e) => setEditingReport({...editingReport, end_date: e.target.value})} />
+                  <Input type="date" value={editingReport.end_date || ""} onChange={(e) => setEditingReport({ ...editingReport, end_date: e.target.value || null })} />
                 </div>
                 <div>
                   <label className="text-sm font-medium">Participants</label>
-                  <Input type="number" value={editingReport.participants || ''} onChange={(e) => setEditingReport({...editingReport, participants: e.target.value ? parseInt(e.target.value) : 0})} />
+                  <Input type="number" value={editingReport.participants || ''} onChange={(e) => setEditingReport({ ...editingReport, participants: e.target.value ? parseInt(e.target.value) : 0 })} />
                 </div>
                 <div>
                   <label className="text-sm font-medium">Male</label>
-                  <Input type="number" value={editingReport.male || ''} onChange={(e) => setEditingReport({...editingReport, male: e.target.value ? parseInt(e.target.value) : 0})} />
+                  <Input type="number" value={editingReport.male || ''} onChange={(e) => setEditingReport({ ...editingReport, male: e.target.value ? parseInt(e.target.value) : 0 })} />
                 </div>
                 <div>
                   <label className="text-sm font-medium">Female</label>
-                  <Input type="number" value={editingReport.female || ''} onChange={(e) => setEditingReport({...editingReport, female: e.target.value ? parseInt(e.target.value) : 0})} />
+                  <Input type="number" value={editingReport.female || ''} onChange={(e) => setEditingReport({ ...editingReport, female: e.target.value ? parseInt(e.target.value) : 0 })} />
                 </div>
                 <div>
                   <label className="text-sm font-medium">Company</label>
-                  <Input type="number" value={editingReport.company || ''} onChange={(e) => setEditingReport({...editingReport, company: e.target.value ? parseInt(e.target.value) : 0})} />
+                  <Input type="number" value={editingReport.company || ''} onChange={(e) => setEditingReport({ ...editingReport, company: e.target.value ? parseInt(e.target.value) : 0 })} />
                 </div>
                 <div className="col-span-2">
                   <label className="text-sm font-medium">Notes</label>
-                  <Input value={editingReport.notes} onChange={(e) => setEditingReport({...editingReport, notes: e.target.value})} />
+                  <Input value={editingReport.notes} onChange={(e) => setEditingReport({ ...editingReport, notes: e.target.value })} />
                 </div>
               </div>
             )}
@@ -1178,55 +1195,55 @@ export default function TrainingReportsPage() {
             <div className="grid grid-cols-2 gap-4 py-4">
               <div>
                 <label className="text-sm font-medium">Month</label>
-                <Input value={newReport.month} onChange={(e) => setNewReport({...newReport, month: e.target.value})} placeholder="e.g., January" />
+                <Input value={newReport.month} onChange={(e) => setNewReport({ ...newReport, month: e.target.value })} placeholder="e.g., January" />
               </div>
               <div>
                 <label className="text-sm font-medium">Course</label>
-                <Input value={newReport.course} onChange={(e) => setNewReport({...newReport, course: e.target.value})} placeholder="e.g., COSH" />
+                <Input value={newReport.course} onChange={(e) => setNewReport({ ...newReport, course: e.target.value })} placeholder="e.g., COSH" />
               </div>
               <div>
                 <label className="text-sm font-medium">Type</label>
-                <Input value={newReport.type} onChange={(e) => setNewReport({...newReport, type: e.target.value})} placeholder="e.g., Online or Face to Face" />
+                <Input value={newReport.type} onChange={(e) => setNewReport({ ...newReport, type: e.target.value })} placeholder="e.g., Online or Face to Face" />
               </div>
               <div>
                 <label className="text-sm font-medium">Start Date</label>
-                <Input type="date" value={newReport.start_date} onChange={(e) => setNewReport({...newReport, start_date: e.target.value})} />
+                <Input type="date" value={newReport.start_date || ""} onChange={(e) => setNewReport({ ...newReport, start_date: e.target.value || null })} />
               </div>
               <div>
                 <label className="text-sm font-medium">End Date</label>
-                <Input type="date" value={newReport.end_date} onChange={(e) => setNewReport({...newReport, end_date: e.target.value})} />
+                <Input type="date" value={newReport.end_date || ""} onChange={(e) => setNewReport({ ...newReport, end_date: e.target.value || null })} />
               </div>
               <div>
                 <label className="text-sm font-medium">Participants</label>
-                <Input type="number" value={newReport.participants || ''} onChange={(e) => setNewReport({...newReport, participants: e.target.value ? parseInt(e.target.value) : 0})} placeholder="0" />
+                <Input type="number" value={newReport.participants || ''} onChange={(e) => setNewReport({ ...newReport, participants: e.target.value ? parseInt(e.target.value) : 0 })} placeholder="0" />
               </div>
               <div>
                 <label className="text-sm font-medium">Male</label>
-                <Input type="number" value={newReport.male || ''} onChange={(e) => setNewReport({...newReport, male: e.target.value ? parseInt(e.target.value) : 0})} placeholder="0" />
+                <Input type="number" value={newReport.male || ''} onChange={(e) => setNewReport({ ...newReport, male: e.target.value ? parseInt(e.target.value) : 0 })} placeholder="0" />
               </div>
               <div>
                 <label className="text-sm font-medium">Female</label>
-                <Input type="number" value={newReport.female || ''} onChange={(e) => setNewReport({...newReport, female: e.target.value ? parseInt(e.target.value) : 0})} placeholder="0" />
+                <Input type="number" value={newReport.female || ''} onChange={(e) => setNewReport({ ...newReport, female: e.target.value ? parseInt(e.target.value) : 0 })} placeholder="0" />
               </div>
               <div>
                 <label className="text-sm font-medium">Company</label>
-                <Input type="number" value={newReport.company || ''} onChange={(e) => setNewReport({...newReport, company: e.target.value ? parseInt(e.target.value) : 0})} placeholder="0" />
+                <Input type="number" value={newReport.company || ''} onChange={(e) => setNewReport({ ...newReport, company: e.target.value ? parseInt(e.target.value) : 0 })} placeholder="0" />
               </div>
               <div className="col-span-2">
                 <label className="text-sm font-medium">Notes</label>
-                <Input value={newReport.notes} onChange={(e) => setNewReport({...newReport, notes: e.target.value})} placeholder="Additional notes" />
+                <Input value={newReport.notes} onChange={(e) => setNewReport({ ...newReport, notes: e.target.value })} placeholder="Additional notes" />
               </div>
               <div className="col-span-2 grid grid-cols-3 gap-4">
                 <div className="flex items-center space-x-2">
-                  <Checkbox id="cert-new" checked={newReport.cert} onCheckedChange={(checked) => setNewReport({...newReport, cert: checked as boolean})} />
+                  <Checkbox id="cert-new" checked={newReport.cert} onCheckedChange={(checked) => setNewReport({ ...newReport, cert: checked as boolean })} />
                   <label htmlFor="cert-new" className="text-sm font-medium">Certificate</label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <Checkbox id="id-new" checked={newReport.ID} onCheckedChange={(checked) => setNewReport({...newReport, ID: checked as boolean})} />
+                  <Checkbox id="id-new" checked={newReport.ID} onCheckedChange={(checked) => setNewReport({ ...newReport, ID: checked as boolean })} />
                   <label htmlFor="id-new" className="text-sm font-medium">ID</label>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <Checkbox id="ptr-new" checked={newReport.ptr} onCheckedChange={(checked) => setNewReport({...newReport, ptr: checked as boolean})} />
+                  <Checkbox id="ptr-new" checked={newReport.ptr} onCheckedChange={(checked) => setNewReport({ ...newReport, ptr: checked as boolean })} />
                   <label htmlFor="ptr-new" className="text-sm font-medium">PTR</label>
                 </div>
               </div>
