@@ -45,6 +45,17 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { EvaluationDialog } from "@/components/evaluation-dialog"
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 
 interface Tab {
@@ -86,6 +97,14 @@ export default function TrainerRepositoryPage() {
     const [editingColumn, setEditingColumn] = React.useState<Column | null>(null)
 
     const [isSaving, setIsSaving] = React.useState(false)
+
+    // Delete Confirmation State
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false)
+    const [deleteConfig, setDeleteConfig] = React.useState<{
+        title?: string;
+        description: string;
+        onConfirm: () => void;
+    } | null>(null)
 
     // Scroll States
     const tableContainerRef = React.useRef<HTMLDivElement>(null)
@@ -185,7 +204,6 @@ export default function TrainerRepositoryPage() {
     }
 
     const handleDeleteTab = async (id: string) => {
-        if (!confirm("Are you sure you want to delete this tab and all its data?")) return
         try {
             const { error } = await tmsDb.from("trainer_repo_tabs").delete().eq("id", id)
             if (error) throw error
@@ -234,7 +252,6 @@ export default function TrainerRepositoryPage() {
     }
 
     const handleDeleteColumn = async (id: string) => {
-        if (!confirm("Delete this column? Existing data for this field will be hidden.")) return
         try {
             const { error } = await tmsDb.from("trainer_repo_columns").delete().eq("id", id)
             if (error) throw error
@@ -298,139 +315,98 @@ export default function TrainerRepositoryPage() {
         }
     }
 
-    const EvaluationCell = ({ rowId, colName, value }: { rowId: string, colName: string, value: string }) => {
-        const [isBuilderOpen, setIsBuilderOpen] = React.useState(false)
+    const EvaluationCell = ({ rowId, colName, value, rowData }: { rowId: string, colName: string, value: string, rowData: any }) => {
         const [isResultsOpen, setIsResultsOpen] = React.useState(false)
-        const [evaluationId, setEvaluationId] = React.useState(value)
-        const [title, setTitle] = React.useState("")
-        const [questions, setQuestions] = React.useState<any[]>([])
-        const [responses, setResponses] = React.useState<any[]>([])
+        const [aggregatedIds, setAggregatedIds] = React.useState<string[]>([])
         const [loading, setLoading] = React.useState(false)
 
-        const fetchEvaluation = async (id: string) => {
+        const fetchAggregatedEvaluations = async () => {
             setLoading(true)
             try {
-                const { data: evalData, error: evalError } = await tmsDb
+                // 1. Identify trainer name from common fields
+                let trainerName = rowData["Full Name"] || rowData["Name"] || rowData["Trainer Name"] || rowData["Trainer"]
+
+                if (!trainerName) {
+                    // Fallback: search all keys for something that looks like a name/trainer
+                    const potentialKeys = Object.keys(rowData).filter(k =>
+                        /name|trainer|instructor/i.test(k) && typeof rowData[k] === 'string'
+                    )
+                    if (potentialKeys.length > 0) {
+                        // Prioritize "FullName" or "Name" or "Trainer" if they exist in any case
+                        const bestKey = potentialKeys.find(k => /full\s*name/i.test(k)) ||
+                            potentialKeys.find(k => /^name$/i.test(k)) ||
+                            potentialKeys.find(k => /trainer/i.test(k)) ||
+                            potentialKeys[0]
+                        trainerName = rowData[bestKey]
+                    }
+                }
+
+                if (!trainerName) {
+                    toast.error("Could not identify trainer name for aggregation. Ensure you have a 'Name' or 'Trainer' column.")
+                    return
+                }
+
+                // 2. Find schedules where this trainer is assigned
+                // We fetch schedules and filter in-memory for robustness (handles JSONB values and casing)
+                const { data: allSchedules, error: scheduleError } = await tmsDb
+                    .from("schedules")
+                    .select("id, trainer_name, day_trainers")
+
+                if (scheduleError) throw scheduleError
+                if (!allSchedules || allSchedules.length === 0) {
+                    setAggregatedIds([])
+                    return
+                }
+
+                const targetName = trainerName.trim().toLowerCase()
+                const matchingSchedules = allSchedules.filter(s => {
+                    // Check main trainer name
+                    if (s.trainer_name?.trim().toLowerCase() === targetName) return true
+
+                    // Check all trainers in day_trainers JSONB
+                    if (s.day_trainers && typeof s.day_trainers === 'object') {
+                        const dayTrainerNames = Object.values(s.day_trainers as Record<string, string>)
+                            .map(n => String(n).trim().toLowerCase())
+                        if (dayTrainerNames.includes(targetName)) return true
+                    }
+                    return false
+                })
+
+                if (matchingSchedules.length === 0) {
+                    setAggregatedIds([])
+                    return
+                }
+
+                const scheduleIds = matchingSchedules.map(s => s.id)
+
+                // 3. Find evaluations for these schedules
+                const { data: allEvals, error: evalError } = await tmsDb
                     .from("repo_evaluations")
-                    .select("*, questions:repo_eval_questions(*)")
-                    .eq("id", id)
-                    .single()
+                    .select("id, title, trainer_name")
+                    .in("schedule_id", scheduleIds)
 
                 if (evalError) throw evalError
-                setTitle(evalData.title)
-                setQuestions(evalData.questions.sort((a: any, b: any) => a.sort_order - b.sort_order))
+
+                const targetTitle = colName.trim().toLowerCase()
+                const matchingEvals = (allEvals || []).filter(e => {
+                    const titleMatch = e.title.trim().toLowerCase() === targetTitle
+                    if (!titleMatch) return false
+
+                    // If evaluation is explicitly delegated to a trainer, check if it matches current trainer
+                    if (e.trainer_name) {
+                        return e.trainer_name.trim().toLowerCase() === targetName
+                    }
+
+                    // Otherwise, it's a shared evaluation for the schedule
+                    return true
+                })
+
+                setAggregatedIds(matchingEvals.map(e => e.id))
             } catch (error) {
-                toast.error("Failed to load evaluation")
+                console.error("Aggregation failed:", error)
             } finally {
                 setLoading(false)
             }
-        }
-
-        const fetchResponses = async (id: string) => {
-            setLoading(true)
-            try {
-                // Ensure questions are loaded for rendering charts
-                if (questions.length === 0) {
-                    await fetchEvaluation(id);
-                }
-
-                const { data, error } = await tmsDb
-                    .from("repo_eval_responses")
-                    .select("*")
-                    .eq("evaluation_id", id)
-                if (error) throw error
-                setResponses(data)
-            } catch (error) {
-                toast.error("Failed to load responses")
-            } finally {
-                setLoading(false)
-            }
-        }
-
-        const handleCreateEvaluation = async () => {
-            setLoading(true)
-            try {
-                const { data, error } = await tmsDb
-                    .from("repo_evaluations")
-                    .insert({ title: "New Evaluation" })
-                    .select()
-                    .single()
-
-                if (error) throw error
-                await handleUpdateCellValue(rowId, colName, data.id)
-                setEvaluationId(data.id)
-                setTitle("New Evaluation")
-                setQuestions([])
-                setIsBuilderOpen(true)
-            } catch (error) {
-                toast.error("Failed to create evaluation")
-            } finally {
-                setLoading(false)
-            }
-        }
-
-        const handleSaveBuilder = async () => {
-            setLoading(true)
-            try {
-                // Update title
-                await tmsDb.from("repo_evaluations").update({ title }).eq("id", evaluationId)
-
-                // Update questions (simplest way: delete all and re-insert for now, or sophisticated upsert)
-                await tmsDb.from("repo_eval_questions").delete().eq("evaluation_id", evaluationId)
-
-                if (questions.length > 0) {
-                    const { error } = await tmsDb.from("repo_eval_questions").insert(
-                        questions.map((q, i) => ({
-                            evaluation_id: evaluationId,
-                            question_text: q.question_text,
-                            question_type: q.question_type,
-                            options: q.options,
-                            sort_order: i,
-                            is_required: q.is_required
-                        }))
-                    )
-                    if (error) throw error
-                }
-
-                toast.success("Evaluation saved")
-                setIsBuilderOpen(false)
-            } catch (error) {
-                toast.error("Failed to save evaluation")
-            } finally {
-                setLoading(false)
-            }
-        }
-
-        const addQuestion = () => {
-            setQuestions([...questions, {
-                question_text: "New Question",
-                question_type: "text",
-                options: [],
-                is_required: true
-            }])
-        }
-
-        const copyLink = () => {
-            const url = `${window.location.origin}/evaluation/${evaluationId}`
-            navigator.clipboard.writeText(url)
-            toast.success("Link copied to clipboard")
-        }
-
-        if (!evaluationId) {
-            return (
-                <div className="flex items-center justify-center h-full">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-[10px] h-7 gap-1.5 opacity-40 hover:opacity-100"
-                        onClick={handleCreateEvaluation}
-                        disabled={loading}
-                    >
-                        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlusCircle className="h-3 w-3" />}
-                        Create Eval
-                    </Button>
-                </div>
-            )
         }
 
         return (
@@ -438,279 +414,27 @@ export default function TrainerRepositoryPage() {
                 <div className="flex items-center gap-1 h-full px-2 group/eval justify-center">
                     <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-blue-600 hover:bg-blue-50"
-                        onClick={() => { fetchEvaluation(evaluationId); setIsBuilderOpen(true); }}
-                        title="Edit Evaluation / Share Link"
+                        size="sm"
+                        className="text-[10px] h-7 gap-1.5 opacity-60 hover:opacity-100 text-green-600"
+                        onClick={async () => {
+                            await fetchAggregatedEvaluations()
+                            setIsResultsOpen(true)
+                        }}
+                        disabled={loading}
                     >
-                        <ClipboardList className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-green-600 hover:bg-green-50"
-                        onClick={() => { fetchResponses(evaluationId); setIsResultsOpen(true); }}
-                        title="View Results"
-                    >
-                        <BarChart3 className="h-3.5 w-3.5" />
+                        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <BarChart3 className="h-3.5 w-3.5" />}
+                        View Feedback
                     </Button>
                 </div>
 
-                {/* Builder Dialog */}
-                <Dialog open={isBuilderOpen} onOpenChange={setIsBuilderOpen}>
-                    <DialogContent className="lg:w-[70vw] md:w-[90vw] flex flex-col p-0 overflow-hidden">
-                        <DialogHeader className="p-6 pb-2">
-                            <div className="flex items-center justify-between mr-8">
-                                <DialogTitle className="flex items-center gap-2">
-                                    <ClipboardList className="h-5 w-5 text-primary" />
-                                    Evaluation Builder
-                                </DialogTitle>
-                                <Button size="sm" variant="outline" onClick={copyLink} className="gap-2">
-                                    <Link className="h-4 w-4" />
-                                    Copy Public Link
-                                </Button>
-                            </div>
-                            <DialogDescription>
-                                Create your custom evaluation form for this trainer.
-                            </DialogDescription>
-                        </DialogHeader>
-
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                            <div className="space-y-2">
-                                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Evaluation Title</Label>
-                                <Input
-                                    value={title}
-                                    onChange={(e) => setTitle(e.target.value)}
-                                    placeholder="e.g. Trainer Performance Review"
-                                    className="text-lg font-medium"
-                                />
-                            </div>
-
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between border-b pb-2">
-                                    <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Questions</Label>
-                                    <Button size="sm" variant="ghost" className="h-7 text-primary" onClick={addQuestion}>
-                                        <Plus className="h-3 w-3 mr-1" /> Add Question
-                                    </Button>
-                                </div>
-
-                                <div className="space-y-4">
-                                    {questions.map((q, idx) => (
-                                        <div key={idx} className="p-4 border rounded-lg bg-muted/5 space-y-3 group/q relative">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover/q:opacity-100 text-destructive hover:bg-destructive/10"
-                                                onClick={() => setQuestions(questions.filter((_, i) => i !== idx))}
-                                            >
-                                                <X className="h-4 w-4" />
-                                            </Button>
-
-                                            <div className="grid grid-cols-12 gap-4">
-                                                <div className="col-span-8 space-y-1.5">
-                                                    <Input
-                                                        value={q.question_text}
-                                                        onChange={(e) => {
-                                                            const newQs = [...questions]
-                                                            newQs[idx].question_text = e.target.value
-                                                            setQuestions(newQs)
-                                                        }}
-                                                        placeholder="Enter question text..."
-                                                        className="font-medium"
-                                                    />
-                                                </div>
-                                                <div className="col-span-4">
-                                                    <Select
-                                                        value={q.question_type}
-                                                        onValueChange={(val) => {
-                                                            const newQs = [...questions]
-                                                            newQs[idx].question_type = val
-                                                            setQuestions(newQs)
-                                                        }}
-                                                    >
-                                                        <SelectTrigger>
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="text">Text Input</SelectItem>
-                                                            <SelectItem value="radio">Multiple Choice (Radio)</SelectItem>
-                                                            <SelectItem value="rating">Scale (1-5)</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                            </div>
-
-                                            {q.question_type === 'radio' && (
-                                                <div className="pl-4 border-l-2 space-y-2">
-                                                    <div className="flex items-center justify-between">
-                                                        <Label className="text-[10px] text-muted-foreground uppercase font-bold">Options</Label>
-                                                    </div>
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {(q.options || []).map((opt: string, optIdx: number) => (
-                                                            <div key={optIdx} className="flex items-center bg-muted px-2 py-1 rounded gap-1 text-xs">
-                                                                <span>{opt}</span>
-                                                                <button
-                                                                    className="hover:text-destructive"
-                                                                    onClick={() => {
-                                                                        const newQs = [...questions]
-                                                                        newQs[idx].options = newQs[idx].options.filter((_: any, i: number) => i !== optIdx)
-                                                                        setQuestions(newQs)
-                                                                    }}
-                                                                >
-                                                                    <X className="h-3 w-3" />
-                                                                </button>
-                                                            </div>
-                                                        ))}
-                                                        <Input
-                                                            className="w-24 h-6 text-xs"
-                                                            placeholder="Add opt..."
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') {
-                                                                    const val = (e.target as HTMLInputElement).value
-                                                                    if (!val) return
-                                                                    const newQs = [...questions]
-                                                                    newQs[idx].options = [...(newQs[idx].options || []), val]
-                                                                    setQuestions(newQs)
-                                                                        ; (e.target as HTMLInputElement).value = ""
-                                                                }
-                                                            }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                    {questions.length === 0 && (
-                                        <div className="text-center py-8 border-2 border-dashed rounded-lg text-muted-foreground italic">
-                                            No questions added yet.
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
-                        <DialogFooter className="p-6 bg-muted/20 border-t">
-                            <Button variant="outline" onClick={() => setIsBuilderOpen(false)}>Cancel</Button>
-                            <Button onClick={handleSaveBuilder} disabled={loading} className="gap-2">
-                                {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                                <Save className="h-4 w-4" /> Save Evaluation
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-
-                {/* Results Dialog */}
-                <Dialog open={isResultsOpen} onOpenChange={setIsResultsOpen}>
-                    <DialogContent className="lg:w-[70vw] lg:h-[80vh]  flex flex-col p-0 overflow-hidden">
-                        <DialogHeader className="p-6 pb-2">
-                            <DialogTitle className="flex items-center gap-2 text-2xl">
-                                <BarChart3 className="h-6 w-6 text-green-600" />
-                                Evaluation Results
-                            </DialogTitle>
-                            <DialogDescription>
-                                Analysis of responses for "{title}"
-                            </DialogDescription>
-                        </DialogHeader>
-
-                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                            {responses.length === 0 ? (
-                                <div className="text-center py-20 bg-muted/5 border-2 border-dashed rounded-xl">
-                                    <div className="h-12 w-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <ClipboardList className="h-6 w-6 text-muted-foreground" />
-                                    </div>
-                                    <p className="text-muted-foreground font-medium">No responses yet.</p>
-                                    <p className="text-xs text-muted-foreground/60 mt-1">Share the link with respondents to start collecting data.</p>
-                                    <Button variant="outline" size="sm" onClick={copyLink} className="mt-4">Copy Share Link</Button>
-                                </div>
-                            ) : (
-                                <div className="space-y-6">
-                                    <div className="grid grid-cols-3 gap-3">
-                                        <div className="bg-primary/5 p-3 rounded-lg border border-primary/10 flex flex-col items-center">
-                                            <span className="text-xl font-bold text-primary">{responses.length}</span>
-                                            <span className="text-[9px] uppercase font-bold text-muted-foreground">Total Responses</span>
-                                        </div>
-                                        <div className="bg-green-50 p-3 rounded-lg border border-green-100 flex flex-col items-center">
-                                            <span className="text-xl font-bold text-green-700">
-                                                {Math.round(responses.reduce((acc, r) => acc + Object.keys(r.answers).length, 0) / (responses.length * (questions.length || 1)) * 100)}%
-                                            </span>
-                                            <span className="text-[9px] uppercase font-bold text-muted-foreground">Completion Rate</span>
-                                        </div>
-                                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 flex flex-col items-center">
-                                            <span className="text-xl font-bold text-blue-700">
-                                                {Math.round((responses.filter(r => new Date(r.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)).length))}
-                                            </span>
-                                            <span className="text-[9px] uppercase font-bold text-muted-foreground">New this week</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                        {questions.map((q, idx) => {
-                                            if (q.question_type === 'rating' || q.question_type === 'radio') {
-                                                const dataMap: Record<string, number> = {}
-                                                responses.forEach(r => {
-                                                    const ans = r.answers[q.id]
-                                                    if (ans) dataMap[ans] = (dataMap[ans] || 0) + 1
-                                                })
-
-                                                const chartData = Object.entries(dataMap).map(([name, value]) => ({ name, value }))
-
-                                                return (
-                                                    <div key={idx} className="space-y-3 p-4 border rounded-lg bg-card shadow-sm">
-                                                        <h4 className="font-bold text-xs text-foreground truncate" title={q.question_text}>
-                                                            {idx + 1}. {q.question_text}
-                                                        </h4>
-                                                        <div className="h-40 w-full">
-                                                            <ResponsiveContainer width="100%" height="100%">
-                                                                <BarChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.1} />
-                                                                    <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
-                                                                    <YAxis fontSize={10} tickLine={false} axisLine={false} />
-                                                                    <RechartsTooltip
-                                                                        cursor={{ fill: 'transparent' }}
-                                                                        contentStyle={{ fontSize: '10px', borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                                                                    />
-                                                                    <Bar dataKey="value" radius={[2, 2, 0, 0]} barSize={30}>
-                                                                        {chartData.map((_, index) => (
-                                                                            <Cell key={`cell-${index}`} fill="#60a5fa" />
-                                                                        ))}
-                                                                    </Bar>
-                                                                </BarChart>
-                                                            </ResponsiveContainer>
-                                                        </div>
-                                                    </div>
-                                                )
-                                            }
-
-                                            if (q.question_type === 'text') {
-                                                return (
-                                                    <div key={idx} className="space-y-3 p-4 border rounded-lg bg-card shadow-sm">
-                                                        <h4 className="font-bold text-xs text-foreground truncate" title={q.question_text}>
-                                                            {idx + 1}. {q.question_text}
-                                                        </h4>
-                                                        <div className="space-y-1.5 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
-                                                            {responses.map((r, rIdx) => (
-                                                                r.answers[q.id] && (
-                                                                    <div key={rIdx} className="p-2 bg-muted/30 rounded border text-[10px] italic text-muted-foreground leading-tight">
-                                                                        "{r.answers[q.id]}"
-                                                                    </div>
-                                                                )
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                )
-                                            }
-                                            return null
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <DialogFooter className="p-6 border-t">
-                            <Button variant="secondary" onClick={() => setIsResultsOpen(false)}>Close Analysis</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                <EvaluationDialog
+                    id={null}
+                    open={isResultsOpen}
+                    onOpenChange={setIsResultsOpen}
+                    mode="results"
+                    initialTitle={colName}
+                    multiIds={aggregatedIds}
+                />
             </>
         )
     }
@@ -880,7 +604,14 @@ export default function TrainerRepositoryPage() {
                         {fileName}
                     </a>
                     <button
-                        onClick={() => handleUpdateCellValue(rowId, colName, "")}
+                        onClick={() => {
+                            setDeleteConfig({
+                                title: "Remove Attachment?",
+                                description: `Are you sure you want to remove the file "${fileName}"?`,
+                                onConfirm: () => handleUpdateCellValue(rowId, colName, "")
+                            });
+                            setDeleteConfirmOpen(true);
+                        }}
                         className="opacity-0 group-hover/file:opacity-100 p-1 hover:bg-muted rounded text-destructive"
                     >
                         <X className="h-3 w-3" />
@@ -993,7 +724,14 @@ export default function TrainerRepositoryPage() {
                                             </DropdownMenuItem>
                                             <DropdownMenuItem
                                                 className="text-destructive focus:text-destructive"
-                                                onClick={() => handleDeleteTab(tab.id)}
+                                                onClick={() => {
+                                                    setDeleteConfig({
+                                                        title: "Delete Tab?",
+                                                        description: `This will permanently delete the "${tab.name}" tab and all the trainer records within it.`,
+                                                        onConfirm: () => handleDeleteTab(tab.id)
+                                                    });
+                                                    setDeleteConfirmOpen(true);
+                                                }}
                                             >
                                                 <Trash2 className="h-4 w-4 mr-2" />
                                                 Delete
@@ -1096,7 +834,14 @@ export default function TrainerRepositoryPage() {
                                                             </DropdownMenuItem>
                                                             <DropdownMenuItem
                                                                 className="text-destructive focus:text-destructive"
-                                                                onClick={() => handleDeleteColumn(col.id)}
+                                                                onClick={() => {
+                                                                    setDeleteConfig({
+                                                                        title: "Remove Column?",
+                                                                        description: `Are you sure you want to remove the "${col.name}" column? Existing data for this field will be hidden.`,
+                                                                        onConfirm: () => handleDeleteColumn(col.id)
+                                                                    });
+                                                                    setDeleteConfirmOpen(true);
+                                                                }}
                                                             >
                                                                 <Trash2 className="h-4 w-4 mr-2" />
                                                                 Delete Column
@@ -1134,7 +879,7 @@ export default function TrainerRepositoryPage() {
                                                         {col.data_type === 'file' ? (
                                                             <FileCell rowId={row.id} colName={col.name} value={row.data[col.name] || ""} />
                                                         ) : col.data_type === 'evaluation' ? (
-                                                            <EvaluationCell rowId={row.id} colName={col.name} value={row.data[col.name] || ""} />
+                                                            <EvaluationCell rowId={row.id} colName={col.name} value={row.data[col.name] || ""} rowData={row.data} />
                                                         ) : (
                                                             <input
                                                                 type={col.data_type === 'number' ? 'number' : col.data_type === 'date' ? 'date' : 'text'}
@@ -1151,7 +896,14 @@ export default function TrainerRepositoryPage() {
                                                         variant="ghost"
                                                         size="icon"
                                                         className="h-8 w-8 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                                                        onClick={() => handleDeleteRow(row.id)}
+                                                        onClick={() => {
+                                                            setDeleteConfig({
+                                                                title: "Delete Record?",
+                                                                description: "Are you sure you want to permanently delete this trainer record?",
+                                                                onConfirm: () => handleDeleteRow(row.id)
+                                                            });
+                                                            setDeleteConfirmOpen(true);
+                                                        }}
                                                     >
                                                         <Trash2 className="h-3.5 w-3.5" />
                                                     </Button>
@@ -1250,6 +1002,32 @@ export default function TrainerRepositoryPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div >
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>{deleteConfig?.title || "Are you absolutely sure?"}</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {deleteConfig?.description}
+                            <br /><br />
+                            This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                if (deleteConfig?.onConfirm) deleteConfig.onConfirm();
+                                setDeleteConfirmOpen(false);
+                            }}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </div>
     )
 }

@@ -9,6 +9,7 @@ import {
   getPaginationRowModel,
   PaginationState,
 } from "@tanstack/react-table"
+import { useSearchParams } from "next/navigation"
 import { useEffect, useState, useMemo } from "react"
 import { tmsDb } from "@/lib/supabase-client"
 
@@ -68,9 +69,9 @@ type Course = {
   pretest_link: string | null
   posttest_link: string | null
   has_pvc_id: boolean | null
-  pvc_id_type: 'optional' | 'included' | null 
-  pvc_student_price: number | null           
-  pvc_professional_price: number | null        
+  pvc_id_type: 'optional' | 'included' | null
+  pvc_student_price: number | null
+  pvc_professional_price: number | null
   created_at: string
 }
 
@@ -84,9 +85,9 @@ type CourseFormData = {
   serial_number: string
   serial_number_pad: string
   has_pvc_id: boolean
-  pvc_id_type: 'optional' | 'included' | ''     
-  pvc_student_price: string                     
-  pvc_professional_price: string                
+  pvc_id_type: 'optional' | 'included' | ''
+  pvc_student_price: string
+  pvc_professional_price: string
 }
 type ExamLinkData = {
   pretest_link: string
@@ -136,16 +137,28 @@ export default function CoursesPage() {
     posttest_link: ""
   })
 
+  const searchParams = useSearchParams()
+  const editId = searchParams.get("editId")
+
+  useEffect(() => {
+    if (editId && data.length > 0 && !loading) {
+      const courseToEdit = data.find(c => c.id === editId)
+      if (courseToEdit) {
+        handleEditCourse(courseToEdit)
+      }
+    }
+  }, [editId, data, loading])
+
   useEffect(() => {
     fetchCourses()
   }, [])
 
   const fetchCourses = async () => {
     try {
-     const { data, error } = await tmsDb
-      .from("courses")
-      .select("id, name, description, training_fee, online_fee, face_to_face_fee, elearning_fee, title, serial_number, serial_number_pad, pretest_link, posttest_link, has_pvc_id, pvc_id_type, pvc_student_price, pvc_professional_price, created_at")
-      .order("name", { ascending: true })
+      const { data, error } = await tmsDb
+        .from("courses")
+        .select("id, name, description, training_fee, online_fee, face_to_face_fee, elearning_fee, title, serial_number, serial_number_pad, pretest_link, posttest_link, has_pvc_id, pvc_id_type, pvc_student_price, pvc_professional_price, created_at")
+        .order("name", { ascending: true })
 
       if (error) {
         console.error("Error fetching courses:", error)
@@ -172,9 +185,9 @@ export default function CoursesPage() {
       serial_number: "",
       serial_number_pad: "",
       has_pvc_id: false,
-       pvc_id_type: '',              // ✅ NEW
-    pvc_student_price: '',        // ✅ NEW
-    pvc_professional_price: ''    // ✅ NEW
+      pvc_id_type: '',              // ✅ NEW
+      pvc_student_price: '',        // ✅ NEW
+      pvc_professional_price: ''    // ✅ NEW
     })
   }
 
@@ -195,24 +208,24 @@ export default function CoursesPage() {
     setIsViewDialogOpen(true)
   }
 
-const handleEditCourse = (course: Course) => {
-  setSelectedCourse(course)
-  setFormData({
-    name: course.name,
-    description: course.description || "",
-    online_fee: course.online_fee?.toString() || "",
-    face_to_face_fee: course.face_to_face_fee?.toString() || "",
-    elearning_fee: course.elearning_fee?.toString() || "",
-    title: course.title || "",
-    serial_number: course.serial_number?.toString() || "",
-    serial_number_pad: course.serial_number_pad?.toString() || "",
-    has_pvc_id: course.has_pvc_id || false,
-     pvc_id_type: course.pvc_id_type || '',                        // ✅ NEW
-    pvc_student_price: course.pvc_student_price?.toString() || '', // ✅ NEW
-    pvc_professional_price: course.pvc_professional_price?.toString() || '' // ✅ NEW
-  })
-  setIsEditDialogOpen(true)
-}
+  const handleEditCourse = (course: Course) => {
+    setSelectedCourse(course)
+    setFormData({
+      name: course.name,
+      description: course.description || "",
+      online_fee: course.online_fee?.toString() || "",
+      face_to_face_fee: course.face_to_face_fee?.toString() || "",
+      elearning_fee: course.elearning_fee?.toString() || "",
+      title: course.title || "",
+      serial_number: course.serial_number?.toString() || "",
+      serial_number_pad: course.serial_number_pad?.toString() || "",
+      has_pvc_id: course.has_pvc_id || false,
+      pvc_id_type: course.pvc_id_type || '',                        // ✅ NEW
+      pvc_student_price: course.pvc_student_price?.toString() || '', // ✅ NEW
+      pvc_professional_price: course.pvc_professional_price?.toString() || '' // ✅ NEW
+    })
+    setIsEditDialogOpen(true)
+  }
   const handleDeleteClick = (course: Course) => {
     setSelectedCourse(course)
     setIsDeleteAlertOpen(true)
@@ -234,32 +247,92 @@ const handleEditCourse = (course: Course) => {
   }
 
 
-const handleSubmitAdd = async () => {
-  if (!formData.name.trim()) {
-    toast.error("Course name is required")
-    return
-  }
-
-  // ✅ Validate PVC pricing if has_pvc_id is true
-  if (formData.has_pvc_id) {
-    if (!formData.pvc_id_type) {
-      toast.error("Please select PVC ID type")
+  const handleSubmitAdd = async () => {
+    if (!formData.name.trim()) {
+      toast.error("Course name is required")
       return
     }
-    if (formData.pvc_id_type === 'optional') {
-      if (!formData.pvc_student_price || !formData.pvc_professional_price) {
-        toast.error("Please enter both student and professional PVC prices")
+
+    // ✅ Validate PVC pricing if has_pvc_id is true
+    if (formData.has_pvc_id) {
+      if (!formData.pvc_id_type) {
+        toast.error("Please select PVC ID type")
         return
       }
+      if (formData.pvc_id_type === 'optional') {
+        if (!formData.pvc_student_price || !formData.pvc_professional_price) {
+          toast.error("Please enter both student and professional PVC prices")
+          return
+        }
+      }
+    }
+
+    setIsSubmitting(true)
+    try {
+      const { data: newCourse, error } = await tmsDb
+        .from("courses")
+        .insert([
+          {
+            name: formData.name.trim(),
+            description: formData.description.trim() || null,
+            online_fee: formData.online_fee ? parseFloat(formData.online_fee) : null,
+            face_to_face_fee: formData.face_to_face_fee ? parseFloat(formData.face_to_face_fee) : null,
+            elearning_fee: formData.elearning_fee ? parseFloat(formData.elearning_fee) : null,
+            title: formData.title.trim() || null,
+            serial_number: formData.serial_number ? parseInt(formData.serial_number) : null,
+            serial_number_pad: formData.serial_number_pad ? parseInt(formData.serial_number_pad) : null,
+            has_pvc_id: formData.has_pvc_id,
+            pvc_id_type: formData.has_pvc_id ? formData.pvc_id_type : null,     // ✅ NEW
+            pvc_student_price: formData.pvc_student_price ? parseFloat(formData.pvc_student_price) : null,  // ✅ NEW
+            pvc_professional_price: formData.pvc_professional_price ? parseFloat(formData.pvc_professional_price) : null, // ✅ NEW
+          },
+        ])
+        .select()
+        .single()
+
+      if (error) {
+        console.error("Error adding course:", error)
+        toast.error(error.message || "Failed to add course")
+      } else {
+        setData([...data, newCourse])
+        toast.success("Course added successfully")
+        setIsAddDialogOpen(false)
+        resetForm()
+      }
+    } catch (err) {
+      console.error("Unexpected error:", err)
+      toast.error("An unexpected error occurred")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  setIsSubmitting(true)
-  try {
-    const { data: newCourse, error } = await tmsDb
-      .from("courses")
-      .insert([
-        {
+
+  const handleSubmitEdit = async () => {
+    if (!selectedCourse || !formData.name.trim()) {
+      toast.error("Course name is required")
+      return
+    }
+
+    // ✅ Validate PVC pricing if has_pvc_id is true
+    if (formData.has_pvc_id) {
+      if (!formData.pvc_id_type) {
+        toast.error("Please select PVC ID type")
+        return
+      }
+      if (formData.pvc_id_type === 'optional') {
+        if (!formData.pvc_student_price || !formData.pvc_professional_price) {
+          toast.error("Please enter both student and professional PVC prices")
+          return
+        }
+      }
+    }
+
+    setIsSubmitting(true)
+    try {
+      const { data: updatedCourse, error } = await tmsDb
+        .from("courses")
+        .update({
           name: formData.name.trim(),
           description: formData.description.trim() || null,
           online_fee: formData.online_fee ? parseFloat(formData.online_fee) : null,
@@ -272,88 +345,28 @@ const handleSubmitAdd = async () => {
           pvc_id_type: formData.has_pvc_id ? formData.pvc_id_type : null,     // ✅ NEW
           pvc_student_price: formData.pvc_student_price ? parseFloat(formData.pvc_student_price) : null,  // ✅ NEW
           pvc_professional_price: formData.pvc_professional_price ? parseFloat(formData.pvc_professional_price) : null, // ✅ NEW
-        },
-      ])
-      .select()
-      .single()
+        })
+        .eq("id", selectedCourse.id)
+        .select()
+        .single()
 
-    if (error) {
-      console.error("Error adding course:", error)
-      toast.error(error.message || "Failed to add course")
-    } else {
-      setData([...data, newCourse])
-      toast.success("Course added successfully")
-      setIsAddDialogOpen(false)
-      resetForm()
-    }
-  } catch (err) {
-    console.error("Unexpected error:", err)
-    toast.error("An unexpected error occurred")
-  } finally {
-    setIsSubmitting(false)
-  }
-}
-
-
-const handleSubmitEdit = async () => {
-  if (!selectedCourse || !formData.name.trim()) {
-    toast.error("Course name is required")
-    return
-  }
-
-  // ✅ Validate PVC pricing if has_pvc_id is true
-  if (formData.has_pvc_id) {
-    if (!formData.pvc_id_type) {
-      toast.error("Please select PVC ID type")
-      return
-    }
-    if (formData.pvc_id_type === 'optional') {
-      if (!formData.pvc_student_price || !formData.pvc_professional_price) {
-        toast.error("Please enter both student and professional PVC prices")
-        return
+      if (error) {
+        console.error("Error updating course:", error)
+        toast.error(error.message || "Failed to update course")
+      } else {
+        setData(data.map((c) => (c.id === selectedCourse.id ? updatedCourse : c)))
+        toast.success("Course updated successfully")
+        setIsEditDialogOpen(false)
+        setSelectedCourse(null)
+        resetForm()
       }
+    } catch (err) {
+      console.error("Unexpected error:", err)
+      toast.error("An unexpected error occurred")
+    } finally {
+      setIsSubmitting(false)
     }
   }
-
-  setIsSubmitting(true)
-  try {
-    const { data: updatedCourse, error } = await tmsDb
-      .from("courses")
-      .update({
-        name: formData.name.trim(),
-        description: formData.description.trim() || null,
-        online_fee: formData.online_fee ? parseFloat(formData.online_fee) : null,
-        face_to_face_fee: formData.face_to_face_fee ? parseFloat(formData.face_to_face_fee) : null,
-        elearning_fee: formData.elearning_fee ? parseFloat(formData.elearning_fee) : null,
-        title: formData.title.trim() || null,
-        serial_number: formData.serial_number ? parseInt(formData.serial_number) : null,
-        serial_number_pad: formData.serial_number_pad ? parseInt(formData.serial_number_pad) : null,
-        has_pvc_id: formData.has_pvc_id,
-        pvc_id_type: formData.has_pvc_id ? formData.pvc_id_type : null,     // ✅ NEW
-        pvc_student_price: formData.pvc_student_price ? parseFloat(formData.pvc_student_price) : null,  // ✅ NEW
-        pvc_professional_price: formData.pvc_professional_price ? parseFloat(formData.pvc_professional_price) : null, // ✅ NEW
-      })
-      .eq("id", selectedCourse.id)
-      .select()
-      .single()
-
-    if (error) {
-      console.error("Error updating course:", error)
-      toast.error(error.message || "Failed to update course")
-    } else {
-      setData(data.map((c) => (c.id === selectedCourse.id ? updatedCourse : c)))
-      toast.success("Course updated successfully")
-      setIsEditDialogOpen(false)
-      setSelectedCourse(null)
-      resetForm()
-    }
-  } catch (err) {
-    console.error("Unexpected error:", err)
-    toast.error("An unexpected error occurred")
-  } finally {
-    setIsSubmitting(false)
-  }
-}
 
   const handleSubmitExamLinks = async () => {
     if (!selectedCourse) return
@@ -469,8 +482,8 @@ const handleSubmitEdit = async () => {
         accessorKey: "description",
         header: "Description",
         cell: ({ row }) => (
-          <div 
-            className="text-muted-foreground text-sm max-w-40 truncate" 
+          <div
+            className="text-muted-foreground text-sm max-w-40 truncate"
             title={row.original.description || "No description"}
           >
             {row.original.description || "No description"}
@@ -524,7 +537,7 @@ const handleSubmitEdit = async () => {
         cell: ({ row }) => (
           <div className="flex gap-2">
             {row.original.pretest_link ? (
-              <Button 
+              <Button
                 className="cursor-pointer"
                 variant="outline"
                 size="sm"
@@ -534,7 +547,7 @@ const handleSubmitEdit = async () => {
                 Pre-test
               </Button>
             ) : (
-              <Button 
+              <Button
                 className="cursor-pointer"
                 variant="ghost"
                 size="sm"
@@ -544,7 +557,7 @@ const handleSubmitEdit = async () => {
               </Button>
             )}
             {row.original.posttest_link ? (
-              <Button  
+              <Button
                 className="cursor-pointer"
                 variant="outline"
                 size="sm"
@@ -554,7 +567,7 @@ const handleSubmitEdit = async () => {
                 Post-test
               </Button>
             ) : (
-              <Button  
+              <Button
                 className="cursor-pointer"
                 variant="ghost"
                 size="sm"
@@ -637,17 +650,17 @@ const handleSubmitEdit = async () => {
               </TableRow>
             ) : table.getRowModel().rows.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow 
-                  key={row.id} 
+                <TableRow
+                  key={row.id}
                   className="cursor-pointer hover:bg-muted/50"
                   onClick={() => handleViewCourse(row.original)}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell 
+                    <TableCell
                       key={cell.id}
                       onClick={(e) => {
                         if (
-                          cell.column.id === "actions" || 
+                          cell.column.id === "actions" ||
                           cell.column.id === "exam" ||
                           (e.target as HTMLElement).closest('button')
                         ) {
@@ -682,7 +695,7 @@ const handleSubmitEdit = async () => {
             to{" "}
             {Math.min(
               (table.getState().pagination.pageIndex + 1) *
-                table.getState().pagination.pageSize,
+              table.getState().pagination.pageSize,
               filteredData.length
             )}{" "}
             of {filteredData.length} courses
@@ -760,7 +773,7 @@ const handleSubmitEdit = async () => {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
-               <div className="space-y-2">
+                <div className="space-y-2">
                   <Label className="text-muted-foreground">Training Fees</Label>
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
@@ -1081,137 +1094,137 @@ const handleSubmitEdit = async () => {
                   }
                 />
               </div>
-              
-<div className="space-y-4 border-t pt-4">
-  <div className="flex items-center gap-3">
-    <Checkbox
-      id="add-has-pvc"
-      checked={formData.has_pvc_id}
-      onCheckedChange={(checked) => {
-        setFormData({ 
-          ...formData, 
-          has_pvc_id: Boolean(checked),
-          // Reset PVC fields when unchecked
-          pvc_id_type: checked ? formData.pvc_id_type : '',
-          pvc_student_price: checked ? formData.pvc_student_price : '',
-          pvc_professional_price: checked ? formData.pvc_professional_price : ''
-        })
-      }}
-    />
-    <Label htmlFor="add-has-pvc" className="cursor-pointer text-sm font-medium">
-      This course offers Physical PVC ID
-    </Label>
-  </div>
 
-  {/* ✅ Show PVC options only when has_pvc_id is checked */}
-  {formData.has_pvc_id && (
-    <div className="ml-6 space-y-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 rounded-lg">
-      <div className="space-y-2">
-        <Label className="text-sm font-medium">PVC ID Type *</Label>
-        <RadioGroup
-          value={formData.pvc_id_type}
-          onValueChange={(value: 'optional' | 'included') =>
-            setFormData({ ...formData, pvc_id_type: value })
-          }
-          className="flex flex-col gap-3"
-        >
-          <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors">
-            <RadioGroupItem value="optional" id="pvc-optional" className="mt-1" />
-            <div className="flex-1">
-              <Label htmlFor="pvc-optional" className="cursor-pointer font-medium">
-                Optional Add-on
-              </Label>
-              <p className="text-xs text-muted-foreground mt-1">
-                PVC not included in course price. Users can opt to add it for an extra fee.
-                <br />
-                <span className="text-blue-600 dark:text-blue-400 font-medium">
-                  Example: BOSHSO1 - PVC is optional
-                </span>
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors">
-            <RadioGroupItem value="included" id="pvc-included" className="mt-1" />
-            <div className="flex-1">
-              <Label htmlFor="pvc-included" className="cursor-pointer font-medium">
-                Included in Price
-              </Label>
-              <p className="text-xs text-muted-foreground mt-1">
-                PVC already included in the course fee. No option to opt-out unless discounted.
-                <br />
-                <span className="text-blue-600 dark:text-blue-400 font-medium">
-                  Example: BOSHSO2 - PVC included in original price
-                </span>
-              </p>
-            </div>
-          </div>
-        </RadioGroup>
-      </div>
+              <div className="space-y-4 border-t pt-4">
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="add-has-pvc"
+                    checked={formData.has_pvc_id}
+                    onCheckedChange={(checked) => {
+                      setFormData({
+                        ...formData,
+                        has_pvc_id: Boolean(checked),
+                        // Reset PVC fields when unchecked
+                        pvc_id_type: checked ? formData.pvc_id_type : '',
+                        pvc_student_price: checked ? formData.pvc_student_price : '',
+                        pvc_professional_price: checked ? formData.pvc_professional_price : ''
+                      })
+                    }}
+                  />
+                  <Label htmlFor="add-has-pvc" className="cursor-pointer text-sm font-medium">
+                    This course offers Physical PVC ID
+                  </Label>
+                </div>
 
-      {/* ✅ Show pricing inputs only for optional type */}
-      {formData.pvc_id_type === 'optional' && (
-        <>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="add-pvc-student" className="text-sm font-medium">
-                Student Price (₱) *
-              </Label>
-              <Input
-                id="add-pvc-student"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={formData.pvc_student_price}
-                onChange={(e) =>
-                  setFormData({ ...formData, pvc_student_price: e.target.value })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Price for students/unemployed
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="add-pvc-professional" className="text-sm font-medium">
-                Professional Price (₱) *
-              </Label>
-              <Input
-                id="add-pvc-professional"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={formData.pvc_professional_price}
-                onChange={(e) =>
-                  setFormData({ ...formData, pvc_professional_price: e.target.value })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Price for employed professionals
-              </p>
-            </div>
-          </div>
+                {/* ✅ Show PVC options only when has_pvc_id is checked */}
+                {formData.has_pvc_id && (
+                  <div className="ml-6 space-y-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 rounded-lg">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">PVC ID Type *</Label>
+                      <RadioGroup
+                        value={formData.pvc_id_type}
+                        onValueChange={(value: 'optional' | 'included') =>
+                          setFormData({ ...formData, pvc_id_type: value })
+                        }
+                        className="flex flex-col gap-3"
+                      >
+                        <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors">
+                          <RadioGroupItem value="optional" id="pvc-optional" className="mt-1" />
+                          <div className="flex-1">
+                            <Label htmlFor="pvc-optional" className="cursor-pointer font-medium">
+                              Optional Add-on
+                            </Label>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              PVC not included in course price. Users can opt to add it for an extra fee.
+                              <br />
+                              <span className="text-blue-600 dark:text-blue-400 font-medium">
+                                Example: BOSHSO1 - PVC is optional
+                              </span>
+                            </p>
+                          </div>
+                        </div>
 
-          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 p-3 rounded-md">
-            <p className="text-xs text-amber-800 dark:text-amber-200">
-              💡 <strong>Tip:</strong> These prices will be shown to registrants based on their employment status.
-              Students/unemployed see the student price, employed see the professional price.
-            </p>
-          </div>
-        </>
-      )}
+                        <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors">
+                          <RadioGroupItem value="included" id="pvc-included" className="mt-1" />
+                          <div className="flex-1">
+                            <Label htmlFor="pvc-included" className="cursor-pointer font-medium">
+                              Included in Price
+                            </Label>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              PVC already included in the course fee. No option to opt-out unless discounted.
+                              <br />
+                              <span className="text-blue-600 dark:text-blue-400 font-medium">
+                                Example: BOSHSO2 - PVC included in original price
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                      </RadioGroup>
+                    </div>
 
-      {formData.pvc_id_type === 'included' && (
-        <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 p-3 rounded-md">
-          <p className="text-xs text-green-800 dark:text-green-200">
-            ✓ <strong>PVC Included:</strong> Users will automatically get PVC ID with their registration at the full course price.
-            Only discounted registrations will have the option to add PVC separately.
-          </p>
-        </div>
-      )}
-    </div>
-  )}
-</div>
+                    {/* ✅ Show pricing inputs only for optional type */}
+                    {formData.pvc_id_type === 'optional' && (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="add-pvc-student" className="text-sm font-medium">
+                              Student Price (₱) *
+                            </Label>
+                            <Input
+                              id="add-pvc-student"
+                              type="number"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={formData.pvc_student_price}
+                              onChange={(e) =>
+                                setFormData({ ...formData, pvc_student_price: e.target.value })
+                              }
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Price for students/unemployed
+                            </p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-pvc-professional" className="text-sm font-medium">
+                              Professional Price (₱) *
+                            </Label>
+                            <Input
+                              id="add-pvc-professional"
+                              type="number"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={formData.pvc_professional_price}
+                              onChange={(e) =>
+                                setFormData({ ...formData, pvc_professional_price: e.target.value })
+                              }
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Price for employed professionals
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 p-3 rounded-md">
+                          <p className="text-xs text-amber-800 dark:text-amber-200">
+                            💡 <strong>Tip:</strong> These prices will be shown to registrants based on their employment status.
+                            Students/unemployed see the student price, employed see the professional price.
+                          </p>
+                        </div>
+                      </>
+                    )}
+
+                    {formData.pvc_id_type === 'included' && (
+                      <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 p-3 rounded-md">
+                        <p className="text-xs text-green-800 dark:text-green-200">
+                          ✓ <strong>PVC Included:</strong> Users will automatically get PVC ID with their registration at the full course price.
+                          Only discounted registrations will have the option to add PVC separately.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -1345,137 +1358,137 @@ const handleSubmitEdit = async () => {
                   }
                 />
               </div>
-              
-<div className="space-y-4 border-t pt-4">
-  <div className="flex items-center gap-3">
-    <Checkbox
-      id="add-has-pvc"
-      checked={formData.has_pvc_id}
-      onCheckedChange={(checked) => {
-        setFormData({ 
-          ...formData, 
-          has_pvc_id: Boolean(checked),
-          // Reset PVC fields when unchecked
-          pvc_id_type: checked ? formData.pvc_id_type : '',
-          pvc_student_price: checked ? formData.pvc_student_price : '',
-          pvc_professional_price: checked ? formData.pvc_professional_price : ''
-        })
-      }}
-    />
-    <Label htmlFor="add-has-pvc" className="cursor-pointer text-sm font-medium">
-      This course offers Physical PVC ID
-    </Label>
-  </div>
 
-  {/* ✅ Show PVC options only when has_pvc_id is checked */}
-  {formData.has_pvc_id && (
-    <div className="ml-6 space-y-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 rounded-lg">
-      <div className="space-y-2">
-        <Label className="text-sm font-medium">PVC ID Type *</Label>
-        <RadioGroup
-          value={formData.pvc_id_type}
-          onValueChange={(value: 'optional' | 'included') =>
-            setFormData({ ...formData, pvc_id_type: value })
-          }
-          className="flex flex-col gap-3"
-        >
-          <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors">
-            <RadioGroupItem value="optional" id="pvc-optional" className="mt-1" />
-            <div className="flex-1">
-              <Label htmlFor="pvc-optional" className="cursor-pointer font-medium">
-                Optional Add-on
-              </Label>
-              <p className="text-xs text-muted-foreground mt-1">
-                PVC not included in course price. Users can opt to add it for an extra fee.
-                <br />
-                <span className="text-blue-600 dark:text-blue-400 font-medium">
-                  Example: BOSHSO1 - PVC is optional
-                </span>
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors">
-            <RadioGroupItem value="included" id="pvc-included" className="mt-1" />
-            <div className="flex-1">
-              <Label htmlFor="pvc-included" className="cursor-pointer font-medium">
-                Included in Price
-              </Label>
-              <p className="text-xs text-muted-foreground mt-1">
-                PVC already included in the course fee. No option to opt-out unless discounted.
-                <br />
-                <span className="text-blue-600 dark:text-blue-400 font-medium">
-                  Example: BOSHSO2 - PVC included in original price
-                </span>
-              </p>
-            </div>
-          </div>
-        </RadioGroup>
-      </div>
+              <div className="space-y-4 border-t pt-4">
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="add-has-pvc"
+                    checked={formData.has_pvc_id}
+                    onCheckedChange={(checked) => {
+                      setFormData({
+                        ...formData,
+                        has_pvc_id: Boolean(checked),
+                        // Reset PVC fields when unchecked
+                        pvc_id_type: checked ? formData.pvc_id_type : '',
+                        pvc_student_price: checked ? formData.pvc_student_price : '',
+                        pvc_professional_price: checked ? formData.pvc_professional_price : ''
+                      })
+                    }}
+                  />
+                  <Label htmlFor="add-has-pvc" className="cursor-pointer text-sm font-medium">
+                    This course offers Physical PVC ID
+                  </Label>
+                </div>
 
-      {/* ✅ Show pricing inputs only for optional type */}
-      {formData.pvc_id_type === 'optional' && (
-        <>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="add-pvc-student" className="text-sm font-medium">
-                Student Price (₱) *
-              </Label>
-              <Input
-                id="add-pvc-student"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={formData.pvc_student_price}
-                onChange={(e) =>
-                  setFormData({ ...formData, pvc_student_price: e.target.value })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Price for students/unemployed
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="add-pvc-professional" className="text-sm font-medium">
-                Professional Price (₱) *
-              </Label>
-              <Input
-                id="add-pvc-professional"
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={formData.pvc_professional_price}
-                onChange={(e) =>
-                  setFormData({ ...formData, pvc_professional_price: e.target.value })
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                Price for employed professionals
-              </p>
-            </div>
-          </div>
+                {/* ✅ Show PVC options only when has_pvc_id is checked */}
+                {formData.has_pvc_id && (
+                  <div className="ml-6 space-y-4 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 rounded-lg">
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">PVC ID Type *</Label>
+                      <RadioGroup
+                        value={formData.pvc_id_type}
+                        onValueChange={(value: 'optional' | 'included') =>
+                          setFormData({ ...formData, pvc_id_type: value })
+                        }
+                        className="flex flex-col gap-3"
+                      >
+                        <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors">
+                          <RadioGroupItem value="optional" id="pvc-optional" className="mt-1" />
+                          <div className="flex-1">
+                            <Label htmlFor="pvc-optional" className="cursor-pointer font-medium">
+                              Optional Add-on
+                            </Label>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              PVC not included in course price. Users can opt to add it for an extra fee.
+                              <br />
+                              <span className="text-blue-600 dark:text-blue-400 font-medium">
+                                Example: BOSHSO1 - PVC is optional
+                              </span>
+                            </p>
+                          </div>
+                        </div>
 
-          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 p-3 rounded-md">
-            <p className="text-xs text-amber-800 dark:text-amber-200">
-              💡 <strong>Tip:</strong> These prices will be shown to registrants based on their employment status.
-              Students/unemployed see the student price, employed see the professional price.
-            </p>
-          </div>
-        </>
-      )}
+                        <div className="flex items-start gap-3 p-3 border rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-colors">
+                          <RadioGroupItem value="included" id="pvc-included" className="mt-1" />
+                          <div className="flex-1">
+                            <Label htmlFor="pvc-included" className="cursor-pointer font-medium">
+                              Included in Price
+                            </Label>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              PVC already included in the course fee. No option to opt-out unless discounted.
+                              <br />
+                              <span className="text-blue-600 dark:text-blue-400 font-medium">
+                                Example: BOSHSO2 - PVC included in original price
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                      </RadioGroup>
+                    </div>
 
-      {formData.pvc_id_type === 'included' && (
-        <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 p-3 rounded-md">
-          <p className="text-xs text-green-800 dark:text-green-200">
-            ✓ <strong>PVC Included:</strong> Users will automatically get PVC ID with their registration at the full course price.
-            Only discounted registrations will have the option to add PVC separately.
-          </p>
-        </div>
-      )}
-    </div>
-  )}
-</div>
+                    {/* ✅ Show pricing inputs only for optional type */}
+                    {formData.pvc_id_type === 'optional' && (
+                      <>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="add-pvc-student" className="text-sm font-medium">
+                              Student Price (₱) *
+                            </Label>
+                            <Input
+                              id="add-pvc-student"
+                              type="number"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={formData.pvc_student_price}
+                              onChange={(e) =>
+                                setFormData({ ...formData, pvc_student_price: e.target.value })
+                              }
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Price for students/unemployed
+                            </p>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="add-pvc-professional" className="text-sm font-medium">
+                              Professional Price (₱) *
+                            </Label>
+                            <Input
+                              id="add-pvc-professional"
+                              type="number"
+                              step="0.01"
+                              placeholder="0.00"
+                              value={formData.pvc_professional_price}
+                              onChange={(e) =>
+                                setFormData({ ...formData, pvc_professional_price: e.target.value })
+                              }
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              Price for employed professionals
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 p-3 rounded-md">
+                          <p className="text-xs text-amber-800 dark:text-amber-200">
+                            💡 <strong>Tip:</strong> These prices will be shown to registrants based on their employment status.
+                            Students/unemployed see the student price, employed see the professional price.
+                          </p>
+                        </div>
+                      </>
+                    )}
+
+                    {formData.pvc_id_type === 'included' && (
+                      <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 p-3 rounded-md">
+                        <p className="text-xs text-green-800 dark:text-green-200">
+                          ✓ <strong>PVC Included:</strong> Users will automatically get PVC ID with their registration at the full course price.
+                          Only discounted registrations will have the option to add PVC separately.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           <DialogFooter>

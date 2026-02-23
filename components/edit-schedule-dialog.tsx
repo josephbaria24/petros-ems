@@ -2,7 +2,7 @@
 "use client"
 
 import * as React from "react"
-import { CalendarIcon } from "lucide-react"
+import { CalendarIcon, Check, ChevronsUpDown } from "lucide-react"
 import { format, eachDayOfInterval } from "date-fns"
 import { cn } from "@/lib/utils"
 import { Calendar03 } from "@/components/calendar-03"
@@ -28,6 +28,7 @@ import {
   CommandItem,
   CommandGroup,
   CommandEmpty,
+  CommandList,
 } from "@/components/ui/command"
 
 
@@ -82,6 +83,9 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
   const [selectedCourseData, setSelectedCourseData] = React.useState<any>(null)
   const [batchNumber, setBatchNumber] = React.useState<number | null>(null)
   const [dayTrainers, setDayTrainers] = React.useState<Record<string, string>>({})
+  const [trainerName, setTrainerName] = React.useState<string>("")
+  const [trainerOptions, setTrainerOptions] = React.useState<string[]>([])
+  const [loadingTrainers, setLoadingTrainers] = React.useState(false)
   // Fetch courses with fee information
   React.useEffect(() => {
     const fetchCourses = async () => {
@@ -102,6 +106,45 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
 
     fetchCourses()
   }, [])
+
+  React.useEffect(() => {
+    const fetchTrainersFromRepo = async () => {
+      setLoadingTrainers(true)
+      try {
+        const { data: rows, error } = await tmsDb
+          .from("trainer_repo_rows")
+          .select("data")
+
+        if (error) throw error
+
+        if (rows) {
+          const names = new Set<string>()
+          rows.forEach((row: any) => {
+            const d = row.data
+            // Try to find name components
+            const firstName = d["First Name"] || d["first name"] || d["FirstName"] || ""
+            const lastName = d["Last Name"] || d["last name"] || d["LastName"] || ""
+            const fullName = d["Full Name"] || d["full name"] || d["FullName"] || d["Trainer Name"] || d["Name"] || ""
+
+            if (firstName && lastName) {
+              names.add(`${firstName} ${lastName}`.trim())
+            } else if (fullName) {
+              names.add(fullName.trim())
+            }
+          })
+          setTrainerOptions(Array.from(names).sort())
+        }
+      } catch (error) {
+        console.error("Error fetching trainers:", error)
+      } finally {
+        setLoadingTrainers(false)
+      }
+    }
+
+    if (open) {
+      fetchTrainersFromRepo()
+    }
+  }, [open])
 
   // Update selectedCourseData when course changes
   React.useEffect(() => {
@@ -148,6 +191,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
         setScheduleType(scheduleData.schedule_type)
         setBranch(scheduleData.branch)
         setBatchNumber(scheduleData.batch_number)
+        setTrainerName(scheduleData.trainer_name || "")
         setDayTrainers(scheduleData.day_trainers || {})
         setCourse(scheduleData.course_id || "")
         setBranch(scheduleData.branch || "")
@@ -236,7 +280,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
           event_type: eventType,
           branch: branch,
           batch_number: batchNumber, // ✅ Update batch number
-          trainer_name: Object.values(dayTrainers).filter(Boolean)[0] || "",
+          trainer_name: trainerName || Object.values(dayTrainers).filter(Boolean)[0] || "",
           day_trainers: dayTrainers,
         })
         .eq("id", scheduleId)
@@ -438,6 +482,75 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
                   </div>
                 </div>
 
+                {/* Primary Trainer Selection */}
+                <div className="grid gap-1.5">
+                  <Label htmlFor="trainer">Trainer *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        className={cn(
+                          "w-full h-9 justify-between text-left font-normal",
+                          !trainerName && "text-muted-foreground"
+                        )}
+                        disabled={isSubmitting}
+                      >
+                        <span className="truncate">{trainerName || "Select primary trainer"}</span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[300px] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search trainer..." className="h-8 text-xs" />
+                        <CommandList onWheel={(e) => e.stopPropagation()}>
+                          <CommandEmpty>
+                            <div className="p-2 text-xs text-muted-foreground">
+                              Not found.
+                              <div className="mt-2">
+                                <Input
+                                  placeholder="Manual name..."
+                                  className="h-7 text-[10px]"
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      const val = (e.target as HTMLInputElement).value
+                                      if (val) {
+                                        setTrainerName(val)
+                                        handleApplyToAll(val)
+                                      }
+                                    }
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </CommandEmpty>
+                          <CommandGroup heading="Trainers">
+                            {trainerOptions.map((trainer: string) => (
+                              <CommandItem
+                                key={trainer}
+                                value={trainer}
+                                onSelect={(val: string) => {
+                                  setTrainerName(val)
+                                  handleApplyToAll(val)
+                                }}
+                                className="text-xs py-1"
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-3 w-3",
+                                    trainerName === trainer ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                {trainer}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
                 {/* Per-Day Trainer Assignment */}
                 {scheduleDays.length > 0 && (
                   <div className="grid gap-2 p-3 bg-muted/30 border rounded-md">
@@ -460,18 +573,76 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 max-h-[200px] overflow-y-auto pr-2">
                       {scheduleDays.map((day, idx) => {
                         const dateStr = formatDateForDB(day)
+                        const currentTrainer = dayTrainers[dateStr] || ""
+
                         return (
                           <div key={dateStr} className="flex items-center gap-2">
                             <span className="text-[10px] font-medium text-muted-foreground w-20 shrink-0">
                               {format(day, "MMM dd")}
                             </span>
-                            <Input
-                              placeholder="Trainer"
-                              value={dayTrainers[dateStr] || ""}
-                              onChange={(e) => setDayTrainers(prev => ({ ...prev, [dateStr]: e.target.value }))}
-                              className="h-7 text-xs"
-                              disabled={isSubmitting}
-                            />
+
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  role="combobox"
+                                  className={cn(
+                                    "h-7 w-full justify-between text-xs font-normal px-2",
+                                    !currentTrainer && "text-muted-foreground"
+                                  )}
+                                  disabled={isSubmitting}
+                                >
+                                  <span className="truncate">{currentTrainer || "Trainer"}</span>
+                                  <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-[200px] p-0" align="start">
+                                <Command>
+                                  <CommandInput placeholder="Search..." className="h-8 text-xs" />
+                                  <CommandList onWheel={(e) => e.stopPropagation()}>
+                                    <CommandEmpty>
+                                      <div className="p-2 text-xs text-muted-foreground">
+                                        Not found.
+                                        <div className="mt-2">
+                                          <Input
+                                            placeholder="Manual name..."
+                                            className="h-7 text-[10px]"
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                const val = (e.target as HTMLInputElement).value
+                                                if (val) {
+                                                  setDayTrainers(prev => ({ ...prev, [dateStr]: val }))
+                                                }
+                                              }
+                                            }}
+                                          />
+                                        </div>
+                                      </div>
+                                    </CommandEmpty>
+                                    <CommandGroup>
+                                      {trainerOptions.map((trainer: string) => (
+                                        <CommandItem
+                                          key={trainer}
+                                          value={trainer}
+                                          onSelect={(val: string) => {
+                                            setDayTrainers(prev => ({ ...prev, [dateStr]: val }))
+                                          }}
+                                          className="text-xs py-1"
+                                        >
+                                          <Check
+                                            className={cn(
+                                              "mr-2 h-3 w-3",
+                                              currentTrainer === trainer ? "opacity-100" : "opacity-0"
+                                            )}
+                                          />
+                                          {trainer}
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
                           </div>
                         )
                       })}
@@ -505,18 +676,20 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
                     >
                       <Command>
                         <CommandInput placeholder="Search course..." />
-                        <CommandEmpty>No course found.</CommandEmpty>
-                        <CommandGroup className="max-h-60 overflow-y-auto">
-                          {courseOptions.map((c) => (
-                            <CommandItem
-                              key={c.id}
-                              value={c.name}
-                              onSelect={() => setCourse(c.id)}
-                            >
-                              {c.name}
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
+                        <CommandList className="max-h-60 overflow-y-auto" onWheel={(e) => e.stopPropagation()}>
+                          <CommandEmpty>No course found.</CommandEmpty>
+                          <CommandGroup>
+                            {courseOptions.map((c) => (
+                              <CommandItem
+                                key={c.id}
+                                value={c.name}
+                                onSelect={() => setCourse(c.id)}
+                              >
+                                {c.name}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
                       </Command>
                     </PopoverContent>
                   </Popover>

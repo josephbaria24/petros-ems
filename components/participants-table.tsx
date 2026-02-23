@@ -46,6 +46,8 @@ import ParticipantDirectoryDialog from "@/components/trainee-directory-dialog"
 import { EditScheduleDialog } from "@/components/edit-schedule-dialog"
 import { TraineeSearchDialog } from "./trainee-search-dialog"
 import { ScheduleDetailDialog } from "./schedule-detail-dialog"
+import { ScheduleEvaluationsDialog } from "./evaluation-dialog"
+import { ClipboardList } from "lucide-react"
 
 type Participant = {
   id: string
@@ -82,6 +84,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const [isCancelling, setIsCancelling] = React.useState(false)
 
   const [directoryOpen, setDirectoryOpen] = React.useState(false)
+  const [evaluationsOpen, setEvaluationsOpen] = React.useState(false)
   const [directoryScheduleId, setDirectoryScheduleId] = React.useState<string | null>(null)
   const [directoryCourseName, setDirectoryCourseName] = React.useState("")
   const [directoryRange, setDirectoryRange] = React.useState("")
@@ -215,6 +218,11 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const handleEdit = (participant: Participant) => {
     setSelectedParticipant(participant)
     setEditDialogOpen(true)
+  }
+
+  const handleManageEvaluations = (participant: Participant) => {
+    setSelectedParticipant(participant)
+    setEvaluationsOpen(true)
   }
 
   const handleDeleteClick = (participant: Participant) => {
@@ -591,30 +599,35 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleView(participant)} className="cursor-pointer">
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleView(participant); }} className="cursor-pointer">
                 <Eye className="mr-2 h-4 w-4" />
                 View
               </DropdownMenuItem>
 
               {!isCancelled && (
-                <DropdownMenuItem onClick={() => handleEdit(participant)} className="cursor-pointer">
+                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(participant); }} className="cursor-pointer">
                   <Edit className="mr-2 h-4 w-4" />
                   Edit
                 </DropdownMenuItem>
               )}
 
-              <DropdownMenuItem onClick={() => handleCopyRegistrationLink(participant)} className="cursor-pointer">
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleCopyRegistrationLink(participant); }} className="cursor-pointer">
                 <Link2 className="mr-2 h-4 w-4" />
                 Copy Registration Link
               </DropdownMenuItem>
 
-              <DropdownMenuItem onClick={() => handleDownloadQRCode(participant)} className="cursor-pointer">
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDownloadQRCode(participant); }} className="cursor-pointer">
                 <QrCode className="mr-2 h-4 w-4" />
                 Download QR Code
               </DropdownMenuItem>
 
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleManageEvaluations(participant); }} className="cursor-pointer">
+                <ClipboardList className="mr-2 h-4 w-4 text-blue-600" />
+                Manage Evaluations
+              </DropdownMenuItem>
+
               <DropdownMenuItem
-                onClick={() => handleCancelScheduleClick(participant)}
+                onClick={(e) => { e.stopPropagation(); handleCancelScheduleClick(participant); }}
                 className={`cursor-pointer ${isCancelled ? 'text-green-600 focus:text-green-600' : 'text-orange-600 focus:text-orange-600'}`}
               >
                 <RefreshCcw className="mr-2 h-4 w-4" />
@@ -622,7 +635,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               </DropdownMenuItem>
 
               <DropdownMenuItem
-                onClick={() => handleDeleteClick(participant)}
+                onClick={(e) => { e.stopPropagation(); handleDeleteClick(participant); }}
                 className="cursor-pointer text-destructive focus:text-destructive"
               >
                 <Trash2 className="mr-2 h-4 w-4" />
@@ -1058,6 +1071,14 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         scheduleId={directoryScheduleId}
         courseName={directoryCourseName}
         scheduleRange={directoryRange}
+      />
+
+      {/* Evaluations Dialog */}
+      <ScheduleEvaluationsDialog
+        open={evaluationsOpen}
+        onOpenChange={setEvaluationsOpen}
+        scheduleId={selectedParticipant?.id || null}
+        courseName={selectedParticipant?.course}
       />
     </>
   )
