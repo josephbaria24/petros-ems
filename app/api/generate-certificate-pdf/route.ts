@@ -54,6 +54,8 @@ interface TextField {
   x: number;
   y: number;
   fontSize: number;
+  boxWidth?: number;
+  boxHeight?: number;
   fontWeight: "normal" | "bold" | "extrabold";
   fontStyle: "normal" | "italic";
   fontFamily: "Helvetica" | "Montserrat" | "Poppins";
@@ -98,7 +100,8 @@ export async function POST(req: NextRequest) {
       courseName, 
       courseTitle,  
       courseId, 
-      templateType = "completion"
+      templateType = "completion",
+      layoutOverride,
     } = body;
 
     console.log("📝 PDF Generation Request:");
@@ -251,8 +254,44 @@ if (trainee.schedule_id) {
     }
 
     // Set canvas dimensions based on template type
-    const CANVAS_WIDTH = isIDTemplate ? 1350 : templateImage.width;
-    const CANVAS_HEIGHT = isIDTemplate ? 850 : templateImage.height;
+    // Use the same canonical sizes as the template editor
+    const CANVAS_WIDTH = isIDTemplate ? 1350 : 842;
+    const CANVAS_HEIGHT = isIDTemplate ? 850 : 595;
+
+    // ✅ NEW: Per-trainee layout overrides (global X/Y offsets + per-field overrides)
+    let offsetX = 0;
+    let offsetY = 0;
+    let fieldOverrides: Record<string, any> = {};
+
+    // If a caller provides an explicit override (for live preview), use it.
+    if (layoutOverride && typeof layoutOverride === "object") {
+      offsetX = typeof layoutOverride.offsetX === "number" ? layoutOverride.offsetX : 0;
+      offsetY = typeof layoutOverride.offsetY === "number" ? layoutOverride.offsetY : 0;
+      fieldOverrides =
+        layoutOverride.fieldOverrides && typeof layoutOverride.fieldOverrides === "object"
+          ? layoutOverride.fieldOverrides
+          : {};
+    } else {
+      // Otherwise, load from DB
+      try {
+        const { data: overrideRow, error: overrideError } = await supabase
+          .from("certificate_layout_overrides")
+          .select("offset_x, offset_y, field_overrides")
+          .eq("training_id", trainee.id)
+          .eq("template_type", templateType)
+          .maybeSingle();
+
+        if (overrideError) {
+          console.warn("⚠️ Error fetching layout override:", overrideError);
+        } else if (overrideRow) {
+          offsetX = Number((overrideRow as any).offset_x ?? 0);
+          offsetY = Number((overrideRow as any).offset_y ?? 0);
+          fieldOverrides = ((overrideRow as any).field_overrides as any) || {};
+        }
+      } catch (e) {
+        console.warn("⚠️ Unexpected error while loading layout overrides:", e);
+      }
+    }
 
     console.log("📐 Canvas dimensions:", CANVAS_WIDTH, "x", CANVAS_HEIGHT);
 
@@ -269,6 +308,11 @@ if (trainee.schedule_id) {
 
     // Load trainee photo
     if (trainee.picture_2x2_url) {
+      // Try to get photo position from template fields ({{trainee_picture}}), fallback to defaults
+      const photoField = template.fields.find((f) =>
+        f.value && f.value.includes("{{trainee_picture}}")
+      );
+
       try {
         const photoResponse = await fetch(trainee.picture_2x2_url);
         if (photoResponse.ok) {
@@ -283,31 +327,77 @@ if (trainee.schedule_id) {
 
           // Different photo positioning for ID vs certificate
           if (isIDTemplate) {
-            // ID card: photo on left side, larger
-            const PHOTO_SIZE = 240;
-            const PHOTO_X = 228;
-            const PHOTO_Y = 351;
+            const defaultSize = 240;
+            const baseW = photoField && typeof photoField.boxWidth === "number"
+              ? photoField.boxWidth * CANVAS_WIDTH
+              : photoField && typeof photoField.fontSize === "number"
+                ? photoField.fontSize * CANVAS_HEIGHT
+                : defaultSize;
+            const baseH = photoField && typeof photoField.boxHeight === "number"
+              ? photoField.boxHeight * CANVAS_HEIGHT
+              : photoField && typeof photoField.fontSize === "number"
+                ? photoField.fontSize * CANVAS_HEIGHT
+                : defaultSize;
+
+            const fo = photoField ? (fieldOverrides[photoField.id] || {}) : {}
+            const photoW = typeof fo.boxWidth === "number" ? fo.boxWidth * CANVAS_WIDTH : baseW
+            const photoH = typeof fo.boxHeight === "number" ? fo.boxHeight * CANVAS_HEIGHT : baseH
+
+            // If designer placed a {{trainee_picture}} field, use its position; otherwise fallback
+            let photoX = 228;
+            let photoYTop = 351;
+            if (photoField) {
+              let normX = photoField.x + offsetX;
+              let normY = photoField.y + offsetY;
+              if (typeof fo.x === "number") normX = fo.x;
+              if (typeof fo.y === "number") normY = fo.y;
+              photoX = normX * CANVAS_WIDTH;
+              photoYTop = normY * CANVAS_HEIGHT;
+            }
 
             page.drawImage(traineeImage, {
-              x: PHOTO_X,
-              y: CANVAS_HEIGHT - PHOTO_Y - PHOTO_SIZE,
-              width: PHOTO_SIZE,
-              height: PHOTO_SIZE,
+              x: photoX,
+              y: CANVAS_HEIGHT - photoYTop - photoH,
+              width: photoW,
+              height: photoH,
             });
-            console.log("📷 ID photo placed at:", PHOTO_X, CANVAS_HEIGHT - PHOTO_Y - PHOTO_SIZE);
+            console.log("📷 ID photo placed at:", photoX, CANVAS_HEIGHT - photoYTop - photoH);
           } else {
-            // Certificate: photo on top right, smaller
-            const PHOTO_SIZE = 0.12 * CANVAS_HEIGHT;
-            const PHOTO_X = 0.85 * CANVAS_WIDTH;
-            const PHOTO_Y = 0.05 * CANVAS_HEIGHT;
+            const defaultSize = 0.12 * CANVAS_HEIGHT;
+            const baseW = photoField && typeof photoField.boxWidth === "number"
+              ? photoField.boxWidth * CANVAS_WIDTH
+              : photoField && typeof photoField.fontSize === "number"
+                ? photoField.fontSize * CANVAS_HEIGHT
+                : defaultSize;
+            const baseH = photoField && typeof photoField.boxHeight === "number"
+              ? photoField.boxHeight * CANVAS_HEIGHT
+              : photoField && typeof photoField.fontSize === "number"
+                ? photoField.fontSize * CANVAS_HEIGHT
+                : defaultSize;
+
+            const fo = photoField ? (fieldOverrides[photoField.id] || {}) : {}
+            const photoW = typeof fo.boxWidth === "number" ? fo.boxWidth * CANVAS_WIDTH : baseW
+            const photoH = typeof fo.boxHeight === "number" ? fo.boxHeight * CANVAS_HEIGHT : baseH
+
+            // For certificates, also allow override via {{trainee_picture}} field
+            let photoX = 0.85 * CANVAS_WIDTH + offsetX * CANVAS_WIDTH;
+            let photoYTop = 0.05 * CANVAS_HEIGHT + offsetY * CANVAS_HEIGHT;
+            if (photoField) {
+              let normX = photoField.x + offsetX;
+              let normY = photoField.y + offsetY;
+              if (typeof fo.x === "number") normX = fo.x;
+              if (typeof fo.y === "number") normY = fo.y;
+              photoX = normX * CANVAS_WIDTH;
+              photoYTop = normY * CANVAS_HEIGHT;
+            }
 
             page.drawImage(traineeImage, {
-              x: PHOTO_X,
-              y: CANVAS_HEIGHT - PHOTO_Y - PHOTO_SIZE,
-              width: PHOTO_SIZE,
-              height: PHOTO_SIZE,
+              x: photoX,
+              y: CANVAS_HEIGHT - photoYTop - photoH,
+              width: photoW,
+              height: photoH,
             });
-            console.log("📷 Certificate photo placed");
+            console.log("📷 Certificate photo placed at:", photoX, CANVAS_HEIGHT - photoYTop - photoH);
           }
         }
       } catch (error) {
@@ -357,6 +447,7 @@ if (trainee.schedule_id) {
     // Draw text fields
     console.log("✍️ Drawing", template.fields.length, "text fields");
     template.fields.forEach((field, index) => {
+      const fo = fieldOverrides[field.id] || {};
       let displayText = field.value;
 
       // Replace all placeholders
@@ -364,12 +455,24 @@ if (trainee.schedule_id) {
         displayText = displayText.replace(new RegExp(key, 'g'), val);
       });
 
-      const x = field.x * CANVAS_WIDTH;
-      const y = field.y * CANVAS_HEIGHT;
-      const fontSize = field.fontSize * CANVAS_HEIGHT;
+      // base position with global offset
+      let normX = field.x + offsetX;
+      let normY = field.y + offsetY;
+
+      // per-field absolute overrides (normalized 0–1)
+      if (typeof fo.x === "number") normX = fo.x;
+      if (typeof fo.y === "number") normY = fo.y;
+
+      const x = normX * CANVAS_WIDTH;
+      const y = normY * CANVAS_HEIGHT;
+
+      const baseFontSizeNorm = field.fontSize;
+      const fontSizeNorm = typeof fo.fontSize === "number" ? fo.fontSize : baseFontSizeNorm;
+      const fontSize = fontSizeNorm * CANVAS_HEIGHT;
       const lineHeight = (field.lineHeight || 1.2) * fontSize;
 
-      const color = hexToRgb(field.color);
+      const colorHex = typeof fo.color === "string" ? fo.color : field.color;
+      const color = hexToRgb(colorHex);
       
       let selectedFont = helveticaFont;
       

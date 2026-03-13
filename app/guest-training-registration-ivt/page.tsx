@@ -532,10 +532,6 @@ export default function IVTTherapyRegistrationForm() {
                         </div>
                     </CardContent>
                 </Card>
-
-                <p className="text-center text-sm text-muted-foreground mt-6">
-                    Never give out your password. <a href="#" className="text-primary hover:underline">Report abuse</a>
-                </p>
             </div>
         </div>
     )

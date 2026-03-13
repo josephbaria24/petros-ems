@@ -337,8 +337,8 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-w-full p-6">
+  <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-5xl max-w-full p-6 max-h-[90vh] overflow-y-auto">
 
         <DialogHeader>
           <DialogTitle>New Training Schedule</DialogTitle>

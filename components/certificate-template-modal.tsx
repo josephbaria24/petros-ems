@@ -33,6 +33,9 @@ interface TextField {
   x: number
   y: number
   fontSize: number
+  // Used for the {{trainee_picture}} placeholder box sizing (in px, editor-space)
+  boxWidth?: number
+  boxHeight?: number
   fontWeight: "normal" | "bold" | "extrabold"
   fontStyle: "normal" | "italic"
   fontFamily: "Helvetica" | "Montserrat" | "Poppins"
@@ -254,6 +257,7 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [previewMode, setPreviewMode] = useState(false)
+  const [canvasZoom, setCanvasZoom] = useState(1)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   
@@ -266,9 +270,30 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
   const [selectedField, setSelectedField] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [isResizingPhoto, setIsResizingPhoto] = useState(false)
+  const [resizeInfo, setResizeInfo] = useState<{
+    fieldId: string | null
+    startX: number
+    startY: number
+    startW: number
+    startH: number
+    startFieldX: number
+    startFieldY: number
+    handle: "corner" | "right" | "bottom" | "left" | "top"
+  }>({
+    fieldId: null,
+    startX: 0,
+    startY: 0,
+    startW: 0,
+    startH: 0,
+    startFieldX: 0,
+    startFieldY: 0,
+    handle: "corner",
+  })
   const [showPlaceholderMenu, setShowPlaceholderMenu] = useState(false)
   const [editingField, setEditingField] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState("")
+  const [activeTab, setActiveTab] = useState<"fields" | "edit">("fields")
 
   const handleDeleteTemplate = async () => {
     if (!confirm("Are you sure you want to delete this template?")) return;
@@ -314,6 +339,8 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
                 x: f.x * canvasW,
                 y: f.y * canvasH,
                 fontSize: f.fontSize * canvasH,
+                boxWidth: typeof f.boxWidth === "number" ? f.boxWidth * canvasW : undefined,
+                boxHeight: typeof f.boxHeight === "number" ? f.boxHeight * canvasH : undefined,
                 fontWeight: f.fontWeight || "normal",
                 fontStyle: f.fontStyle || "normal",
                 fontFamily: f.fontFamily || "Helvetica"
@@ -392,24 +419,34 @@ useEffect(() => {
     
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
 
-    if (isIDTemplate && previewMode) {
-      const photoSize = 240
-      const photoX = 227
-      const photoY = 351
-      
-      ctx.fillStyle = "#CCCCCC"
-      ctx.fillRect(photoX, photoY, photoSize, photoSize)
-      ctx.strokeStyle = "#999999"
-      ctx.lineWidth = 2
-      ctx.strokeRect(photoX, photoY, photoSize, photoSize)
-      ctx.fillStyle = "#666666"
-      ctx.font = "16px Arial"
-      ctx.textAlign = "center"
-      ctx.fillText("2x2 PHOTO", photoX + photoSize/2, photoY + photoSize/2)
-    }
-
-    // ✅ FIXED: Multi-line text rendering with PROPER left alignment
+    // Draw all fields (text + special photo box)
     textFields[currentTemplateType].forEach((field) => {
+      const isPhotoField = field.value.includes("{{trainee_picture}}")
+
+      // Special handling for trainee photo placeholder: draw movable box instead of text
+      if (isPhotoField) {
+        const defaultPhotoSize = isIDTemplate ? 240 : 0.12 * canvas.height
+        const photoW = field.boxWidth ?? field.fontSize ?? defaultPhotoSize
+        const photoH = field.boxHeight ?? field.fontSize ?? defaultPhotoSize
+        const photoX = field.x
+        const photoY = field.y
+
+        ctx.setLineDash([6, 4])
+        ctx.strokeStyle = "#22c55e"
+        ctx.lineWidth = 2
+        ctx.strokeRect(photoX, photoY, photoW, photoH)
+        ctx.setLineDash([])
+
+        if (selectedField === field.id && !previewMode) {
+          ctx.strokeStyle = "#0ea5e9"
+          ctx.lineWidth = 2
+          ctx.strokeRect(photoX - 4, photoY - 4, photoW + 8, photoH + 8)
+        }
+
+        // Do not render any text for the picture placeholder
+        return
+      }
+
       ctx.font = getFontString(field)
       ctx.fillStyle = field.color
 
@@ -423,7 +460,6 @@ useEffect(() => {
           .replace(/\{\{certificate_number\}\}/g, "PSI-BOSHSO1-001521")
           .replace(/\{\{batch_number\}\}/g, "Batch 42")
           .replace(/\{\{training_provider\}\}/g, "Petrosphere Inc.")
-          .replace(/\{\{trainee_picture\}\}/g, "[Picture]")
           .replace(/\{\{held_on\}\}/g, "January 10–12, 2025")
           .replace(/\{\{given_this\}\}/g, "January 15, 2025")
           .replace(/\{\{schedule_range\}\}/g, "January 10–12, 2025")
@@ -434,36 +470,31 @@ useEffect(() => {
       const lineHeight = (field.lineHeight || 1.2) * field.fontSize
       let currentY = field.y
 
-      // ✅ KEY FIX: Set textAlign BEFORE drawing each line
-      // This ensures the anchor point is consistent
+      // Set textAlign BEFORE drawing each line
       if (field.align === "center") {
         ctx.textAlign = "center"
       } else if (field.align === "right") {
         ctx.textAlign = "right"
       } else {
-        ctx.textAlign = "left"  // ✅ This is the key for left-aligned text
+        ctx.textAlign = "left"
       }
 
       lines.forEach((line) => {
-        // ✅ For left-aligned text, finalX is always field.x
-        // Canvas textAlign="left" handles the rest
         ctx.fillText(line, field.x, currentY)
         currentY += lineHeight
       })
 
-      // ✅ UPDATED: Selection box calculation
+      // Selection box calculation
       if (selectedField === field.id && !previewMode) {
         ctx.strokeStyle = "#3b82f6"
         ctx.lineWidth = 2
         
-        // Calculate bounding box - must set textAlign to "left" for accurate measurement
         const originalAlign = ctx.textAlign
         ctx.textAlign = "left"
         
         const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width))
         const totalHeight = lines.length * lineHeight
         
-        // Restore original alignment
         ctx.textAlign = originalAlign
         
         let boxX = field.x
@@ -472,7 +503,6 @@ useEffect(() => {
         } else if (field.align === "right") {
           boxX = field.x - maxWidth
         }
-        // For left: boxX = field.x (no change)
 
         ctx.strokeRect(boxX - 5, field.y - field.fontSize, maxWidth + 10, totalHeight + 5)
       }
@@ -496,28 +526,42 @@ const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
   if (!ctx) return
 
   for (const field of textFields[currentTemplateType]) {
-    ctx.font = getFontString(field)
-    
-    // ✅ FIX: Set textAlign to "left" for accurate width measurement
-    ctx.textAlign = "left"
-    
-    const lines = field.value.split('\n')
-    const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width))
-    const lineHeight = (field.lineHeight || 1.2) * field.fontSize
-    const totalHeight = lines.length * lineHeight
+    const isPhotoField = field.value.includes("{{trainee_picture}}")
 
-    // ✅ Calculate bounding box based on alignment
-    let boxX = field.x
-    let boxY = field.y - field.fontSize
-    let boxWidth = maxWidth
-    let boxHeight = totalHeight + 5
+    let boxX: number
+    let boxY: number
+    let boxWidth: number
+    let boxHeight: number
 
-    if (field.align === "center") {
-      boxX = field.x - maxWidth / 2
-    } else if (field.align === "right") {
-      boxX = field.x - maxWidth
+    if (isPhotoField) {
+      const isIDTemplate = currentTemplateType === "excellence"
+      const defaultPhotoSize = isIDTemplate ? 240 : 0.12 * canvas.height
+      const photoW = field.boxWidth ?? field.fontSize ?? defaultPhotoSize
+      const photoH = field.boxHeight ?? field.fontSize ?? defaultPhotoSize
+      boxX = field.x
+      boxY = field.y
+      boxWidth = photoW
+      boxHeight = photoH
+    } else {
+      ctx.font = getFontString(field)
+      ctx.textAlign = "left"
+      
+      const lines = field.value.split('\n')
+      const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width))
+      const lineHeight = (field.lineHeight || 1.2) * field.fontSize
+      const totalHeight = lines.length * lineHeight
+
+      boxX = field.x
+      boxY = field.y - field.fontSize
+      boxWidth = maxWidth
+      boxHeight = totalHeight + 5
+
+      if (field.align === "center") {
+        boxX = field.x - maxWidth / 2
+      } else if (field.align === "right") {
+        boxX = field.x - maxWidth
+      }
     }
-    // For "left": boxX = field.x (text starts here and extends right)
 
     if (
       x >= boxX - 5 &&
@@ -531,6 +575,91 @@ const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     }
   }
   setSelectedField(null)
+}
+
+const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  if (previewMode) return
+  const canvas = canvasRef.current
+  if (!canvas) return
+
+  const rect = canvas.getBoundingClientRect()
+  const scaleX = canvas.width / rect.width
+  const scaleY = canvas.height / rect.height
+  const x = (e.clientX - rect.left) * scaleX
+  const y = (e.clientY - rect.top) * scaleY
+
+  const isIDTemplate = currentTemplateType === "excellence"
+
+  // First, check if we're grabbing a resize handle of the photo box
+  for (const field of textFields[currentTemplateType]) {
+    const isPhotoField = field.value.includes("{{trainee_picture}}")
+    if (!isPhotoField) continue
+
+    const defaultPhotoSize = isIDTemplate ? 240 : 0.12 * canvas.height
+    const photoW = field.boxWidth ?? field.fontSize ?? defaultPhotoSize
+    const photoH = field.boxHeight ?? field.fontSize ?? defaultPhotoSize
+    const boxX = field.x
+    const boxY = field.y
+
+    const handleSize = 10
+    const cornerXStart = boxX + photoW - handleSize
+    const cornerYStart = boxY + photoH - handleSize
+
+    // Side handles (thin hit areas)
+    const sidePad = 6
+    const rightHit = x >= boxX + photoW - sidePad && x <= boxX + photoW + sidePad && y >= boxY && y <= boxY + photoH
+    const bottomHit = y >= boxY + photoH - sidePad && y <= boxY + photoH + sidePad && x >= boxX && x <= boxX + photoW
+    const leftHit = x >= boxX - sidePad && x <= boxX + sidePad && y >= boxY && y <= boxY + photoH
+    const topHit = y >= boxY - sidePad && y <= boxY + sidePad && x >= boxX && x <= boxX + photoW
+
+    // Corner handle: keep proportional resize
+    if (
+      x >= cornerXStart &&
+      x <= boxX + photoW + handleSize &&
+      y >= cornerYStart &&
+      y <= boxY + photoH + handleSize
+    ) {
+      setSelectedField(field.id)
+      setIsResizingPhoto(true)
+      setResizeInfo({
+        fieldId: field.id,
+        startX: x,
+        startY: y,
+        startW: photoW,
+        startH: photoH,
+        startFieldX: field.x,
+        startFieldY: field.y,
+        handle: "corner",
+      })
+      return
+    }
+
+    // Side handles: adjust width/height
+    if (rightHit || bottomHit || leftHit || topHit) {
+      setSelectedField(field.id)
+      setIsResizingPhoto(true)
+      setResizeInfo({
+        fieldId: field.id,
+        startX: x,
+        startY: y,
+        startW: photoW,
+        startH: photoH,
+        startFieldX: field.x,
+        startFieldY: field.y,
+        handle: rightHit ? "right" : bottomHit ? "bottom" : leftHit ? "left" : "top",
+      })
+      return
+    }
+  }
+
+  // Otherwise, fall back to dragging behavior
+  setIsDragging(true)
+}
+
+const handleCanvasMouseUp = () => {
+  setIsDragging(false)
+  setIsResizingPhoto(false)
+  setResizeInfo(prev => ({ ...prev, fieldId: null }))
 }
 
 // REPLACE the handleCanvasDoubleClick function in certificate-template-modal.tsx (around line 530)
@@ -550,28 +679,42 @@ const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
   if (!ctx) return
 
   for (const field of textFields[currentTemplateType]) {
-    ctx.font = getFontString(field)
-    
-    // ✅ FIX: Set textAlign to "left" for accurate width measurement
-    ctx.textAlign = "left"
-    
-    const lines = field.value.split('\n')
-    const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width))
-    const lineHeight = (field.lineHeight || 1.2) * field.fontSize
-    const totalHeight = lines.length * lineHeight
+    const isPhotoField = field.value.includes("{{trainee_picture}}")
 
-    // ✅ Calculate bounding box based on alignment
-    let boxX = field.x
-    let boxY = field.y - field.fontSize
-    let boxWidth = maxWidth
-    let boxHeight = totalHeight + 5
+    let boxX: number
+    let boxY: number
+    let boxWidth: number
+    let boxHeight: number
 
-    if (field.align === "center") {
-      boxX = field.x - maxWidth / 2
-    } else if (field.align === "right") {
-      boxX = field.x - maxWidth
+    if (isPhotoField) {
+      const isIDTemplate = currentTemplateType === "excellence"
+      const defaultPhotoSize = isIDTemplate ? 240 : 0.12 * canvas.height
+      const photoW = field.boxWidth ?? field.fontSize ?? defaultPhotoSize
+      const photoH = field.boxHeight ?? field.fontSize ?? defaultPhotoSize
+      boxX = field.x
+      boxY = field.y
+      boxWidth = photoW
+      boxHeight = photoH
+    } else {
+      ctx.font = getFontString(field)
+      ctx.textAlign = "left"
+      
+      const lines = field.value.split('\n')
+      const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width))
+      const lineHeight = (field.lineHeight || 1.2) * field.fontSize
+      const totalHeight = lines.length * lineHeight
+
+      boxX = field.x
+      boxY = field.y - field.fontSize
+      boxWidth = maxWidth
+      boxHeight = totalHeight + 5
+
+      if (field.align === "center") {
+        boxX = field.x - maxWidth / 2
+      } else if (field.align === "right") {
+        boxX = field.x - maxWidth
+      }
     }
-    // For "left": boxX = field.x (text starts here and extends right)
 
     if (
       x >= boxX - 5 &&
@@ -582,12 +725,84 @@ const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
       setEditingField(field.id)
       setEditingValue(field.value)
       setSelectedField(field.id)
+      setActiveTab("edit")
       return
     }
   }
 }
   const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDragging || !selectedField || previewMode) return
+    if (previewMode) return
+
+    // Handle resizing of photo placeholder
+    if (isResizingPhoto && resizeInfo.fieldId) {
+      const canvas = canvasRef.current
+      if (!canvas) return
+
+      const rect = canvas.getBoundingClientRect()
+      const scaleX = canvas.width / rect.width
+      const scaleY = canvas.height / rect.height
+      const x = (e.clientX - rect.left) * scaleX
+      const y = (e.clientY - rect.top) * scaleY
+
+      setTextFields((prev) => {
+        const currentFields = prev[currentTemplateType]
+        const target = currentFields.find(f => f.id === resizeInfo.fieldId)
+        if (!target) return prev
+
+        const isIDTemplate = currentTemplateType === "excellence"
+        const minSize = isIDTemplate ? 80 : 30
+        const dx = x - resizeInfo.startX
+        const dy = y - resizeInfo.startY
+
+        let nextX = resizeInfo.startFieldX
+        let nextY = resizeInfo.startFieldY
+        let nextW = resizeInfo.startW
+        let nextH = resizeInfo.startH
+
+        if (resizeInfo.handle === "corner") {
+          const delta = Math.max(dx, dy)
+          const s = Math.max(minSize, Math.min(resizeInfo.startW + delta, resizeInfo.startH + delta))
+          nextW = s
+          nextH = s
+        } else if (resizeInfo.handle === "right") {
+          nextW = Math.max(minSize, resizeInfo.startW + dx)
+        } else if (resizeInfo.handle === "bottom") {
+          nextH = Math.max(minSize, resizeInfo.startH + dy)
+        } else if (resizeInfo.handle === "left") {
+          const w = Math.max(minSize, resizeInfo.startW - dx)
+          nextX = resizeInfo.startFieldX + dx
+          // keep right edge anchored
+          if (w === minSize) nextX = resizeInfo.startFieldX + (resizeInfo.startW - minSize)
+          nextW = w
+        } else if (resizeInfo.handle === "top") {
+          const h = Math.max(minSize, resizeInfo.startH - dy)
+          nextY = resizeInfo.startFieldY + dy
+          if (h === minSize) nextY = resizeInfo.startFieldY + (resizeInfo.startH - minSize)
+          nextH = h
+        }
+
+        return {
+          ...prev,
+          [currentTemplateType]: currentFields.map((field) =>
+            field.id === resizeInfo.fieldId
+              ? {
+                  ...field,
+                  x: nextX,
+                  y: nextY,
+                  boxWidth: nextW,
+                  boxHeight: nextH,
+                  // keep fontSize for backward compatibility (square size)
+                  fontSize: Math.min(nextW, nextH),
+                }
+              : field
+          ),
+        }
+      })
+
+      return
+    }
+
+    if (!isDragging || !selectedField) return
     const canvas = canvasRef.current
     if (!canvas) return
 
@@ -619,6 +834,8 @@ const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
       x: defaultX,
       y: defaultY,
       fontSize: 16,
+      boxWidth: undefined,
+      boxHeight: undefined,
       fontWeight: "normal",
       fontStyle: "normal",
       fontFamily: "Helvetica",
@@ -703,6 +920,8 @@ const handleSave = async () => {
       x: toPercentX(f.x, isID),
       y: toPercentY(f.y, isID),
       fontSize: toPercentFont(f.fontSize, isID),
+      boxWidth: typeof f.boxWidth === "number" ? toPercentX(f.boxWidth, isID) : undefined,
+      boxHeight: typeof f.boxHeight === "number" ? toPercentY(f.boxHeight, isID) : undefined,
     })),
     templateType: currentTemplateType,
   }),
@@ -844,7 +1063,33 @@ toast.success("Template saved successfully!")
         </h3>
         <p className="text-xs text-muted-foreground">{currentTemplateInfo.description}</p>
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-center flex-wrap justify-end">
+        <div className="flex items-center gap-1 mr-1">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setCanvasZoom((z) => Math.max(0.5, Number((z - 0.1).toFixed(2))))}
+          >
+            -
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setCanvasZoom(1)}
+          >
+            {Math.round(canvasZoom * 100)}%
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setCanvasZoom((z) => Math.min(2.5, Number((z + 0.1).toFixed(2))))}
+          >
+            +
+          </Button>
+        </div>
         <Button
           variant={previewMode ? "default" : "outline"}
           size="sm"
@@ -877,16 +1122,22 @@ toast.success("Template saved successfully!")
     <div className="border rounded-lg overflow-hidden bg-gray-50 relative">
       {templateImage[currentTemplateType] ? (
         <>
-          <canvas
-            ref={canvasRef}
-            className="w-full cursor-crosshair"
-            onClick={handleCanvasClick}
-            onDoubleClick={handleCanvasDoubleClick}
-            onMouseDown={() => setIsDragging(true)}
-            onMouseUp={() => setIsDragging(false)}
-            onMouseMove={handleCanvasMouseMove}
-            onMouseLeave={() => setIsDragging(false)}
-          />
+          <div className="w-full overflow-auto">
+            <canvas
+              ref={canvasRef}
+              className="cursor-crosshair origin-top-left"
+              style={{
+                transform: `scale(${canvasZoom})`,
+                transformOrigin: "top left",
+              }}
+              onClick={handleCanvasClick}
+              onDoubleClick={handleCanvasDoubleClick}
+              onMouseDown={handleCanvasMouseDown}
+              onMouseUp={handleCanvasMouseUp}
+              onMouseMove={handleCanvasMouseMove}
+              onMouseLeave={handleCanvasMouseUp}
+            />
+          </div>
           {editingField && (
             <div className="absolute top-4 left-1/2 transform -translate-x-1/2 w-96 bg-background border-2 border-primary rounded-lg shadow-lg p-4 z-10">
               <Label className="mb-2 block">Edit Text</Label>
@@ -949,7 +1200,11 @@ toast.success("Template saved successfully!")
   </div>
 
   <div className="space-y-4">
-    <Tabs defaultValue="fields" className="w-full">
+    <Tabs
+      value={activeTab}
+      onValueChange={(value) => setActiveTab(value as "fields" | "edit")}
+      className="w-full"
+    >
       <TabsList className="grid w-full grid-cols-2">
         <TabsTrigger value="fields">Text Fields</TabsTrigger>
         <TabsTrigger value="edit">Edit Field</TabsTrigger>
@@ -971,6 +1226,10 @@ toast.success("Template saved successfully!")
                   : "hover:bg-secondary"
               }`}
               onClick={() => setSelectedField(field.id)}
+              onDoubleClick={() => {
+                setSelectedField(field.id)
+                setActiveTab("edit")
+              }}
             >
               <div className="flex justify-between items-start">
                 <div className="flex-1">

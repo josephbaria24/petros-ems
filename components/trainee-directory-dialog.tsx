@@ -3,7 +3,7 @@
 
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from "@/components/ui/alert-dialog"
 import { Progress } from "@/components/ui/progress"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { tmsDb } from "@/lib/supabase-client"
-import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2 } from "lucide-react"
+import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, Eye } from "lucide-react"
+import { Slider } from "@/components/ui/slider"
 import { exportTraineeExcel } from "@/lib/exports/export-excel"
 import { exportCertificatesNew } from "@/lib/exports/export-certificate"
 import { batchAssignCertificateSerials } from "@/lib/certificate-serial"
@@ -48,6 +49,23 @@ interface DownloadTrainee {
   certificate_number?: string
   course_id: string
   batch_number?: number
+}
+
+type TemplateField = {
+  id: string
+  label: string
+  value: string
+  x: number
+  y: number
+  fontSize: number
+  boxWidth?: number
+  boxHeight?: number
+  fontWeight: "normal" | "bold" | "extrabold"
+  fontStyle: "normal" | "italic"
+  fontFamily: "Helvetica" | "Montserrat" | "Poppins"
+  color: string
+  align: "left" | "center" | "right"
+  lineHeight?: number
 }
 
 interface Trainee {
@@ -220,6 +238,256 @@ export default function ParticipantDirectoryDialog({
   const [emailComposeOpen, setEmailComposeOpen] = useState(false)
   const [emailSubject, setEmailSubject] = useState("")
   const [emailMessage, setEmailMessage] = useState("")
+
+  // ✅ NEW: Certificate preview viewer state
+  const [isCertificateViewerOpen, setIsCertificateViewerOpen] = useState(false)
+  const [certificatePreviews, setCertificatePreviews] = useState<{ trainee: DownloadTrainee; url: string | null; error?: string }[]>([])
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0)
+  const [isLoadingPreviews, setIsLoadingPreviews] = useState(false)
+  const [layoutOffset, setLayoutOffset] = useState<{ offsetX: number; offsetY: number }>({ offsetX: 0, offsetY: 0 })
+  const [fieldOverrides, setFieldOverrides] = useState<Record<string, any>>({})
+  const [templateFields, setTemplateFields] = useState<{ id: string; label: string }[]>([])
+  const [templateForViewer, setTemplateForViewer] = useState<{ imageUrl: string; fields: TemplateField[] } | null>(null)
+  const [activeFieldId, setActiveFieldId] = useState<string | null>(null)
+  const [isSavingLayout, setIsSavingLayout] = useState(false)
+  const livePreviewTimerRef = useRef<number | null>(null)
+  const livePreviewRequestIdRef = useRef(0)
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const [previewZoom, setPreviewZoom] = useState(1)
+  const dragStateRef = useRef<{
+    fieldId: string | null
+    mode: "move" | "resize" | "pan"
+    dx: number
+    dy: number
+    handle?: "corner" | "right" | "bottom" | "left" | "top"
+    startW?: number
+    startH?: number
+    startX?: number
+    startY?: number
+    startMouseX?: number
+    startMouseY?: number
+    startScrollLeft?: number
+    startScrollTop?: number
+  }>({ fieldId: null, mode: "move", dx: 0, dy: 0 })
+
+  const isIdTemplateSelected = selectedTemplateType === "excellence"
+  const canvasSize = useMemo(() => {
+    return isIdTemplateSelected ? { w: 1350, h: 850 } : { w: 842, h: 595 }
+  }, [isIdTemplateSelected])
+
+  const getFontString = (field: TemplateField, canvasH: number) => {
+    const px = Math.max(1, (field.fontSize || 0.02) * canvasH)
+    const italic = field.fontStyle === "italic" ? "italic " : ""
+    const weight =
+      field.fontWeight === "extrabold"
+        ? "900 "
+        : field.fontWeight === "bold"
+          ? "bold "
+          : ""
+    const family = field.fontFamily || "Helvetica"
+    return `${italic}${weight}${px}px ${family}`
+  }
+
+  const getDisplayText = (raw: string, trainee: DownloadTrainee) => {
+    const fullName = `${trainee.first_name || ""} ${trainee.middle_initial ? trainee.middle_initial + ". " : ""}${trainee.last_name || ""}`.trim()
+    return raw
+      .replace(/\{\{trainee_name\}\}/g, fullName || "Trainee Name")
+      .replace(/\{\{course_name\}\}/g, courseName)
+      .replace(/\{\{course_title\}\}/g, courseName)
+      .replace(/\{\{completion_date\}\}/g, new Date().toLocaleDateString())
+      .replace(/\{\{certificate_number\}\}/g, trainee.certificate_number || "")
+      .replace(/\{\{batch_number\}\}/g, trainee.batch_number?.toString() || "")
+      .replace(/\{\{held_on\}\}/g, scheduleRange)
+      .replace(/\{\{given_this\}\}/g, new Date().toLocaleDateString())
+      .replace(/\{\{schedule_range\}\}/g, scheduleRange)
+  }
+
+  // Draw draggable preview (client-side) so you can drag instead of sliders
+  useEffect(() => {
+    if (!isCertificateViewerOpen) return
+    const current = certificatePreviews[activePreviewIndex]
+    if (!current?.trainee) return
+    if (!templateForViewer?.imageUrl || !templateForViewer.fields?.length) return
+    const canvas = previewCanvasRef.current
+    if (!canvas) return
+
+    canvas.width = canvasSize.w
+    canvas.height = canvasSize.h
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    const drawImageCover = (
+      image: HTMLImageElement,
+      dx: number,
+      dy: number,
+      dWidth: number,
+      dHeight: number
+    ) => {
+      const iw = image.naturalWidth || image.width
+      const ih = image.naturalHeight || image.height
+      if (!iw || !ih || !dWidth || !dHeight) return
+
+      const scale = Math.max(dWidth / iw, dHeight / ih)
+      const sw = dWidth / scale
+      const sh = dHeight / scale
+      const sx = (iw - sw) / 2
+      const sy = (ih - sh) / 2
+
+      ctx.drawImage(image, sx, sy, sw, sh, dx, dy, dWidth, dHeight)
+    }
+
+    const img = new Image()
+    img.crossOrigin = "anonymous"
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+      const traineePhoto = new Image()
+      const hasPhoto = !!current.trainee.picture_2x2_url
+
+      const fields = templateForViewer.fields
+      const drawFields = () => fields.forEach((f) => {
+        const fo = fieldOverrides[f.id] || {}
+        let normX = f.x + layoutOffset.offsetX
+        let normY = f.y + layoutOffset.offsetY
+        if (typeof fo.x === "number") normX = fo.x
+        if (typeof fo.y === "number") normY = fo.y
+
+        const x = normX * canvas.width
+        const y = normY * canvas.height
+
+        const isPhoto = f.value?.includes("{{trainee_picture}}")
+        if (isPhoto) {
+          const baseWNorm = typeof f.boxWidth === "number" ? f.boxWidth : f.fontSize
+          const baseHNorm = typeof f.boxHeight === "number" ? f.boxHeight : f.fontSize
+          const wNorm = typeof fo.boxWidth === "number" ? fo.boxWidth : (typeof fo.fontSize === "number" ? fo.fontSize : baseWNorm)
+          const hNorm = typeof fo.boxHeight === "number" ? fo.boxHeight : (typeof fo.fontSize === "number" ? fo.fontSize : baseHNorm)
+          const w = wNorm * canvas.width
+          const h = hNorm * canvas.height
+          ctx.setLineDash([6, 4])
+          ctx.strokeStyle = f.id === activeFieldId ? "#0ea5e9" : "#22c55e"
+          ctx.lineWidth = 2
+          ctx.strokeRect(x, y, w, h)
+          ctx.setLineDash([])
+
+          // Draw actual trainee photo if available and loaded
+          if (hasPhoto && (traineePhoto.complete && (traineePhoto.naturalWidth || traineePhoto.width))) {
+            ctx.save()
+            ctx.beginPath()
+            ctx.rect(x, y, w, h)
+            ctx.clip()
+            drawImageCover(traineePhoto, x, y, w, h)
+            ctx.restore()
+          } else {
+            // Fallback placeholder (helps debug CORS / missing photos)
+            ctx.fillStyle = "rgba(0,0,0,0.35)"
+            ctx.font = "12px Arial"
+            ctx.textAlign = "center"
+            ctx.fillText(
+              hasPhoto ? "Photo not available" : "No photo",
+              x + w / 2,
+              y + h / 2
+            )
+          }
+          return
+        }
+
+        ctx.font = getFontString(f, canvas.height)
+        ctx.fillStyle = (typeof fo.color === "string" ? fo.color : f.color) || "#000000"
+        ctx.textAlign = f.align === "center" ? "center" : f.align === "right" ? "right" : "left"
+
+        const text = getDisplayText(f.value || "", current.trainee)
+        const lines = text.split("\n")
+        const fontPx = Math.max(1, (typeof fo.fontSize === "number" ? fo.fontSize : f.fontSize) * canvas.height)
+        const lh = (f.lineHeight || 1.2) * fontPx
+
+        let yy = y
+        lines.forEach((line) => {
+          ctx.fillText(line, x, yy)
+          yy += lh
+        })
+
+        if (f.id === activeFieldId) {
+          ctx.save()
+          ctx.textAlign = "left"
+          ctx.font = getFontString({ ...f, fontSize: (typeof fo.fontSize === "number" ? fo.fontSize : f.fontSize) }, canvas.height)
+          const maxW = Math.max(...lines.map(l => ctx.measureText(l).width), 10)
+          let boxX = x
+          if (f.align === "center") boxX = x - maxW / 2
+          if (f.align === "right") boxX = x - maxW
+          ctx.strokeStyle = "#0ea5e9"
+          ctx.lineWidth = 2
+          ctx.strokeRect(boxX - 6, y - fontPx, maxW + 12, lines.length * lh + 8)
+          ctx.restore()
+        }
+      })
+
+      if (hasPhoto) {
+        traineePhoto.onload = () => {
+          // redraw background and fields once photo is loaded
+          ctx.clearRect(0, 0, canvas.width, canvas.height)
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+          drawFields()
+        }
+        traineePhoto.onerror = () => {
+          // Try again without any special settings (some hosts break when crossOrigin is set)
+          // If this still fails, we keep the placeholder text in the photo box.
+          try {
+            const retry = new Image()
+            retry.onload = () => {
+              // swap in successful image and redraw
+              ;(traineePhoto as any).src = retry.src
+              ctx.clearRect(0, 0, canvas.width, canvas.height)
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+              // drawFields will now see retry-loaded dimensions via traineePhoto.complete check on next tick
+              drawImageCover(retry, 0, 0, 1, 1) // no-op warm-up
+              // draw with retry directly
+              fields.forEach((f) => {
+                if (!f.value?.includes("{{trainee_picture}}")) return
+                const fo = fieldOverrides[f.id] || {}
+                let normX = f.x + layoutOffset.offsetX
+                let normY = f.y + layoutOffset.offsetY
+                if (typeof fo.x === "number") normX = fo.x
+                if (typeof fo.y === "number") normY = fo.y
+                const x = normX * canvas.width
+                const y = normY * canvas.height
+                const size = (typeof fo.fontSize === "number" ? fo.fontSize : f.fontSize) * canvas.height
+                ctx.save()
+                ctx.beginPath()
+                ctx.rect(x, y, size, size)
+                ctx.clip()
+                drawImageCover(retry, x, y, size, size)
+                ctx.restore()
+              })
+              drawFields()
+            }
+            retry.onerror = () => {
+              drawFields()
+            }
+            retry.src = current.trainee.picture_2x2_url!
+          } catch {
+            drawFields()
+          }
+        }
+        traineePhoto.src = current.trainee.picture_2x2_url!
+      }
+
+      drawFields()
+    }
+    img.src = templateForViewer.imageUrl
+  }, [
+    isCertificateViewerOpen,
+    activePreviewIndex,
+    templateForViewer,
+    fieldOverrides,
+    layoutOffset.offsetX,
+    layoutOffset.offsetY,
+    activeFieldId,
+    canvasSize.w,
+    canvasSize.h,
+    courseName,
+    scheduleRange,
+  ])
 
 
   
@@ -415,8 +683,93 @@ export default function ParticipantDirectoryDialog({
       fetchScheduleStatus()
       setSelectedTraineeIds(new Set())
       setSelectAll(false)
+      // Clean any existing preview URLs when dialog is reopened
+      setCertificatePreviews(prev => {
+        prev.forEach(p => {
+          if (p.url) URL.revokeObjectURL(p.url)
+        })
+        return []
+      })
     }
   }, [open, scheduleId])
+
+  // When active preview changes, load its layout override
+  useEffect(() => {
+    if (!isCertificateViewerOpen || certificatePreviews.length === 0) return
+    loadLayoutOverrideForActive()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePreviewIndex, isCertificateViewerOpen])
+
+  // Live preview: regenerate current participant PDF while adjusting sliders (debounced)
+  useEffect(() => {
+    if (!isCertificateViewerOpen) return
+    const current = certificatePreviews[activePreviewIndex]
+    if (!current) return
+
+    // debounce
+    if (livePreviewTimerRef.current) {
+      window.clearTimeout(livePreviewTimerRef.current)
+    }
+
+    livePreviewTimerRef.current = window.setTimeout(async () => {
+      const requestId = ++livePreviewRequestIdRef.current
+      try {
+        const res = await fetch("/api/generate-certificate-pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trainee: current.trainee,
+            courseName,
+            courseTitle: courseName,
+            scheduleRange,
+            courseId: current.trainee.course_id,
+            templateType: selectedTemplateType,
+            givenThisDate: new Date().toLocaleDateString(),
+            layoutOverride: {
+              offsetX: layoutOffset.offsetX,
+              offsetY: layoutOffset.offsetY,
+              fieldOverrides,
+            },
+          }),
+        })
+
+        if (!res.ok) return
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+
+        // ignore stale responses
+        if (requestId !== livePreviewRequestIdRef.current) {
+          URL.revokeObjectURL(url)
+          return
+        }
+
+        setCertificatePreviews((prev) =>
+          prev.map((item, idx) => {
+            if (idx !== activePreviewIndex) return item
+            if (item.url) URL.revokeObjectURL(item.url)
+            return { ...item, url, error: undefined }
+          })
+        )
+      } catch {
+        // ignore
+      }
+    }, 350)
+
+    return () => {
+      if (livePreviewTimerRef.current) {
+        window.clearTimeout(livePreviewTimerRef.current)
+        livePreviewTimerRef.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isCertificateViewerOpen,
+    activePreviewIndex,
+    selectedTemplateType,
+    layoutOffset.offsetX,
+    layoutOffset.offsetY,
+    fieldOverrides,
+  ])
 
 const handleDownloadCertificates = async () => {
   if (!scheduleId) return;
@@ -531,6 +884,142 @@ const handleDownloadCertificates = async () => {
     setIsGenerating(false);
   }
 };
+
+  // ✅ NEW: Generate inline preview PDFs for selected trainees (no download)
+  const handleOpenCertificateViewer = async () => {
+    if (!scheduleId) return
+
+    const selectedTrainees = getSelectedTrainees()
+    if (selectedTrainees.length === 0) {
+      setAlertTitle("No Selection")
+      setAlertMessage("Please select at least one participant to view certificates.")
+      setAlertOpen(true)
+      return
+    }
+
+    setIsLoadingPreviews(true)
+    setProgress(0)
+    startLongOperation(
+      "Generating Certificate Previews",
+      "Rendering certificates for selected participants..."
+    )
+
+    try {
+      const { data: scheduleData } = await tmsDb
+        .from("schedules")
+        .select("course_id")
+        .eq("id", scheduleId)
+        .single()
+
+      if (!scheduleData) throw new Error("Missing schedule data")
+
+      const { data: courseData } = await tmsDb
+        .from("courses")
+        .select("id, name, title, serial_number, serial_number_pad")
+        .eq("id", scheduleData.course_id)
+        .single()
+
+      if (!courseData) throw new Error("Missing course data")
+
+      const courseTitle = courseData.title || courseData.name
+      const serialBase = Number(courseData.serial_number ?? 1)
+      const serialPad = Number(courseData.serial_number_pad ?? 5)
+
+      // Load template fields for per-field controls
+      const { data: templateData } = await tmsDb
+        .from("certificate_templates")
+        .select("fields, image_url")
+        .eq("course_id", courseData.id)
+        .eq("template_type", selectedTemplateType)
+        .maybeSingle()
+
+      if (templateData?.fields) {
+        setTemplateFields(
+          (templateData.fields as any[]).map((f) => ({
+            id: f.id as string,
+            label: (f.label as string) || (f.id as string),
+          }))
+        )
+        setTemplateForViewer({
+          imageUrl: (templateData as any).image_url as string,
+          fields: templateData.fields as any,
+        })
+      } else {
+        setTemplateFields([])
+        setTemplateForViewer(null)
+      }
+
+      // Sort trainees alphabetically to keep consistent serial assignment
+      const sortedTrainees = [...selectedTrainees].sort((a, b) => {
+        const aName = `${a.last_name} ${a.first_name}`.toLowerCase()
+        const bName = `${b.last_name} ${b.first_name}`.toLowerCase()
+        return aName.localeCompare(bName)
+      })
+
+      // Assign serials without saving to DB
+      const updatedTrainees: DownloadTrainee[] = sortedTrainees.map((trainee, index) => {
+        const serial = serialBase + index + 1
+        const padded = serial.toString().padStart(serialPad, "0")
+        const certificate_number = `PSI-${courseData.name}-${padded}`
+        return { ...trainee, certificate_number }
+      })
+
+      const previews: { trainee: DownloadTrainee; url: string | null; error?: string }[] = []
+
+      for (let i = 0; i < updatedTrainees.length; i++) {
+        const trainee = updatedTrainees[i]
+        try {
+          const res = await fetch("/api/generate-certificate-pdf", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              trainee,
+              courseName: courseData.name,
+              courseTitle,
+              scheduleRange,
+              courseId: trainee.course_id,
+              templateType: selectedTemplateType,
+              givenThisDate: new Date().toLocaleDateString(),
+            }),
+          })
+
+          if (!res.ok) {
+            const text = await res.text()
+            previews.push({
+              trainee,
+              url: null,
+              error: text.substring(0, 200) || "Failed to generate preview",
+            })
+          } else {
+            const blob = await res.blob()
+            const url = URL.createObjectURL(blob)
+            previews.push({ trainee, url })
+          }
+
+          setProgress(Math.floor(((i + 1) / updatedTrainees.length) * 100))
+        } catch (err: any) {
+          previews.push({
+            trainee,
+            url: null,
+            error: err?.message || "Failed to generate preview",
+          })
+        }
+      }
+
+      setCertificatePreviews(previews)
+      setActivePreviewIndex(0)
+      setIsCertificateViewerOpen(true)
+
+      setAlertTitle("Previews Ready")
+      setAlertMessage("Certificate previews generated. You can now review them before sending or downloading.")
+    } catch (err: any) {
+      console.error("❌ Error generating previews:", err)
+      setAlertTitle("Error")
+      setAlertMessage(err.message || "Failed to generate certificate previews.")
+    } finally {
+      setIsLoadingPreviews(false)
+    }
+  }
 
   const fetchTrainees = async () => {
     if (!scheduleId) return
@@ -801,6 +1290,306 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
     setIsSendingEmails(false)
   }
 }
+
+  // ✅ NEW: Load layout override for the currently active preview
+  const loadLayoutOverrideForActive = async () => {
+    const current = certificatePreviews[activePreviewIndex]
+    if (!current) {
+      setLayoutOffset({ offsetX: 0, offsetY: 0 })
+      setFieldOverrides({})
+      return
+    }
+
+    try {
+      const params = new URLSearchParams({
+        trainingId: current.trainee.id,
+        templateType: selectedTemplateType,
+      })
+      const res = await fetch(`/api/certificate-layout-overrides?${params.toString()}`)
+      if (!res.ok) {
+        setLayoutOffset({ offsetX: 0, offsetY: 0 })
+        return
+      }
+      const data = await res.json()
+      const override = data?.override
+      setLayoutOffset({
+        offsetX: typeof override?.offset_x === "number" ? override.offset_x : 0,
+        offsetY: typeof override?.offset_y === "number" ? override.offset_y : 0,
+      })
+      setFieldOverrides(override?.field_overrides || {})
+    } catch {
+      setLayoutOffset({ offsetX: 0, offsetY: 0 })
+      setFieldOverrides({})
+    }
+  }
+
+  // ✅ NEW: Save layout offset for the current participant and refresh its preview
+  const handleSaveLayoutOffset = async () => {
+    const current = certificatePreviews[activePreviewIndex]
+    if (!current) return
+
+    setIsSavingLayout(true)
+    try {
+      await fetch("/api/certificate-layout-overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trainingId: current.trainee.id,
+          templateType: selectedTemplateType,
+          offsetX: layoutOffset.offsetX,
+          offsetY: layoutOffset.offsetY,
+          fieldOverrides,
+        }),
+      })
+
+      // Regenerate this single preview to reflect new layout
+      const res = await fetch("/api/generate-certificate-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trainee: current.trainee,
+          courseName,
+          courseTitle: courseName,
+          scheduleRange,
+          courseId: current.trainee.course_id,
+          templateType: selectedTemplateType,
+          givenThisDate: new Date().toLocaleDateString(),
+        }),
+      })
+
+      if (res.ok) {
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+
+        setCertificatePreviews(prev =>
+          prev.map((item, index) => {
+            if (index !== activePreviewIndex) return item
+            if (item.url) URL.revokeObjectURL(item.url)
+            return { ...item, url, error: undefined }
+          })
+        )
+      }
+    } catch (e) {
+      console.error("Error saving layout offset:", e)
+    } finally {
+      setIsSavingLayout(false)
+    }
+  }
+
+  const hitTestFieldAt = (canvasX: number, canvasY: number) => {
+    const current = certificatePreviews[activePreviewIndex]
+    const canvas = previewCanvasRef.current
+    if (!current?.trainee || !canvas || !templateForViewer) return null
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return null
+
+    // Top-most match wins, so iterate reverse
+    const fields = [...templateForViewer.fields].reverse()
+    for (const f of fields) {
+      const fo = fieldOverrides[f.id] || {}
+      let normX = f.x + layoutOffset.offsetX
+      let normY = f.y + layoutOffset.offsetY
+      if (typeof fo.x === "number") normX = fo.x
+      if (typeof fo.y === "number") normY = fo.y
+
+      const x = normX * canvas.width
+      const y = normY * canvas.height
+
+      const isPhoto = f.value?.includes("{{trainee_picture}}")
+      if (isPhoto) {
+        const w = (typeof fo.boxWidth === "number" ? fo.boxWidth : (typeof fo.fontSize === "number" ? fo.fontSize : f.boxWidth ?? f.fontSize)) * canvas.height
+        const h = (typeof fo.boxHeight === "number" ? fo.boxHeight : (typeof fo.fontSize === "number" ? fo.fontSize : f.boxHeight ?? f.fontSize)) * canvas.height
+        const boxW = Number.isFinite(w) ? w : 100
+        const boxH = Number.isFinite(h) ? h : 100
+
+        if (canvasX >= x && canvasX <= x + boxW && canvasY >= y && canvasY <= y + boxH) {
+          // check handles first
+          const handleSize = 10
+          const sidePad = 6
+          const inCorner = canvasX >= x + boxW - handleSize && canvasY >= y + boxH - handleSize
+          const rightHit = canvasX >= x + boxW - sidePad && canvasX <= x + boxW + sidePad
+          const bottomHit = canvasY >= y + boxH - sidePad && canvasY <= y + boxH + sidePad
+          const leftHit = canvasX >= x - sidePad && canvasX <= x + sidePad
+          const topHit = canvasY >= y - sidePad && canvasY <= y + sidePad
+
+          const handle = inCorner
+            ? ("corner" as const)
+            : rightHit
+              ? ("right" as const)
+              : bottomHit
+                ? ("bottom" as const)
+                : leftHit
+                  ? ("left" as const)
+                  : topHit
+                    ? ("top" as const)
+                    : undefined
+
+          return { id: f.id, anchorX: x, anchorY: y, handle, boxW, boxH }
+        }
+        continue
+      }
+
+      ctx.font = getFontString(f, canvas.height)
+      ctx.textAlign = "left"
+      const text = getDisplayText(f.value || "", current.trainee)
+      const lines = text.split("\n")
+      const fontPx = Math.max(1, (typeof fo.fontSize === "number" ? fo.fontSize : f.fontSize) * canvas.height)
+      const lh = (f.lineHeight || 1.2) * fontPx
+      const maxW = Math.max(...lines.map(l => ctx.measureText(l).width), 10)
+
+      let boxX = x
+      if (f.align === "center") boxX = x - maxW / 2
+      if (f.align === "right") boxX = x - maxW
+      const boxY = y - fontPx
+      const boxH = lines.length * lh + 8
+
+      if (canvasX >= boxX - 6 && canvasX <= boxX + maxW + 6 && canvasY >= boxY && canvasY <= boxY + boxH) {
+        return { id: f.id, anchorX: x, anchorY: y }
+      }
+    }
+    return null
+  }
+
+  const handlePreviewCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = previewCanvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    
+    // Check if we hit a field
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    const x = (e.clientX - rect.left) * scaleX
+    const y = (e.clientY - rect.top) * scaleY
+
+    const hit = hitTestFieldAt(x, y)
+    if (hit) {
+      setActiveFieldId(hit.id)
+      if ((hit as any).handle) {
+        dragStateRef.current = {
+          fieldId: hit.id,
+          mode: "resize",
+          dx: 0,
+          dy: 0,
+          handle: (hit as any).handle,
+          startW: (hit as any).boxW,
+          startH: (hit as any).boxH,
+          startX: hit.anchorX,
+          startY: hit.anchorY,
+          startMouseX: x,
+          startMouseY: y,
+        }
+      } else {
+        dragStateRef.current = { fieldId: hit.id, mode: "move", dx: x - hit.anchorX, dy: y - hit.anchorY }
+      }
+    } else {
+      // Pan mode
+      const container = canvas.parentElement
+      if (container) {
+        dragStateRef.current = {
+          fieldId: null,
+          mode: "pan",
+          dx: 0,
+          dy: 0,
+          startMouseX: e.clientX,
+          startMouseY: e.clientY,
+          startScrollLeft: container.scrollLeft,
+          startScrollTop: container.scrollTop
+        }
+        canvas.style.cursor = "grabbing"
+      }
+    }
+  }
+
+  const handlePreviewCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = previewCanvasRef.current
+    const ds = dragStateRef.current
+    if (!canvas) return
+    
+    if (ds.mode === "pan") {
+      const container = canvas.parentElement
+      if (container && ds.startMouseX !== undefined && ds.startMouseY !== undefined) {
+        const dx = e.clientX - ds.startMouseX
+        const dy = e.clientY - ds.startMouseY
+        container.scrollLeft = (ds.startScrollLeft ?? 0) - dx
+        container.scrollTop = (ds.startScrollTop ?? 0) - dy
+      }
+      return
+    }
+
+    if (!ds.fieldId) return
+
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    const x = (e.clientX - rect.left) * scaleX
+    const y = (e.clientY - rect.top) * scaleY
+
+    if (ds.mode === "resize") {
+      const dx = x - (ds.startMouseX ?? x)
+      const dy = y - (ds.startMouseY ?? y)
+      const minPx = 30
+
+      let nextX = ds.startX ?? 0
+      let nextY = ds.startY ?? 0
+      let nextW = ds.startW ?? 100
+      let nextH = ds.startH ?? 100
+
+      if (ds.handle === "corner") {
+        const delta = Math.max(dx, dy)
+        const s = Math.max(minPx, Math.min((ds.startW ?? 100) + delta, (ds.startH ?? 100) + delta))
+        nextW = s
+        nextH = s
+      } else if (ds.handle === "right") {
+        nextW = Math.max(minPx, (ds.startW ?? 100) + dx)
+      } else if (ds.handle === "bottom") {
+        nextH = Math.max(minPx, (ds.startH ?? 100) + dy)
+      } else if (ds.handle === "left") {
+        const w = Math.max(minPx, (ds.startW ?? 100) - dx)
+        nextX = (ds.startX ?? 0) + dx
+        if (w === minPx) nextX = (ds.startX ?? 0) + ((ds.startW ?? 100) - minPx)
+        nextW = w
+      } else if (ds.handle === "top") {
+        const h = Math.max(minPx, (ds.startH ?? 100) - dy)
+        nextY = (ds.startY ?? 0) + dy
+        if (h === minPx) nextY = (ds.startY ?? 0) + ((ds.startH ?? 100) - minPx)
+        nextH = h
+      }
+
+      setFieldOverrides(prev => ({
+        ...prev,
+        [ds.fieldId!]: {
+          ...(prev[ds.fieldId!] || {}),
+          x: Math.min(1, Math.max(0, nextX / canvas.width)),
+          y: Math.min(1, Math.max(0, nextY / canvas.height)),
+          boxWidth: Math.min(1, Math.max(0, nextW / canvas.width)),
+          boxHeight: Math.min(1, Math.max(0, nextH / canvas.height)),
+        },
+      }))
+      return
+    }
+
+    const newAnchorX = x - ds.dx
+    const newAnchorY = y - ds.dy
+    const nx = newAnchorX / canvas.width
+    const ny = newAnchorY / canvas.height
+
+    setFieldOverrides(prev => ({
+      ...prev,
+      [ds.fieldId!]: {
+        ...(prev[ds.fieldId!] || {}),
+        x: Math.min(1, Math.max(0, nx)),
+        y: Math.min(1, Math.max(0, ny)),
+      },
+    }))
+  }
+
+  const handlePreviewCanvasMouseUp = () => {
+    const canvas = previewCanvasRef.current
+    if (canvas) {
+      canvas.style.cursor = "default"
+    }
+    dragStateRef.current = { fieldId: null, mode: "move", dx: 0, dy: 0 }
+  }
 
   const handleSaveTrainee = async () => {
     if (!selectedTrainee) return
@@ -1090,28 +1879,37 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
           </div>
         )}
 
-        <DialogFooter className="justify-start pt-4 gap-2 flex-wrap">
-          <div className="w-full text-sm text-muted-foreground mb-2">
+        <DialogFooter className="justify-between pt-4 gap-2 flex-wrap">
+          <div className="w-full md:w-auto text-sm text-muted-foreground mb-2">
             {selectedTraineeIds.size > 0 ? (
-              <span className="font-medium text-primary">{selectedTraineeIds.size} of {trainees.length} selected</span>
+              <span className="font-medium text-primary">
+                {selectedTraineeIds.size} of {trainees.length} selected
+              </span>
             ) : (
-              <span>No participants selected. Please select participants to download or send certificates.</span>
+              <span>
+                No participants selected. Please select participants to view certificates.
+              </span>
             )}
           </div>
-          <Button variant="outline" onClick={handleDownloadCertificates} disabled={isGenerating || trainees.length === 0 || selectedTraineeIds.size === 0}>
-            {isGenerating ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</>
-            ) : (
-              <><Download className="mr-2 h-4 w-4" />{selectedTemplateType === "excellence" ? "Download IDs" : "Download Certificates"}</>
-            )}
-          </Button>
-          <Button variant="secondary" onClick={handleOpenEmailCompose} disabled={isSendingEmails || trainees.length === 0 || selectedTraineeIds.size === 0}>
-            {isSendingEmails ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending...</>
-            ) : (
-              <><Mail className="mr-2 h-4 w-4" />Send {TEMPLATE_OPTIONS.find(t => t.value === selectedTemplateType)?.label}{selectedTemplateType === "excellence" ? " IDs" : " Certificates"}</>
-            )}
-          </Button>
+          <div className="flex gap-2 flex-wrap justify-end w-full md:w-auto">
+            <Button
+              variant="default"
+              onClick={handleOpenCertificateViewer}
+              disabled={isLoadingPreviews || trainees.length === 0 || selectedTraineeIds.size === 0}
+            >
+              {isLoadingPreviews ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Preparing Previews...
+                </>
+              ) : (
+                <>
+                  <Eye className="mr-2 h-4 w-4" />
+                  View Certificates
+                </>
+              )}
+            </Button>
+          </div>
         </DialogFooter>
 
         <Dialog open={isTraineeDialogOpen} onOpenChange={setIsTraineeDialogOpen}>
@@ -1163,6 +1961,394 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
         defaultMessage={emailMessage}
         recipientCount={getSelectedTrainees().length}
       />
+
+      {/* ✅ NEW: Certificate Preview Viewer */}
+      <Dialog open={isCertificateViewerOpen} onOpenChange={setIsCertificateViewerOpen}>
+        <DialogContent className="w-[95vw] max-w-6xl h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>
+                Certificate Preview{" "}
+                {certificatePreviews.length > 0 && (
+                  <span className="text-xs font-normal text-muted-foreground">
+                    ({activePreviewIndex + 1} of {certificatePreviews.length})
+                  </span>
+                )}
+              </span>
+              {certificatePreviews[activePreviewIndex]?.trainee && (
+                <div className="flex items-center gap-2">
+                  {/* Send this participant's certificate (reuses bulk send flow) */}
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => {
+                      const current = certificatePreviews[activePreviewIndex]
+                      if (!current) return
+                      // Limit selection to just this trainee, then open compose dialog
+                      setSelectedTraineeIds(new Set([current.trainee.id]))
+                      setSelectAll(false)
+                      handleOpenEmailCompose()
+                    }}
+                    disabled={isSendingEmails}
+                  >
+                    {isSendingEmails ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="h-4 w-4" />
+                        Send Certificate
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Edit this participant's info (name, picture, etc.) */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1"
+                    onClick={() => {
+                      const current = certificatePreviews[activePreviewIndex]
+                      if (!current) return
+                      setSelectedTrainee(current.trainee as any)
+                      setIsTraineeDialogOpen(true)
+                    }}
+                  >
+                    <PenSquare className="h-4 w-4" />
+                    Edit Participant
+                  </Button>
+
+                  {/* Open exact PDF in new tab */}
+                  {certificatePreviews[activePreviewIndex]?.url && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1"
+                      onClick={() => {
+                        const current = certificatePreviews[activePreviewIndex]
+                        if (!current?.url) return
+                        window.open(current.url, "_blank")
+                      }}
+                    >
+                      <Download className="h-4 w-4" />
+                      Open PDF
+                    </Button>
+                  )}
+                </div>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 flex flex-col gap-3 overflow-hidden">
+            {/* Per-participant layout adjustment */}
+            {certificatePreviews[activePreviewIndex]?.trainee && (
+              <div className="border rounded-md p-3 bg-muted/40 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground">
+                    Adjust layout for{" "}
+                    <span className="font-medium">
+                      {certificatePreviews[activePreviewIndex].trainee.last_name},{" "}
+                      {certificatePreviews[activePreviewIndex].trainee.first_name}
+                    </span>{" "}
+                    (applies only to this participant)
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1"
+                    onClick={handleSaveLayoutOffset}
+                    disabled={isSavingLayout}
+                  >
+                    {isSavingLayout ? (
+                      <>
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <PenSquare className="h-3 w-3" />
+                        Save Layout
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">
+                      Horizontal Offset ({(layoutOffset.offsetX * 100).toFixed(1)}% of width)
+                    </Label>
+                    <Slider
+                      value={[layoutOffset.offsetX]}
+                      onValueChange={([v]) =>
+                        setLayoutOffset(prev => ({ ...prev, offsetX: v }))
+                      }
+                      min={-0.05}
+                      max={0.05}
+                      step={0.002}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">
+                      Vertical Offset ({(layoutOffset.offsetY * 100).toFixed(1)}% of height)
+                    </Label>
+                    <Slider
+                      value={[layoutOffset.offsetY]}
+                      onValueChange={([v]) =>
+                        setLayoutOffset(prev => ({ ...prev, offsetY: v }))
+                      }
+                      min={-0.05}
+                      max={0.05}
+                      step={0.002}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Field to fine-tune</Label>
+                    <Select
+                      value={activeFieldId ?? ""}
+                      onValueChange={(value) => setActiveFieldId(value || null)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select field" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {templateFields.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            {f.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {activeFieldId && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                    <div>
+                      <Label className="text-xs">
+                        Field X{" "}
+                        {(
+                          ((fieldOverrides[activeFieldId]?.x ??
+                            0) * 100
+                          ).toFixed(1)
+                        )}
+                        % of width
+                      </Label>
+                      <Slider
+                        value={[
+                          fieldOverrides[activeFieldId]?.x ?? 0,
+                        ]}
+                        onValueChange={([v]) =>
+                          setFieldOverrides((prev) => ({
+                            ...prev,
+                            [activeFieldId]: {
+                              ...(prev[activeFieldId] || {}),
+                              x: v,
+                            },
+                          }))
+                        }
+                        min={0}
+                        max={1}
+                        step={0.002}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">
+                        Field Y{" "}
+                        {(
+                          ((fieldOverrides[activeFieldId]?.y ??
+                            0) * 100
+                          ).toFixed(1)
+                        )}
+                        % of height
+                      </Label>
+                      <Slider
+                        value={[
+                          fieldOverrides[activeFieldId]?.y ?? 0,
+                        ]}
+                        onValueChange={([v]) =>
+                          setFieldOverrides((prev) => ({
+                            ...prev,
+                            [activeFieldId]: {
+                              ...(prev[activeFieldId] || {}),
+                              y: v,
+                            },
+                          }))
+                        }
+                        min={0}
+                        max={1}
+                        step={0.002}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex-1 flex items-center gap-4 overflow-hidden">
+              {/* Previous */}
+              <Button
+              variant="ghost"
+              size="icon"
+              disabled={certificatePreviews.length <= 1}
+              onClick={() =>
+                setActivePreviewIndex((prev) =>
+                  prev === 0 ? certificatePreviews.length - 1 : prev - 1
+                )
+              }
+            >
+              <ChevronLeft className="h-6 w-6" />
+              </Button>
+
+              {/* Main preview */}
+              <div className="flex-1 h-full border rounded-md overflow-hidden bg-muted flex flex-col">
+                {/* Drag preview (fast). Drag fields directly here. */}
+                {templateForViewer?.imageUrl && templateForViewer.fields?.length > 0 && (
+                  <div className="border-b bg-background p-2">
+                    <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                      <div className="text-xs text-muted-foreground">
+                        Tip: drag text/photo box to reposition. Drag photo edges to change width/height. Corner keeps proportional resize.
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPreviewZoom((z) => Math.max(0.5, Number((z - 0.1).toFixed(2))))}
+                        >
+                          -
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPreviewZoom(1)}
+                        >
+                          {Math.round(previewZoom * 100)}%
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPreviewZoom((z) => Math.min(2.5, Number((z + 0.1).toFixed(2))))}
+                        >
+                          +
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="w-full overflow-auto border rounded bg-muted/30 flex items-center justify-center min-h-[400px]">
+                      <canvas
+                        ref={previewCanvasRef}
+                        className="cursor-crosshair"
+                        style={{
+                          transform: `scale(${previewZoom})`,
+                          transformOrigin: "center center",
+                          transition: dragStateRef.current.mode === "pan" ? "none" : "transform 0.1s ease-out"
+                        }}
+                        onMouseDown={handlePreviewCanvasMouseDown}
+                        onMouseMove={handlePreviewCanvasMouseMove}
+                        onMouseUp={handlePreviewCanvasMouseUp}
+                        onMouseLeave={handlePreviewCanvasMouseUp}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Actual PDF output (authoritative) */}
+              {certificatePreviews.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                  No previews available.
+                </div>
+              ) : (
+                (() => {
+                  const current = certificatePreviews[activePreviewIndex]
+                  if (!current) {
+                    return (
+                      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                        No preview selected.
+                      </div>
+                    )
+                  }
+                  if (current.error) {
+                    return (
+                      <div className="h-full flex flex-col items-center justify-center text-center px-4">
+                        <p className="text-sm font-medium text-red-500">
+                          Failed to generate certificate for{" "}
+                          {current.trainee.first_name} {current.trainee.last_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-2 whitespace-pre-line">
+                          {current.error}
+                        </p>
+                      </div>
+                    )
+                  }
+                  if (!current.url) {
+                    return (
+                      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                        Loading preview...
+                      </div>
+                    )
+                  }
+                  return (
+                    <iframe
+                      src={current.url}
+                      className="w-full h-full"
+                      title={`Certificate preview for ${current.trainee.first_name} ${current.trainee.last_name}`}
+                    />
+                  )
+                })()
+              )}
+              </div>
+
+              {/* Next */}
+              <Button
+              variant="ghost"
+              size="icon"
+              disabled={certificatePreviews.length <= 1}
+              onClick={() =>
+                setActivePreviewIndex((prev) =>
+                  prev === certificatePreviews.length - 1 ? 0 : prev + 1
+                )
+              }
+            >
+              <ChevronRight className="h-6 w-6" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Horizontal strip of participants */}
+          {certificatePreviews.length > 0 && (
+            <div className="mt-4 border-t pt-3">
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {certificatePreviews.map((item, index) => (
+                  <button
+                    key={item.trainee.id}
+                    type="button"
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md border text-xs whitespace-nowrap ${
+                      index === activePreviewIndex
+                        ? "border-primary bg-primary/10"
+                        : "border-muted hover:bg-muted/60"
+                    }`}
+                    onClick={() => setActivePreviewIndex(index)}
+                  >
+                    <Avatar className="h-6 w-6">
+                      <AvatarImage src={item.trainee.picture_2x2_url} />
+                      <AvatarFallback>
+                        {item.trainee.first_name?.[0]}
+                        {item.trainee.last_name?.[0]}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span>
+                      {item.trainee.last_name}, {item.trainee.first_name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Dialog>
     
   )
