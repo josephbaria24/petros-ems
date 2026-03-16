@@ -655,7 +655,7 @@ const getTrainingFee = () => {
   
   if (eventType === 'online') {
     return Number(trainee.courses.online_fee) || 0;
-  } else if (eventType === 'in-house') {
+  } else if (eventType === 'face-to-face') {
     return Number(trainee.courses.face_to_face_fee) || 0;
   } else if (eventType === 'elearning') {
     return Number(trainee.courses.elearning_fee) || 0;
@@ -670,7 +670,7 @@ const getEventTypeLabel = () => {
   
   const typeMap: { [key: string]: string } = {
     'online': 'Online',
-    'in-house': 'Face-to-Face',
+    'face-to-face': 'Face-to-Face',
     'elearning': 'E-Learning'
   };
   
@@ -2989,7 +2989,7 @@ const handleRestoreIdOriginal = async () => {
     <span>Course Fee:</span>
     <span>
       {formatCurrency(
-        (discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) as number
+        (discountApplied !== null ? discountApplied : getTrainingFee()) as number
       )}
     </span>
   </div>
@@ -3014,7 +3014,7 @@ const handleRestoreIdOriginal = async () => {
     <span>Total Required:</span>
     <span>
       {formatCurrency(
-        ((discountApplied !== null ? discountApplied : (trainee?.training_fee || 0)) as number) +
+        ((discountApplied !== null ? discountApplied : getTrainingFee()) as number) +
         getPvcFee(trainee)
       )}
     </span>
@@ -3026,7 +3026,7 @@ const handleRestoreIdOriginal = async () => {
                 </div>
 
                 {(() => {
-                  const courseFee = discountApplied !== null ? Number(discountApplied) : Number(trainee?.training_fee || 0);
+                  const courseFee = discountApplied !== null ? Number(discountApplied) : getTrainingFee();
                   const pvcFee = getPvcFee(trainee);
                   const requiredFee = courseFee + pvcFee;
                   const currentPaid = Number(totalPaid) || 0;

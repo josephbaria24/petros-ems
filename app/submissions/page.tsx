@@ -293,6 +293,8 @@ const fetchTrainees = async () => {
       .select(`
         course_id,
         schedule_type,
+        event_type,
+        branch,
         batch_number,
         schedule_dates(date),
         schedule_ranges(start_date, end_date),
@@ -309,8 +311,18 @@ const fetchTrainees = async () => {
   // @ts-ignore
   setCourseName(scheduleData.courses.name || "");
   setScheduleDateText(formatScheduleDate(scheduleData));
-  setCurrentCourseId(scheduleData.course_id); // ADD THIS LINE
-   setBatchNumber(scheduleData.batch_number);
+  setCurrentCourseId(scheduleData.course_id); 
+  setBatchNumber(scheduleData.batch_number);
+
+  // Store the schedule info to attach to trainees
+  // @ts-ignore
+  const scheduleInfo = {
+    id: scheduleId,
+    event_type: scheduleData.event_type,
+    schedule_type: scheduleData.schedule_type,
+    branch: scheduleData.branch
+  };
+  localStorage.setItem(`schedule_info_${scheduleId}`, JSON.stringify(scheduleInfo));
 }
 
     // Fetch trainings data
@@ -353,7 +365,13 @@ const fetchTrainees = async () => {
         courses:course_id (
           id,
           name,
-          training_fee
+          training_fee,
+          online_fee,
+          face_to_face_fee,
+          elearning_fee,
+          pvc_id_type,
+          pvc_student_price,
+          pvc_professional_price
         ),
         payments (
           id,
@@ -438,6 +456,14 @@ const fetchTrainees = async () => {
     console.log("🗺️ Final voucher map size:", voucherMap.size);
     console.log("🗺️ Voucher map entries:", Array.from(voucherMap.entries()));
 
+    const getBaseFee = (t: any) => {
+      const et = scheduleData?.event_type?.toLowerCase();
+      if (et === "online") return Number(t.courses?.online_fee) || 0;
+      if (et === "face-to-face") return Number(t.courses?.face_to_face_fee) || 0;
+      if (et === "elearning") return Number(t.courses?.elearning_fee) || 0;
+      return Number(t.courses?.training_fee) || 0;
+    };
+
     // Format data with all nested info
     const formattedData = (data || []).map((trainee: any, index: number) => {
       const voucherInfo = voucherMap.get(trainee.id) || null;
@@ -455,10 +481,13 @@ const fetchTrainees = async () => {
       
       return {
         ...trainee,
-        training_fee: trainee.courses?.training_fee || 0,
+        training_fee: getBaseFee(trainee),
         payments: trainee.payments || [],
         voucherInfo,
         rowIndex: index,
+        schedules: {
+          event_type: scheduleData?.event_type
+        }
       };
     });
 
@@ -512,7 +541,17 @@ const handleDialogClose = async (open: boolean) => {
       .from("trainings")
       .select(`
         *,
-        courses:course_id(id, name, training_fee),
+        courses:course_id(
+          id, 
+          name, 
+          training_fee,
+          online_fee,
+          face_to_face_fee,
+          elearning_fee,
+          pvc_id_type,
+          pvc_student_price,
+          pvc_professional_price
+        ),
         payments (
           id,
           payment_date,
@@ -556,11 +595,22 @@ const handleDialogClose = async (open: boolean) => {
         }
       }
 
+      const getBaseFee = (t: any) => {
+        const et = selectedTrainee.schedules?.event_type?.toLowerCase();
+        if (et === 'online') return Number(t.courses?.online_fee) || 0;
+        if (et === 'face-to-face') return Number(t.courses?.face_to_face_fee) || 0;
+        if (et === 'elearning') return Number(t.courses?.elearning_fee) || 0;
+        return Number(t.courses?.training_fee) || 0;
+      };
+
       const updated = {
         ...updatedTrainee,
-        training_fee: updatedTrainee.courses?.training_fee || 0,
+        training_fee: getBaseFee(updatedTrainee),
         payments: updatedTrainee.payments || [],
         voucherInfo,
+        schedules: {
+          event_type: selectedTrainee.schedules?.event_type
+        }
       };
 
       setTrainees((prev) => {
