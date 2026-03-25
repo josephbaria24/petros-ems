@@ -92,6 +92,9 @@ function capitalize(word: string | null | undefined): string {
     .join(" ");
 }
 
+// Server-side cache for template images to avoid redundant fetches
+const imageCache = new Map<string, ArrayBuffer>();
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -102,28 +105,22 @@ export async function POST(req: NextRequest) {
       courseId, 
       templateType = "completion",
       layoutOverride,
+      precomputed, // NEW: Allow passing pre-fetched data
     } = body;
 
-    console.log("📝 PDF Generation Request:");
-    console.log("  - Trainee:", trainee?.first_name, trainee?.last_name);
-    console.log("  - Course Name:", courseName);
-    console.log("  - Course Title:", courseTitle);
-    console.log("  - Template Type:", templateType);
-    console.log("  - Course ID:", courseId);
-    console.log("  - Schedule ID:", trainee?.schedule_id);
+    console.log("📝 PDF Generation Request (Optimized):", trainee?.id);
 
-    if (!trainee || !courseName) {
-      console.error("❌ Missing required parameters");
+    if (!trainee || (!courseName && !precomputed?.courseName)) {
       return NextResponse.json(
-        { success: false, error: "Missing required parameters (trainee or courseName)" },
+        { success: false, error: "Missing required parameters" },
         { status: 400 }
       );
     }
 
-    // Fetch certificate template
-    let template: CertificateTemplate | null = null;
+    // 1. Fetch certificate template (Check precomputed first)
+    let template: CertificateTemplate | null = precomputed?.template || null;
     
-    if (courseId) {
+    if (!template && courseId) {
       const { data, error } = await supabase
         .from("certificate_templates")
         .select("*")
@@ -132,161 +129,125 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (error) {
-        console.error("❌ Error fetching template:", error);
-        return NextResponse.json(
-          { success: false, error: `Template fetch error: ${error.message}` },
-          { status: 500 }
-        );
+        return NextResponse.json({ success: false, error: `Template fetch error: ${error.message}` }, { status: 500 });
       } else if (data) {
         template = data as CertificateTemplate;
-        console.log("✅ Found custom template:", template.template_type);
       }
     }
 
     if (!template) {
-      console.error("❌ No template found for courseId:", courseId, "templateType:", templateType);
-      return NextResponse.json(
-        { success: false, error: `No certificate template found for this course (${courseId}) and type (${templateType})` },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: `No certificate template found` }, { status: 404 });
     }
 
     // Determine if this is an ID template
     const isIDTemplate = templateType === "excellence";
 
+    // ✅ Always use today's date for givenThisDate
+    const today = new Date();
+    const computedGivenDate = today.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+
     
-// ✅ Always use today's date for givenThisDate
-const today = new Date();
-const computedGivenDate = today.toLocaleDateString("en-US", {
-  month: "long",
-  day: "numeric",
-  year: "numeric",
-});
-let computedScheduleRange = "";
-
-// ✅ Dynamically build scheduleRange based on schedule_type
-if (trainee.schedule_id) {
-  try {
-    const { data: schedule, error: scheduleError } = await supabase
-      .from("schedules")
-      .select("schedule_type")
-      .eq("id", trainee.schedule_id)
-      .single();
-
-    if (schedule && !scheduleError) {
-      if (schedule.schedule_type === "regular") {
-        const { data: rangeData } = await supabase
-          .from("schedule_ranges")
-          .select("start_date, end_date")
-          .eq("schedule_id", trainee.schedule_id)
+    // 2. Determine schedule range (Check precomputed first)
+    let computedScheduleRange = precomputed?.scheduleRange || "";
+    
+    if (!computedScheduleRange && trainee.schedule_id) {
+      try {
+        const { data: schedule, error: scheduleError } = await supabase
+          .from("schedules")
+          .select("schedule_type")
+          .eq("id", trainee.schedule_id)
           .single();
 
-        if (rangeData) {
-          const start = new Date(rangeData.start_date);
-          const end = new Date(rangeData.end_date);
-         computedScheduleRange = formatScheduleRange([start, end]);
-          console.log("📅 scheduleRange (regular):", computedScheduleRange);
+        if (schedule && !scheduleError) {
+          if (schedule.schedule_type === "regular") {
+            const { data: rangeData } = await supabase
+              .from("schedule_ranges")
+              .select("start_date, end_date")
+              .eq("schedule_id", trainee.schedule_id)
+              .single();
 
-        }
-      } else if (schedule.schedule_type === "staggered") {
-        const { data: datesData } = await supabase
-          .from("schedule_dates")
-          .select("date")
-          .eq("schedule_id", trainee.schedule_id)
-          .order("date", { ascending: true });
+            if (rangeData) {
+              computedScheduleRange = formatScheduleRange([new Date(rangeData.start_date), new Date(rangeData.end_date)]);
+            }
+          } else if (schedule.schedule_type === "staggered") {
+            const { data: datesData } = await supabase
+              .from("schedule_dates")
+              .select("date")
+              .eq("schedule_id", trainee.schedule_id)
+              .order("date", { ascending: true });
 
-        if (datesData && datesData.length > 0) {
-          const sorted = datesData.map(d => new Date(d.date)).sort((a, b) => a.getTime() - b.getTime());
-          computedScheduleRange = formatScheduleRange(sorted);
-          console.log("📅 scheduleRange (staggered):", computedScheduleRange);
+            if (datesData?.length) {
+              computedScheduleRange = formatScheduleRange(datesData.map(d => new Date(d.date)));
+            }
+          }
         }
+      } catch (e) {
+        console.warn("⚠️ Error fetching schedule dates:", e);
       }
     }
-  } catch (error) {
-    console.warn("⚠️ Error fetching schedule dates:", error);
-  }
-}
 
-    // Fetch template image
+    // 3. Fetch template image (Using Cache)
     let imageBytes: ArrayBuffer;
     try {
-      if (template.image_url.startsWith('data:')) {
+      if (imageCache.has(template.image_url)) {
+        imageBytes = imageCache.get(template.image_url)!;
+      } else if (template.image_url.startsWith('data:')) {
         const base64Data = template.image_url.split(',')[1];
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        imageBytes = bytes.buffer;
+        imageBytes = Buffer.from(base64Data, 'base64').buffer;
+        imageCache.set(template.image_url, imageBytes);
       } else {
         const imageResponse = await fetch(template.image_url);
-        if (!imageResponse.ok) {
-          throw new Error(`Failed to fetch template image: ${imageResponse.statusText}`);
-        }
+        if (!imageResponse.ok) throw new Error(`Fetch failed: ${imageResponse.statusText}`);
         imageBytes = await imageResponse.arrayBuffer();
+        imageCache.set(template.image_url, imageBytes);
       }
-      console.log("✅ Template image loaded, size:", imageBytes.byteLength, "bytes");
     } catch (error: any) {
-      console.error("❌ Failed to load template image:", error);
-      return NextResponse.json(
-        { success: false, error: `Failed to load template image: ${error.message}` },
-        { status: 500 }
-      );
+      return NextResponse.json({ success: false, error: `Failed to load template image: ${error.message}` }, { status: 500 });
     }
 
-    // Create PDF document
+    // 4. Create PDF document and embed template
     const pdfDoc = await PDFDocument.create();
-    
-    // Embed the template image
-    let templateImage;
     const imageType = template.image_url.toLowerCase();
-    
+    let templateImage;
     if (imageType.includes('png') || imageType.includes('data:image/png')) {
       templateImage = await pdfDoc.embedPng(imageBytes);
-    } else if (imageType.includes('jpg') || imageType.includes('jpeg') || imageType.includes('data:image/jpeg')) {
-      templateImage = await pdfDoc.embedJpg(imageBytes);
     } else {
-      try {
-        templateImage = await pdfDoc.embedPng(imageBytes);
-      } catch {
-        templateImage = await pdfDoc.embedJpg(imageBytes);
-      }
+      templateImage = await pdfDoc.embedJpg(imageBytes);
     }
 
-    // Set canvas dimensions based on template type
-    // Use the same canonical sizes as the template editor
     const CANVAS_WIDTH = isIDTemplate ? 1350 : 842;
     const CANVAS_HEIGHT = isIDTemplate ? 850 : 595;
 
-    // ✅ NEW: Per-trainee layout overrides (global X/Y offsets + per-field overrides)
+    // 5. Layout overrides (Check precomputed first)
     let offsetX = 0;
     let offsetY = 0;
     let fieldOverrides: Record<string, any> = {};
 
-    // If a caller provides an explicit override (for live preview), use it.
-    if (layoutOverride && typeof layoutOverride === "object") {
-      offsetX = typeof layoutOverride.offsetX === "number" ? layoutOverride.offsetX : 0;
-      offsetY = typeof layoutOverride.offsetY === "number" ? layoutOverride.offsetY : 0;
-      fieldOverrides =
-        layoutOverride.fieldOverrides && typeof layoutOverride.fieldOverrides === "object"
-          ? layoutOverride.fieldOverrides
-          : {};
+    if (precomputed?.layout) {
+      offsetX = precomputed.layout.offsetX ?? 0;
+      offsetY = precomputed.layout.offsetY ?? 0;
+      fieldOverrides = precomputed.layout.fieldOverrides ?? {};
+    } else if (layoutOverride && typeof layoutOverride === "object") {
+      offsetX = layoutOverride.offsetX ?? 0;
+      offsetY = layoutOverride.offsetY ?? 0;
+      fieldOverrides = layoutOverride.fieldOverrides ?? {};
     } else {
-      // Otherwise, load from DB
       try {
-        const { data: overrideRow, error: overrideError } = await supabase
+        const { data: overrideRow } = await supabase
           .from("certificate_layout_overrides")
           .select("offset_x, offset_y, field_overrides")
           .eq("training_id", trainee.id)
           .eq("template_type", templateType)
           .maybeSingle();
 
-        if (overrideError) {
-          console.warn("⚠️ Error fetching layout override:", overrideError);
-        } else if (overrideRow) {
-          offsetX = Number((overrideRow as any).offset_x ?? 0);
-          offsetY = Number((overrideRow as any).offset_y ?? 0);
-          fieldOverrides = ((overrideRow as any).field_overrides as any) || {};
+        if (overrideRow) {
+          offsetX = Number(overrideRow.offset_x ?? 0);
+          offsetY = Number(overrideRow.offset_y ?? 0);
+          fieldOverrides = (overrideRow.field_overrides as any) || {};
         }
       } catch (e) {
         console.warn("⚠️ Unexpected error while loading layout overrides:", e);

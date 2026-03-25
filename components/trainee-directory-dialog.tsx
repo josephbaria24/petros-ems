@@ -51,6 +51,29 @@ interface DownloadTrainee {
   batch_number?: number
 }
 
+interface CertificateGenerationData {
+  training_id: string;
+  first_name: string;
+  last_name: string;
+  middle_initial?: string;
+  suffix?: string;
+  certificate_number: string;
+  batch_number?: number;
+  picture_2x2_url?: string;
+  schedule_id: string;
+  course_id: string;
+  schedule_type: string;
+  range_start_date?: string;
+  range_end_date?: string;
+  staggered_dates?: string[];
+  offset_x: number;
+  offset_y: number;
+  field_overrides: any;
+  override_template_type?: string;
+  course_name: string;
+  course_title: string;
+}
+
 type TemplateField = {
   id: string
   label: string
@@ -251,6 +274,12 @@ export default function ParticipantDirectoryDialog({
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null)
   const [isSavingLayout, setIsSavingLayout] = useState(false)
   const [previewZoom, setPreviewZoom] = useState(1)
+  
+  // ✅ NEW: Performance & Caching State
+  const [generationDataMap, setGenerationDataMap] = useState<Map<string, CertificateGenerationData>>(new Map())
+  const [isPreFetching, setIsPreFetching] = useState(false)
+  const preFetchQueueRef = useRef<string[]>([])
+  const isPreFetchingRunningRef = useRef(false)
 
   const isIdTemplateSelected = selectedTemplateType === "excellence"
   const canvasSize = useMemo(() => {
@@ -707,10 +736,11 @@ export default function ParticipantDirectoryDialog({
       fetchTrainees().then(() => {
         ensureCertificateNumbers()
       })
+      fetchCertificateGenerationData()
       fetchScheduleStatus()
       setSelectedTraineeIds(new Set())
       setSelectAll(false)
-      // Clean any existing preview URLs when dialog is reopened
+      // Clean any existing preview URLs when dialog is reopened or template changed
       setCertificatePreviews(prev => {
         prev.forEach(p => {
           if (p.url) URL.revokeObjectURL(p.url)
@@ -718,7 +748,7 @@ export default function ParticipantDirectoryDialog({
         return []
       })
     }
-  }, [open, scheduleId])
+  }, [open, scheduleId, selectedTemplateType])
 
   // When active preview changes, load its layout override
   useEffect(() => {
@@ -995,6 +1025,16 @@ const handleDownloadCertificates = async () => {
 
       for (let i = 0; i < updatedTrainees.length; i++) {
         const trainee = updatedTrainees[i]
+        const genData = generationDataMap.get(trainee.id)
+        
+        // Check if we already have a background-generated URL in the existing State
+        const existingPreview = certificatePreviews.find(p => p.trainee.id === trainee.id)
+        if (existingPreview?.url) {
+          previews.push({ ...existingPreview, trainee }) // reuse the URL
+          setProgress(Math.round(((i + 1) / updatedTrainees.length) * 100))
+          continue
+        }
+
         try {
           const res = await fetch("/api/generate-certificate-pdf", {
             method: "POST",
@@ -1006,7 +1046,13 @@ const handleDownloadCertificates = async () => {
               scheduleRange,
               courseId: trainee.course_id,
               templateType: selectedTemplateType,
-              givenThisDate: new Date().toLocaleDateString(),
+              precomputed: genData ? {
+                layout: {
+                  offsetX: genData.offset_x,
+                  offsetY: genData.offset_y,
+                  fieldOverrides: genData.field_overrides
+                }
+              } : undefined
             }),
           })
 
@@ -1102,6 +1148,124 @@ const handleDownloadCertificates = async () => {
       console.error("Unexpected error:", err)
     }
   }
+
+  // ✅ NEW: Bulk fetch all data needed for certificates via the new view
+  const fetchCertificateGenerationData = async () => {
+    if (!scheduleId || !open) return
+    
+    setIsPreFetching(true)
+    try {
+      const { data, error } = await tmsDb
+        .from("v_certificate_generation_data")
+        .select("*")
+        .eq("schedule_id", scheduleId)
+
+      if (error) {
+        console.error("❌ Error pre-fetching generation data:", error)
+      } else if (data) {
+        const newMap = new Map<string, CertificateGenerationData>()
+        data.forEach((item: any) => {
+          // Keep only the override for the currently selected template type if available
+          if (!item.override_template_type || item.override_template_type === selectedTemplateType) {
+             newMap.set(item.training_id, item as CertificateGenerationData)
+          }
+        })
+        setGenerationDataMap(newMap)
+        console.log("🚀 Pre-fetched layout data for", newMap.size, "participants")
+        
+        // Initialize background pre-fetching queue
+        preFetchQueueRef.current = Array.from(newMap.keys())
+      }
+    } catch (err) {
+      console.error("Unexpected error in pre-fetch:", err)
+    } finally {
+      setIsPreFetching(false)
+    }
+  }
+
+  // ✅ NEW: Background Pre-fetching (Silent Cache)
+  useEffect(() => {
+    if (generationDataMap.size === 0 || isPreFetchingRunningRef.current || !open) return
+
+    const processQueue = async () => {
+      if (preFetchQueueRef.current.length === 0 || !open) {
+        isPreFetchingRunningRef.current = false
+        return
+      }
+
+      isPreFetchingRunningRef.current = true
+      const traineeId = preFetchQueueRef.current.shift()
+      if (!traineeId) {
+        isPreFetchingRunningRef.current = false
+        return
+      }
+
+      // Skip if already has a preview
+      const hasPreview = certificatePreviews.some(p => p.trainee.id === traineeId && p.url)
+      if (hasPreview) {
+        setTimeout(processQueue, 50)
+        return
+      }
+
+      const genData = generationDataMap.get(traineeId)
+      if (!genData) {
+        setTimeout(processQueue, 50)
+        return
+      }
+
+      try {
+        const res = await fetch("/api/generate-certificate-pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trainee: {
+              id: genData.training_id,
+              first_name: genData.first_name,
+              last_name: genData.last_name,
+              middle_initial: genData.middle_initial,
+              picture_2x2_url: genData.picture_2x2_url,
+              certificate_number: genData.certificate_number,
+              batch_number: genData.batch_number,
+              schedule_id: genData.schedule_id,
+              course_id: genData.course_id,
+            },
+            courseName: genData.course_name,
+            templateType: selectedTemplateType,
+            precomputed: {
+              layout: {
+                offsetX: genData.offset_x,
+                offsetY: genData.offset_y,
+                fieldOverrides: genData.field_overrides
+              }
+            }
+          }),
+        })
+
+        if (res.ok) {
+          const blob = await res.blob()
+          const url = URL.createObjectURL(blob)
+          
+          setCertificatePreviews(prev => {
+            // Find if there's an existing placeholder
+            const existingIndex = prev.findIndex(p => p.trainee.id === traineeId)
+            if (existingIndex >= 0) {
+              const newPreviews = [...prev]
+              newPreviews[existingIndex] = { ...newPreviews[existingIndex], url }
+              return newPreviews
+            }
+            return prev
+          })
+        }
+      } catch (e) {
+        console.warn("Silent pre-fetch failed for", traineeId, e)
+      }
+
+      // Next one after a short delay to keep CPU low
+      setTimeout(processQueue, 1000)
+    }
+
+    processQueue()
+  }, [generationDataMap, open, selectedTemplateType, certificatePreviews])
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status?.toLowerCase()) {
@@ -1380,8 +1544,29 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
           scheduleRange,
           courseId: current.trainee.course_id,
           templateType: selectedTemplateType,
-          givenThisDate: new Date().toLocaleDateString(),
+          precomputed: {
+            layout: {
+              offsetX: layoutOffset.offsetX,
+              offsetY: layoutOffset.offsetY,
+              fieldOverrides
+            }
+          }
         }),
+      })
+
+      // Update local generation data map so future pre-fetches for this trainee are correct
+      setGenerationDataMap(prev => {
+        const next = new Map(prev)
+        const currentData = next.get(current.trainee.id)
+        if (currentData) {
+          next.set(current.trainee.id, {
+            ...currentData,
+            offset_x: layoutOffset.offsetX,
+            offset_y: layoutOffset.offsetY,
+            field_overrides: fieldOverrides
+          })
+        }
+        return next
       })
 
       if (res.ok) {
