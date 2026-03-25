@@ -3,7 +3,7 @@
 
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from "@/components/ui/alert-dialog"
 import { Progress } from "@/components/ui/progress"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -234,7 +234,7 @@ export default function ParticipantDirectoryDialog({
   const [selectedTraineeIds, setSelectedTraineeIds] = useState<Set<string>>(new Set())
   const [selectAll, setSelectAll] = useState(false)
 
-    // ✅ NEW: Email compose dialog state
+  // ✅ NEW: Email compose dialog state
   const [emailComposeOpen, setEmailComposeOpen] = useState(false)
   const [emailSubject, setEmailSubject] = useState("")
   const [emailMessage, setEmailMessage] = useState("")
@@ -250,10 +250,17 @@ export default function ParticipantDirectoryDialog({
   const [templateForViewer, setTemplateForViewer] = useState<{ imageUrl: string; fields: TemplateField[] } | null>(null)
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null)
   const [isSavingLayout, setIsSavingLayout] = useState(false)
+  const [previewZoom, setPreviewZoom] = useState(1)
+
+  const isIdTemplateSelected = selectedTemplateType === "excellence"
+  const canvasSize = useMemo(() => {
+    return isIdTemplateSelected ? { w: 1350, h: 850 } : { w: 842, h: 595 }
+  }, [isIdTemplateSelected])
+
+  const previewContainerRef = useRef<HTMLDivElement>(null)
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null)
   const livePreviewTimerRef = useRef<number | null>(null)
   const livePreviewRequestIdRef = useRef(0)
-  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const [previewZoom, setPreviewZoom] = useState(1)
   const dragStateRef = useRef<{
     fieldId: string | null
     mode: "move" | "resize" | "pan"
@@ -270,10 +277,32 @@ export default function ParticipantDirectoryDialog({
     startScrollTop?: number
   }>({ fieldId: null, mode: "move", dx: 0, dy: 0 })
 
-  const isIdTemplateSelected = selectedTemplateType === "excellence"
-  const canvasSize = useMemo(() => {
-    return isIdTemplateSelected ? { w: 1350, h: 850 } : { w: 842, h: 595 }
+  const handleFitToScreen = useCallback(() => {
+    if (!previewContainerRef.current) return
+    const isID = isIdTemplateSelected
+    const canvasW = isID ? 1350 : 842
+    const canvasH = isID ? 850 : 595
+    
+    // Use container dimensions, with a fallback if they are too small initially
+    const containerW = Math.max(previewContainerRef.current.clientWidth, 400)
+    const containerH = Math.max(previewContainerRef.current.clientHeight, 400)
+    
+    // Add 40px padding
+    const scaleW = (containerW - 40) / canvasW
+    const scaleH = (containerH - 40) / canvasH
+    const fitScale = Math.min(scaleW, scaleH, 1.0)
+    
+    setPreviewZoom(Number(fitScale.toFixed(2)))
   }, [isIdTemplateSelected])
+
+  // Auto-fit on open or template change
+  useEffect(() => {
+    if (isCertificateViewerOpen) {
+      // Delay slightly to ensure container is rendered and has dimensions
+      const timer = setTimeout(handleFitToScreen, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isCertificateViewerOpen, isIdTemplateSelected, handleFitToScreen])
 
   const getFontString = (field: TemplateField, canvasH: number) => {
     const px = Math.max(1, (field.fontSize || 0.02) * canvasH)
@@ -358,12 +387,10 @@ export default function ParticipantDirectoryDialog({
 
         const isPhoto = f.value?.includes("{{trainee_picture}}")
         if (isPhoto) {
-          const baseWNorm = typeof f.boxWidth === "number" ? f.boxWidth : f.fontSize
-          const baseHNorm = typeof f.boxHeight === "number" ? f.boxHeight : f.fontSize
-          const wNorm = typeof fo.boxWidth === "number" ? fo.boxWidth : (typeof fo.fontSize === "number" ? fo.fontSize : baseWNorm)
-          const hNorm = typeof fo.boxHeight === "number" ? fo.boxHeight : (typeof fo.fontSize === "number" ? fo.fontSize : baseHNorm)
-          const w = wNorm * canvas.width
-          const h = hNorm * canvas.height
+          const baseW = typeof f.boxWidth === "number" ? f.boxWidth * canvas.width : (f.fontSize || 0.12) * canvas.height
+          const baseH = typeof f.boxHeight === "number" ? f.boxHeight * canvas.height : (f.fontSize || 0.12) * canvas.height
+          const w = typeof fo.boxWidth === "number" ? fo.boxWidth * canvas.width : (typeof fo.fontSize === "number" ? fo.fontSize * canvas.height : baseW)
+          const h = typeof fo.boxHeight === "number" ? fo.boxHeight * canvas.height : (typeof fo.fontSize === "number" ? fo.fontSize * canvas.height : baseH)
           ctx.setLineDash([6, 4])
           ctx.strokeStyle = f.id === activeFieldId ? "#0ea5e9" : "#22c55e"
           ctx.lineWidth = 2
@@ -1397,8 +1424,10 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
 
       const isPhoto = f.value?.includes("{{trainee_picture}}")
       if (isPhoto) {
-        const w = (typeof fo.boxWidth === "number" ? fo.boxWidth : (typeof fo.fontSize === "number" ? fo.fontSize : f.boxWidth ?? f.fontSize)) * canvas.height
-        const h = (typeof fo.boxHeight === "number" ? fo.boxHeight : (typeof fo.fontSize === "number" ? fo.fontSize : f.boxHeight ?? f.fontSize)) * canvas.height
+        const baseW = typeof f.boxWidth === "number" ? f.boxWidth * canvas.width : (f.fontSize || 0.12) * canvas.height
+        const baseH = typeof f.boxHeight === "number" ? f.boxHeight * canvas.height : (f.fontSize || 0.12) * canvas.height
+        const w = typeof fo.boxWidth === "number" ? fo.boxWidth * canvas.width : (typeof fo.fontSize === "number" ? fo.fontSize * canvas.height : baseW)
+        const h = typeof fo.boxHeight === "number" ? fo.boxHeight * canvas.height : (typeof fo.fontSize === "number" ? fo.fontSize * canvas.height : baseH)
         const boxW = Number.isFinite(w) ? w : 100
         const boxH = Number.isFinite(h) ? h : 100
 
@@ -1964,28 +1993,178 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
 
       {/* ✅ NEW: Certificate Preview Viewer */}
       <Dialog open={isCertificateViewerOpen} onOpenChange={setIsCertificateViewerOpen}>
-        <DialogContent className="w-[95vw] max-w-6xl h-[90vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>
-                Certificate Preview{" "}
-                {certificatePreviews.length > 0 && (
-                  <span className="text-xs font-normal text-muted-foreground">
-                    ({activePreviewIndex + 1} of {certificatePreviews.length})
+        <DialogContent className="w-[98vw] max-w-7xl h-[94vh] flex flex-col p-4">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5 text-primary" />
+              <span>Certificate Preview</span>
+              {certificatePreviews.length > 0 && (
+                <Badge variant="outline" className="ml-2 font-normal">
+                  {activePreviewIndex + 1} of {certificatePreviews.length}
+                </Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="flex-1 flex gap-4 overflow-hidden mt-4 min-h-0">
+            {/* Left Panel: Preview Container */}
+            <div className="flex-[3] flex flex-col border rounded-lg overflow-hidden bg-background relative shadow-inner min-w-0">
+              {/* Top Control Bar for Preview */}
+              <div className="border-b bg-muted/30 p-2 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-1.5 px-2">
+                  <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+                    Live Viewer
                   </span>
-                )}
-              </span>
-              {certificatePreviews[activePreviewIndex]?.trainee && (
-                <div className="flex items-center gap-2">
-                  {/* Send this participant's certificate (reuses bulk send flow) */}
+                </div>
+                
+                <div className="flex items-center gap-1">
                   <Button
-                    variant="secondary"
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setPreviewZoom((z) => Math.max(0.2, Number((z - 0.1).toFixed(2))))}
+                  >
+                    -
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-7 px-2 text-xs font-medium"
+                    onClick={() => setPreviewZoom(1)}
+                  >
+                    {Math.round(previewZoom * 100)}%
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => setPreviewZoom((z) => Math.min(3.0, Number((z + 0.1).toFixed(2))))}
+                  >
+                    +
+                  </Button>
+                  <div className="w-px h-4 bg-border mx-1" />
+                  <Button
+                    type="button"
+                    variant="outline"
                     size="sm"
-                    className="gap-1"
+                    onClick={handleFitToScreen}
+                    className="h-7 text-[10px] px-2"
+                  >
+                    Fit to Screen
+                  </Button>
+                </div>
+              </div>
+
+              {/* Main Preview Work Area */}
+              <div className="flex-1 relative flex items-center justify-center bg-muted/10 overflow-hidden group min-h-0">
+                {/* Overlay Navigation: Previous */}
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  disabled={certificatePreviews.length <= 1}
+                  className="absolute left-2 z-20 h-10 w-10 rounded-full bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity shadow-sm border border-border/50"
+                  onClick={() =>
+                    setActivePreviewIndex((prev) =>
+                      prev === 0 ? certificatePreviews.length - 1 : prev - 1
+                    )
+                  }
+                >
+                  <ChevronLeft className="h-6 w-6 text-primary" />
+                </Button>
+
+                {/* Viewport content */}
+                <div 
+                  ref={previewContainerRef}
+                  className="w-full h-full overflow-auto flex items-center justify-center p-8 scrollbar-thin"
+                >
+                  {certificatePreviews.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground animate-in fade-in transition-all">
+                      <Loader2 className="h-8 w-8 animate-spin opacity-20" />
+                      <span className="text-sm">Preparing Previews...</span>
+                    </div>
+                  ) : (
+                    <div className="relative shadow-2xl transition-transform duration-200">
+                      {/* Direct Editor Layer (Canvas) */}
+                      {templateForViewer?.imageUrl && templateForViewer.fields?.length > 0 && (
+                        <canvas
+                          ref={previewCanvasRef}
+                          className="cursor-crosshair bg-white"
+                          style={{
+                            transform: `scale(${previewZoom})`,
+                            transformOrigin: "center center",
+                            transition: dragStateRef.current.mode === "pan" ? "none" : "transform 0.1s ease-out"
+                          }}
+                          onMouseDown={handlePreviewCanvasMouseDown}
+                          onMouseMove={handlePreviewCanvasMouseMove}
+                          onMouseUp={handlePreviewCanvasMouseUp}
+                          onMouseLeave={handlePreviewCanvasMouseUp}
+                        />
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Overlay Navigation: Next */}
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  disabled={certificatePreviews.length <= 1}
+                  className="absolute right-2 z-20 h-10 w-10 rounded-full bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity shadow-sm border border-border/50"
+                  onClick={() =>
+                    setActivePreviewIndex((prev) =>
+                      prev === certificatePreviews.length - 1 ? 0 : prev + 1
+                    )
+                  }
+                >
+                  <ChevronRight className="h-6 w-6 text-primary" />
+                </Button>
+              </div>
+
+              {/* Bottom Tip bar */}
+              <div className="border-t bg-muted/20 px-4 py-1.5 flex justify-between items-center bg-background/50 shrink-0">
+                <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tighter">
+                  Editor Mode Active
+                </span>
+                <span className="text-[10px] text-muted-foreground italic">
+                  Drag markers to adjust field positions. Scroll to pan.
+                </span>
+              </div>
+            </div>
+
+            {/* Right Panel: Compact Controls */}
+            <div className="w-80 flex flex-col gap-4 overflow-y-auto pr-2 py-1 shrink-0 scrollbar-hide">
+              
+              {/* 1. Participant Summary & Actions */}
+              <div className="border rounded-lg bg-card p-3 shadow-sm space-y-3">
+                <div className="flex items-center gap-3 border-b pb-3">
+                  <Avatar className="h-10 w-10 border-2 border-primary/20">
+                    <AvatarImage src={certificatePreviews[activePreviewIndex]?.trainee.picture_2x2_url} />
+                    <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                      {certificatePreviews[activePreviewIndex]?.trainee.first_name?.[0]}
+                      {certificatePreviews[activePreviewIndex]?.trainee.last_name?.[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-bold truncate leading-tight">
+                      {certificatePreviews[activePreviewIndex]?.trainee.last_name}, {certificatePreviews[activePreviewIndex]?.trainee.first_name}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground truncate">
+                      {selectedTemplateType.charAt(0).toUpperCase() + selectedTemplateType.slice(1)} Template
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="w-full justify-start gap-2 h-9"
                     onClick={() => {
                       const current = certificatePreviews[activePreviewIndex]
                       if (!current) return
-                      // Limit selection to just this trainee, then open compose dialog
                       setSelectedTraineeIds(new Set([current.trainee.id]))
                       setSelectAll(false)
                       handleOpenEmailCompose()
@@ -1993,348 +2172,193 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
                     disabled={isSendingEmails}
                   >
                     {isSendingEmails ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                        Sending...
-                      </>
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <>
-                        <Mail className="h-4 w-4" />
-                        Send Certificate
-                      </>
+                      <Mail className="h-4 w-4" />
                     )}
+                    Send to Email
                   </Button>
-
-                  {/* Edit this participant's info (name, picture, etc.) */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1"
-                    onClick={() => {
-                      const current = certificatePreviews[activePreviewIndex]
-                      if (!current) return
-                      setSelectedTrainee(current.trainee as any)
-                      setIsTraineeDialogOpen(true)
-                    }}
-                  >
-                    <PenSquare className="h-4 w-4" />
-                    Edit Participant
-                  </Button>
-
-                  {/* Open exact PDF in new tab */}
-                  {certificatePreviews[activePreviewIndex]?.url && (
+                  
+                  <div className="grid grid-cols-2 gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1"
+                      className="justify-start gap-1 text-[11px] h-8"
+                      onClick={() => {
+                        const current = certificatePreviews[activePreviewIndex]
+                        if (!current) return
+                        setSelectedTrainee(current.trainee as any)
+                        setIsTraineeDialogOpen(true)
+                      }}
+                    >
+                      <PenSquare className="h-3 w-3" />
+                      Edit Info
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="justify-start gap-1 text-[11px] h-8"
                       onClick={() => {
                         const current = certificatePreviews[activePreviewIndex]
                         if (!current?.url) return
                         window.open(current.url, "_blank")
                       }}
+                      disabled={!certificatePreviews[activePreviewIndex]?.url}
                     >
-                      <Download className="h-4 w-4" />
-                      Open PDF
+                      <Download className="h-3 w-3" />
+                      PDF View
                     </Button>
-                  )}
+                  </div>
                 </div>
-              )}
-            </DialogTitle>
-          </DialogHeader>
+              </div>
 
-          <div className="flex-1 flex flex-col gap-3 overflow-hidden">
-            {/* Per-participant layout adjustment */}
-            {certificatePreviews[activePreviewIndex]?.trainee && (
-              <div className="border rounded-md p-3 bg-muted/40 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs text-muted-foreground">
-                    Adjust layout for{" "}
-                    <span className="font-medium">
-                      {certificatePreviews[activePreviewIndex].trainee.last_name},{" "}
-                      {certificatePreviews[activePreviewIndex].trainee.first_name}
-                    </span>{" "}
-                    (applies only to this participant)
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1"
-                    onClick={handleSaveLayoutOffset}
-                    disabled={isSavingLayout}
-                  >
-                    {isSavingLayout ? (
-                      <>
-                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <PenSquare className="h-3 w-3" />
-                        Save Layout
-                      </>
-                    )}
-                  </Button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <Label className="text-xs">
-                      Horizontal Offset ({(layoutOffset.offsetX * 100).toFixed(1)}% of width)
-                    </Label>
-                    <Slider
-                      value={[layoutOffset.offsetX]}
-                      onValueChange={([v]) =>
-                        setLayoutOffset(prev => ({ ...prev, offsetX: v }))
-                      }
-                      min={-0.05}
-                      max={0.05}
-                      step={0.002}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">
-                      Vertical Offset ({(layoutOffset.offsetY * 100).toFixed(1)}% of height)
-                    </Label>
-                    <Slider
-                      value={[layoutOffset.offsetY]}
-                      onValueChange={([v]) =>
-                        setLayoutOffset(prev => ({ ...prev, offsetY: v }))
-                      }
-                      min={-0.05}
-                      max={0.05}
-                      step={0.002}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Field to fine-tune</Label>
-                    <Select
-                      value={activeFieldId ?? ""}
-                      onValueChange={(value) => setActiveFieldId(value || null)}
+              {/* 2. Layout Fine-Tuning */}
+              {certificatePreviews[activePreviewIndex]?.trainee && (
+                <div className="border rounded-lg bg-card p-3 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <h3 className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Layout Adjust</h3>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-[10px] text-primary hover:text-primary hover:bg-primary/10 font-bold"
+                      onClick={handleSaveLayoutOffset}
+                      disabled={isSavingLayout}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select field" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {templateFields.map((f) => (
-                          <SelectItem key={f.id} value={f.id}>
-                            {f.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      {isSavingLayout ? "Saving..." : "Save Override"}
+                    </Button>
+                  </div>
+
+                  {/* Global Offsets */}
+                  <div className="space-y-3 py-1">
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-[10px] font-medium">
+                        <Label className="text-[10px] uppercase text-muted-foreground font-bold">Global X Offset</Label>
+                        <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-primary">
+                          {(layoutOffset.offsetX * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <Slider
+                        value={[layoutOffset.offsetX]}
+                        onValueChange={([v]) => setLayoutOffset(prev => ({ ...prev, offsetX: v }))}
+                        min={-0.05}
+                        max={0.05}
+                        step={0.002}
+                        className="py-2"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-[10px] font-medium">
+                        <Label className="text-[10px] uppercase text-muted-foreground font-bold">Global Y Offset</Label>
+                        <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-primary">
+                          {(layoutOffset.offsetY * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <Slider
+                        value={[layoutOffset.offsetY]}
+                        onValueChange={([v]) => setLayoutOffset(prev => ({ ...prev, offsetY: v }))}
+                        min={-0.05}
+                        max={0.05}
+                        step={0.002}
+                        className="py-2"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="h-px bg-border/50 mx-1" />
+
+                  {/* Field Selection & Individual Tuning */}
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase text-muted-foreground font-bold">Selected Field</Label>
+                      <Select
+                        value={activeFieldId ?? ""}
+                        onValueChange={(value) => setActiveFieldId(value || null)}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="No field selected" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {templateFields.map((f) => (
+                            <SelectItem key={f.id} value={f.id} className="text-xs">
+                              {f.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {activeFieldId && (
+                      <div className="space-y-3 pt-1 animate-in slide-in-from-top-2 duration-300">
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center text-[10px] font-medium">
+                            <Label className="text-[10px] uppercase text-muted-foreground font-bold">Field X Position</Label>
+                            <span className="font-mono bg-primary/10 px-1.5 py-0.5 rounded text-primary">
+                              {((fieldOverrides[activeFieldId]?.x ?? 0) * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          <Slider
+                            value={[fieldOverrides[activeFieldId]?.x ?? 0]}
+                            onValueChange={([v]) =>
+                              setFieldOverrides((prev) => ({
+                                ...prev,
+                                [activeFieldId]: { ...(prev[activeFieldId] || {}), x: v },
+                              }))
+                            }
+                            min={0}
+                            max={1}
+                            step={0.002}
+                            className="py-2"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <div className="flex justify-between items-center text-[10px] font-medium">
+                            <Label className="text-[10px] uppercase text-muted-foreground font-bold">Field Y Position</Label>
+                            <span className="font-mono bg-primary/10 px-1.5 py-0.5 rounded text-primary">
+                              {((fieldOverrides[activeFieldId]?.y ?? 0) * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                          <Slider
+                            value={[fieldOverrides[activeFieldId]?.y ?? 0]}
+                            onValueChange={([v]) =>
+                              setFieldOverrides((prev) => ({
+                                ...prev,
+                                [activeFieldId]: { ...(prev[activeFieldId] || {}), y: v },
+                              }))
+                            }
+                            min={0}
+                            max={1}
+                            step={0.002}
+                            className="py-2"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-                {activeFieldId && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                    <div>
-                      <Label className="text-xs">
-                        Field X{" "}
-                        {(
-                          ((fieldOverrides[activeFieldId]?.x ??
-                            0) * 100
-                          ).toFixed(1)
-                        )}
-                        % of width
-                      </Label>
-                      <Slider
-                        value={[
-                          fieldOverrides[activeFieldId]?.x ?? 0,
-                        ]}
-                        onValueChange={([v]) =>
-                          setFieldOverrides((prev) => ({
-                            ...prev,
-                            [activeFieldId]: {
-                              ...(prev[activeFieldId] || {}),
-                              x: v,
-                            },
-                          }))
-                        }
-                        min={0}
-                        max={1}
-                        step={0.002}
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">
-                        Field Y{" "}
-                        {(
-                          ((fieldOverrides[activeFieldId]?.y ??
-                            0) * 100
-                          ).toFixed(1)
-                        )}
-                        % of height
-                      </Label>
-                      <Slider
-                        value={[
-                          fieldOverrides[activeFieldId]?.y ?? 0,
-                        ]}
-                        onValueChange={([v]) =>
-                          setFieldOverrides((prev) => ({
-                            ...prev,
-                            [activeFieldId]: {
-                              ...(prev[activeFieldId] || {}),
-                              y: v,
-                            },
-                          }))
-                        }
-                        min={0}
-                        max={1}
-                        step={0.002}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex-1 flex items-center gap-4 overflow-hidden">
-              {/* Previous */}
-              <Button
-              variant="ghost"
-              size="icon"
-              disabled={certificatePreviews.length <= 1}
-              onClick={() =>
-                setActivePreviewIndex((prev) =>
-                  prev === 0 ? certificatePreviews.length - 1 : prev - 1
-                )
-              }
-            >
-              <ChevronLeft className="h-6 w-6" />
-              </Button>
-
-              {/* Main preview */}
-              <div className="flex-1 h-full border rounded-md overflow-hidden bg-muted flex flex-col">
-                {/* Drag preview (fast). Drag fields directly here. */}
-                {templateForViewer?.imageUrl && templateForViewer.fields?.length > 0 && (
-                  <div className="border-b bg-background p-2">
-                    <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                      <div className="text-xs text-muted-foreground">
-                        Tip: drag text/photo box to reposition. Drag photo edges to change width/height. Corner keeps proportional resize.
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setPreviewZoom((z) => Math.max(0.5, Number((z - 0.1).toFixed(2))))}
-                        >
-                          -
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setPreviewZoom(1)}
-                        >
-                          {Math.round(previewZoom * 100)}%
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setPreviewZoom((z) => Math.min(2.5, Number((z + 0.1).toFixed(2))))}
-                        >
-                          +
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="w-full overflow-auto border rounded bg-muted/30 flex items-center justify-center min-h-[400px]">
-                      <canvas
-                        ref={previewCanvasRef}
-                        className="cursor-crosshair"
-                        style={{
-                          transform: `scale(${previewZoom})`,
-                          transformOrigin: "center center",
-                          transition: dragStateRef.current.mode === "pan" ? "none" : "transform 0.1s ease-out"
-                        }}
-                        onMouseDown={handlePreviewCanvasMouseDown}
-                        onMouseMove={handlePreviewCanvasMouseMove}
-                        onMouseUp={handlePreviewCanvasMouseUp}
-                        onMouseLeave={handlePreviewCanvasMouseUp}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Actual PDF output (authoritative) */}
-              {certificatePreviews.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                  No previews available.
-                </div>
-              ) : (
-                (() => {
-                  const current = certificatePreviews[activePreviewIndex]
-                  if (!current) {
-                    return (
-                      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                        No preview selected.
-                      </div>
-                    )
-                  }
-                  if (current.error) {
-                    return (
-                      <div className="h-full flex flex-col items-center justify-center text-center px-4">
-                        <p className="text-sm font-medium text-red-500">
-                          Failed to generate certificate for{" "}
-                          {current.trainee.first_name} {current.trainee.last_name}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-2 whitespace-pre-line">
-                          {current.error}
-                        </p>
-                      </div>
-                    )
-                  }
-                  if (!current.url) {
-                    return (
-                      <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                        Loading preview...
-                      </div>
-                    )
-                  }
-                  return (
-                    <iframe
-                      src={current.url}
-                      className="w-full h-full"
-                      title={`Certificate preview for ${current.trainee.first_name} ${current.trainee.last_name}`}
-                    />
-                  )
-                })()
               )}
-              </div>
-
-              {/* Next */}
-              <Button
-              variant="ghost"
-              size="icon"
-              disabled={certificatePreviews.length <= 1}
-              onClick={() =>
-                setActivePreviewIndex((prev) =>
-                  prev === certificatePreviews.length - 1 ? 0 : prev + 1
-                )
-              }
-            >
-              <ChevronRight className="h-6 w-6" />
-              </Button>
             </div>
           </div>
 
           {/* Horizontal strip of participants */}
           {certificatePreviews.length > 0 && (
-            <div className="mt-4 border-t pt-3">
-              <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="mt-4 border-t pt-3 shrink-0">
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                 {certificatePreviews.map((item, index) => (
                   <button
                     key={item.trainee.id}
                     type="button"
-                    className={`flex items-center gap-2 px-3 py-2 rounded-md border text-xs whitespace-nowrap ${
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md border text-xs whitespace-nowrap transition-all ${
                       index === activePreviewIndex
-                        ? "border-primary bg-primary/10"
+                        ? "border-primary bg-primary/10 ring-1 ring-primary/30"
                         : "border-muted hover:bg-muted/60"
                     }`}
                     onClick={() => setActivePreviewIndex(index)}
                   >
                     <Avatar className="h-6 w-6">
                       <AvatarImage src={item.trainee.picture_2x2_url} />
-                      <AvatarFallback>
+                      <AvatarFallback className="text-[10px]">
                         {item.trainee.first_name?.[0]}
                         {item.trainee.last_name?.[0]}
                       </AvatarFallback>

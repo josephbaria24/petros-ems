@@ -2,12 +2,22 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Upload, X, Plus, Trash2, Save, Eye, Loader2, Award, CalendarCheck, Trophy } from "lucide-react"
+import { 
+  Upload, X, Plus, Trash2, Save, Eye, Loader2, Award, CalendarCheck, Trophy,
+  ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize, Minimize,
+  ArrowLeftRight, ArrowUpDown, Copy
+} from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
 import { tmsDb, supabase } from "@/lib/supabase-client"
@@ -294,6 +304,104 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
   const [editingField, setEditingField] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState("")
   const [activeTab, setActiveTab] = useState<"fields" | "edit">("fields")
+  const [isCopyDialogOpen, setIsCopyDialogOpen] = useState(false)
+  const [coursesWithTemplates, setCoursesWithTemplates] = useState<{ id: string, name: string }[]>([])
+  const [loadingCourses, setLoadingCourses] = useState(false)
+
+  const fetchCoursesWithTemplates = async () => {
+    setLoadingCourses(true)
+    try {
+      // Find courses that have templates for the current template type
+      const { data: templates, error } = await supabase
+        .from('certificate_templates')
+        .select('course_id')
+        .eq('template_type', currentTemplateType)
+      
+      if (error) throw error
+      
+      if (!templates || templates.length === 0) {
+        setCoursesWithTemplates([])
+        return
+      }
+
+      const uniqueCourseIds = Array.from(new Set(templates.map(t => t.course_id))).filter(id => id !== courseId)
+      
+      if (uniqueCourseIds.length === 0) {
+        setCoursesWithTemplates([])
+        return
+      }
+
+      // Fetch the actual course names
+      const { data: courses, error: coursesError } = await supabase
+        .from('courses')
+        .select('id, name')
+        .in('id', uniqueCourseIds)
+      
+      if (coursesError) throw coursesError
+      
+      setCoursesWithTemplates(courses || [])
+    } catch (error) {
+      console.error("Error fetching courses with templates:", error)
+      toast.error("Failed to load courses with templates.")
+    } finally {
+      setLoadingCourses(false)
+    }
+  }
+
+  const copyLayoutFrom = async (sourceCourseId: string) => {
+    try {
+      const response = await fetch(`/api/certificate-template?courseId=${sourceCourseId}&templateType=${currentTemplateType}`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.template && data.template.fields) {
+          const isID = currentTemplateType === "excellence"
+          const canvasW = isID ? 1350 : 842
+          const canvasH = isID ? 850 : 595
+          
+          const restoredFields = (data.template.fields as TextField[]).map(
+            (f: TextField): TextField => ({
+              ...f,
+              x: f.x * canvasW,
+              y: f.y * canvasH,
+              fontSize: f.fontSize * canvasH,
+              boxWidth: typeof f.boxWidth === "number" ? f.boxWidth * canvasW : undefined,
+              boxHeight: typeof f.boxHeight === "number" ? f.boxHeight * canvasH : undefined,
+              fontWeight: f.fontWeight || "normal",
+              fontStyle: f.fontStyle || "normal",
+              fontFamily: f.fontFamily || "Helvetica"
+            })
+          );
+          
+          setTextFields(prev => ({ ...prev, [currentTemplateType]: restoredFields }))
+          setIsCopyDialogOpen(false)
+          toast.success("Layout copied successfully!")
+        }
+      }
+    } catch (error) {
+      console.error("Error copying layout:", error)
+      toast.error("Failed to copy layout.")
+    }
+  }
+
+  const handleFitToScreen = () => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const container = canvas.parentElement;
+    if (!container) return;
+
+    const padding = 40; // 20px each side
+    const availableW = container.clientWidth - padding;
+    const availableH = container.clientHeight - padding;
+
+    const scaleX = availableW / canvas.width;
+    const scaleY = availableH / canvas.height;
+    
+    // Use the smaller scale to fit the whole canvas
+    const fitScale = Math.min(scaleX, scaleY);
+    
+    // Limit zoom to a reasonable range [0.5, 2.0]
+    setCanvasZoom(Number(Math.max(0.4, Math.min(fitScale, 2.0)).toFixed(2)));
+  }
 
   const handleDeleteTemplate = async () => {
     if (!confirm("Are you sure you want to delete this template?")) return;
@@ -1069,7 +1177,8 @@ toast.success("Template saved successfully!")
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => setCanvasZoom((z) => Math.max(0.5, Number((z - 0.1).toFixed(2))))}
+            className="h-8 w-8 p-0"
+            onClick={() => setCanvasZoom((z) => Math.max(0.4, Number((z - 0.1).toFixed(2))))}
           >
             -
           </Button>
@@ -1077,6 +1186,7 @@ toast.success("Template saved successfully!")
             type="button"
             variant="outline"
             size="sm"
+            className="h-8 px-2 text-xs"
             onClick={() => setCanvasZoom(1)}
           >
             {Math.round(canvasZoom * 100)}%
@@ -1085,30 +1195,72 @@ toast.success("Template saved successfully!")
             type="button"
             variant="outline"
             size="sm"
+            className="h-8 w-8 p-0"
             onClick={() => setCanvasZoom((z) => Math.min(2.5, Number((z + 0.1).toFixed(2))))}
           >
             +
           </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 px-2 text-[10px]"
+                  onClick={handleFitToScreen}
+                >
+                  Fit
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Fit to Screen</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
+        
+        <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
+
         <Button
           variant={previewMode ? "default" : "outline"}
           size="sm"
+          className="h-8"
           onClick={() => setPreviewMode(!previewMode)}
         >
           <Eye className="h-4 w-4 mr-2" />
           {previewMode ? "Edit Mode" : "Preview"}
         </Button>
+
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-8"
+                onClick={() => {
+                  fetchCoursesWithTemplates();
+                  setIsCopyDialogOpen(true);
+                }}
+              >
+                <Copy className="h-4 w-4 mr-2" />
+                Copy Layout
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              Copy field positions from another course
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
         <Button 
           variant="outline" 
           size="sm" 
+          className="h-8"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
         >
           {uploading ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Uploading...
-            </>
+            <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <>
               <Upload className="h-4 w-4 mr-2" />
@@ -1118,6 +1270,131 @@ toast.success("Template saved successfully!")
         </Button>
       </div>
     </div>
+    
+    {/* Specialized controls for Trainee Picture */}
+    {selectedField && textFields[currentTemplateType].find(f => f.id === selectedField)?.value.includes("{{trainee_picture}}") && (
+      <div className="flex items-center gap-1.5 p-1.5 bg-primary/5 border border-primary/20 rounded-lg mb-2 w-fit shadow-sm animate-in fade-in slide-in-from-top-1">
+        <div className="flex items-center gap-1 px-2 border-r border-primary/10">
+          <Maximize className="h-3.5 w-3.5 text-primary" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-primary">Trainee Photo Controller</span>
+        </div>
+        
+        <div className="flex items-center gap-1 bg-background/50 rounded-md p-1 border shadow-inner">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => updateField({ y: (currentField?.y || 0) - 1 })}>
+                  <ChevronUp className="h-4 w-4 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Move Up (1px)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => updateField({ y: (currentField?.y || 0) + 1 })}>
+                  <ChevronDown className="h-4 w-4 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Move Down (1px)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => updateField({ x: (currentField?.x || 0) - 1 })}>
+                  <ChevronLeft className="h-4 w-4 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Move Left (1px)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => updateField({ x: (currentField?.x || 0) + 1 })}>
+                  <ChevronRight className="h-4 w-4 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Move Right (1px)</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        <div className="flex items-center gap-1 bg-background/50 rounded-md p-1 border shadow-inner">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => {
+                  const w = currentField?.boxWidth ?? currentField?.fontSize ?? 100;
+                  const h = currentField?.boxHeight ?? currentField?.fontSize ?? 100;
+                  updateField({ boxWidth: w + 2, boxHeight: h + 2, fontSize: Math.min(w+2, h+2) });
+                }}>
+                  <Maximize className="h-4 w-4 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Scale Up Proportional</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => {
+                  const w = currentField?.boxWidth ?? currentField?.fontSize ?? 100;
+                  const h = currentField?.boxHeight ?? currentField?.fontSize ?? 100;
+                  updateField({ boxWidth: Math.max(10, w - 2), boxHeight: Math.max(10, h - 2), fontSize: Math.max(10, Math.min(w-2, h-2)) });
+                }}>
+                  <Minimize className="h-4 w-4 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Scale Down Proportional</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        <div className="flex items-center gap-1 bg-background/50 rounded-md p-1 border shadow-inner">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => {
+                  const w = currentField?.boxWidth ?? currentField?.fontSize ?? 100;
+                  updateField({ boxWidth: w + 2 });
+                }}>
+                  <ArrowLeftRight className="h-4 w-4 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Stretch Horizontal</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => {
+                  const w = currentField?.boxWidth ?? currentField?.fontSize ?? 100;
+                  updateField({ boxWidth: Math.max(10, w - 2) });
+                }}>
+                  <Minimize className="h-3 w-3 rotate-90 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Squeeze Horizontal</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => {
+                  const h = currentField?.boxHeight ?? currentField?.fontSize ?? 100;
+                  updateField({ boxHeight: h + 2 });
+                }}>
+                  <ArrowUpDown className="h-4 w-4 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Stretch Vertical</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => {
+                  const h = currentField?.boxHeight ?? currentField?.fontSize ?? 100;
+                  updateField({ boxHeight: Math.max(10, h - 2) });
+                }}>
+                  <Minimize className="h-3 w-3 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Squeeze Vertical</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
+    )}
 
     <div className="border rounded-lg overflow-hidden bg-gray-50 relative">
       {templateImage[currentTemplateType] ? (
@@ -1495,9 +1772,53 @@ toast.success("Template saved successfully!")
       <Save className="h-4 w-4 mr-2" />
       {saving ? "Saving All..." : "Save All Templates"}
     </Button>
-  </div>
-</div>
-</DialogContent>
+      </div>
+    </div>
+  </DialogContent>
+
+  <Dialog open={isCopyDialogOpen} onOpenChange={setIsCopyDialogOpen}>
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Copy Layout from Course</DialogTitle>
+        <DialogDescription>
+          Select a course to copy its {currentTemplateType} template layout.
+          This will overwrite your current field positions and settings.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-4 py-4 max-h-96 overflow-y-auto">
+        {loadingCourses ? (
+          <div className="flex justify-center p-8">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        ) : coursesWithTemplates.length > 0 ? (
+          <div className="grid gap-2">
+            {coursesWithTemplates.map((course) => (
+              <Button
+                key={course.id}
+                variant="outline"
+                className="justify-start text-left h-auto py-3 px-4"
+                onClick={() => copyLayoutFrom(course.id)}
+              >
+                <div className="flex flex-col items-start gap-1">
+                  <span className="font-medium">{course.name}</span>
+                  <span className="text-xs opacity-70">Copy {currentTemplateType} layout</span>
+                </div>
+              </Button>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-muted-foreground">
+            <p>No other courses found with a {currentTemplateType} template.</p>
+          </div>
+        )}
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={() => setIsCopyDialogOpen(false)}>
+          Cancel
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </Dialog>
 )
 }
