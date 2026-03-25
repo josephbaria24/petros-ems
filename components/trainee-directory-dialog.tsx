@@ -280,6 +280,8 @@ export default function ParticipantDirectoryDialog({
   const [isPreFetching, setIsPreFetching] = useState(false)
   const preFetchQueueRef = useRef<string[]>([])
   const isPreFetchingRunningRef = useRef(false)
+  const [preFetchProgress, setPreFetchProgress] = useState(0)
+  const [preFetchTotal, setPreFetchTotal] = useState(0)
 
   const isIdTemplateSelected = selectedTemplateType === "excellence"
   const canvasSize = useMemo(() => {
@@ -346,18 +348,66 @@ export default function ParticipantDirectoryDialog({
     return `${italic}${weight}${px}px ${family}`
   }
 
+  const formatDisguisedRange = (dates: Date[]) => {
+    if (!dates.length) return ""
+    const start = [...dates].sort((a, b) => a.getTime() - b.getTime())[0]
+    const end = new Date(start)
+    end.setDate(start.getDate() + (dates.length - 1))
+    
+    // Simple Range Formatting: "Month Day – Day, Year" or "Month Day – Month Day, Year"
+    const startMonth = start.toLocaleString("en-US", { month: "long" })
+    const endMonth = end.toLocaleString("en-US", { month: "long" })
+    const startDay = start.getDate()
+    const endDay = end.getDate()
+    const year = start.getFullYear()
+
+    if (startMonth === endMonth) {
+      return `${startMonth} ${startDay} – ${endDay}, ${year}`
+    } else {
+      const shortStart = start.toLocaleString("en-US", { month: "short" })
+      const shortEnd = end.toLocaleString("en-US", { month: "short" })
+      return `${shortStart}. ${startDay} – ${shortEnd}. ${endDay}, ${year}`
+    }
+  }
+
   const getDisplayText = (raw: string, trainee: DownloadTrainee) => {
+    const genData = generationDataMap.get(trainee.id)
+    let completionDate = new Date()
+    let displayScheduleRange = scheduleRange
+    
+    if (genData) {
+      if (genData.range_end_date) {
+        completionDate = new Date(genData.range_end_date)
+      } else if (genData.staggered_dates && genData.staggered_dates.length > 0) {
+        const dates = genData.staggered_dates.map(d => new Date(d))
+        const start = dates.sort((a, b) => a.getTime() - b.getTime())[0]
+        
+        // DISGUISE: Start Date to (Start Date + N-1 days)
+        const disguisedEnd = new Date(start)
+        disguisedEnd.setDate(start.getDate() + (dates.length - 1))
+        
+        completionDate = disguisedEnd
+        displayScheduleRange = formatDisguisedRange(dates)
+      }
+    }
+
+    const dateStr = completionDate.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    })
+
     const fullName = `${trainee.first_name || ""} ${trainee.middle_initial ? trainee.middle_initial + ". " : ""}${trainee.last_name || ""}`.trim()
     return raw
       .replace(/\{\{trainee_name\}\}/g, fullName || "Trainee Name")
       .replace(/\{\{course_name\}\}/g, courseName)
       .replace(/\{\{course_title\}\}/g, courseName)
-      .replace(/\{\{completion_date\}\}/g, new Date().toLocaleDateString())
+      .replace(/\{\{completion_date\}\}/g, dateStr)
       .replace(/\{\{certificate_number\}\}/g, trainee.certificate_number || "")
       .replace(/\{\{batch_number\}\}/g, trainee.batch_number?.toString() || "")
-      .replace(/\{\{held_on\}\}/g, scheduleRange)
-      .replace(/\{\{given_this\}\}/g, new Date().toLocaleDateString())
-      .replace(/\{\{schedule_range\}\}/g, scheduleRange)
+      .replace(/\{\{held_on\}\}/g, displayScheduleRange)
+      .replace(/\{\{given_this\}\}/g, dateStr)
+      .replace(/\{\{schedule_range\}\}/g, displayScheduleRange)
   }
 
   // Draw draggable preview (client-side) so you can drag instead of sliders
@@ -1175,6 +1225,8 @@ const handleDownloadCertificates = async () => {
         
         // Initialize background pre-fetching queue
         preFetchQueueRef.current = Array.from(newMap.keys())
+        setPreFetchTotal(newMap.size)
+        setPreFetchProgress(0)
       }
     } catch (err) {
       console.error("Unexpected error in pre-fetch:", err)
@@ -1230,6 +1282,8 @@ const handleDownloadCertificates = async () => {
               course_id: genData.course_id,
             },
             courseName: genData.course_name,
+            courseTitle: genData.course_title,
+            courseId: genData.course_id,
             templateType: selectedTemplateType,
             precomputed: {
               layout: {
@@ -1256,6 +1310,7 @@ const handleDownloadCertificates = async () => {
             return prev
           })
         }
+        setPreFetchProgress(prev => prev + 1)
       } catch (e) {
         console.warn("Silent pre-fetch failed for", traineeId, e)
       }
@@ -2028,9 +2083,19 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
           </p>
         </div>
 
-        <div className="border rounded-md text-sm font-semibold px-4 py-2 bg-secondary">
-          Attendee Details ({trainees.length} participants)
+        <div className="border rounded-md text-sm font-semibold px-4 py-2 bg-secondary flex justify-between items-center">
+          <span>Attendee Details ({trainees.length} participants)</span>
+          {preFetchTotal > 0 && preFetchProgress < preFetchTotal && (
+            <div className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground animate-pulse">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>Caching Previews: {preFetchProgress}/{preFetchTotal}</span>
+            </div>
+          )}
         </div>
+
+        {preFetchTotal > 0 && preFetchProgress < preFetchTotal && (
+          <Progress value={(preFetchProgress / preFetchTotal) * 100} className="h-1" />
+        )}
 
         {loading ? (
           <div className="flex justify-center items-center py-12">
@@ -2322,6 +2387,16 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
             {/* Right Panel: Compact Controls */}
             <div className="w-80 flex flex-col gap-4 overflow-y-auto pr-2 py-1 shrink-0 scrollbar-hide">
               
+              {preFetchTotal > 0 && preFetchProgress < preFetchTotal && (
+                <div className="px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg space-y-2">
+                  <div className="flex justify-between items-center text-[10px] font-bold text-primary">
+                    <span className="uppercase tracking-wider">Generating Previews</span>
+                    <span>{preFetchProgress} / {preFetchTotal}</span>
+                  </div>
+                  <Progress value={(preFetchProgress / preFetchTotal) * 100} className="h-1 bg-primary/10" />
+                </div>
+              )}
+
               {/* 1. Participant Summary & Actions */}
               <div className="border rounded-lg bg-card p-3 shadow-sm space-y-3">
                 <div className="flex items-center gap-3 border-b pb-3">

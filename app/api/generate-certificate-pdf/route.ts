@@ -46,6 +46,31 @@ function formatScheduleRange(dates: Date[]): string {
   }
 }
 
+function formatStaggeredDates(dates: Date[]): string {
+  if (!dates.length) return "";
+  const sorted = [...dates].sort((a, b) => a.getTime() - b.getTime());
+  
+  const parts: string[] = [];
+  let currentMonthStr = "";
+  let currentYear = -1;
+
+  for (const d of sorted) {
+    const m = d.toLocaleString("en-US", { month: "long" });
+    const day = d.getDate();
+    const y = d.getFullYear();
+
+    if (m !== currentMonthStr || y !== currentYear) {
+      parts.push(`${m} ${day}`);
+      currentMonthStr = m;
+      currentYear = y;
+    } else {
+      parts[parts.length - 1] += `, ${day}`;
+    }
+  }
+
+  return parts.join(", ") + ", " + sorted[sorted.length - 1].getFullYear();
+}
+
 
 interface TextField {
   id: string;
@@ -120,11 +145,14 @@ export async function POST(req: NextRequest) {
     // 1. Fetch certificate template (Check precomputed first)
     let template: CertificateTemplate | null = precomputed?.template || null;
     
-    if (!template && courseId) {
+    // ✅ Robust fallback: If courseId is missing from top-level, check trainee.course_id
+    const effectiveCourseId = courseId || trainee?.course_id;
+
+    if (!template && effectiveCourseId) {
       const { data, error } = await supabase
         .from("certificate_templates")
         .select("*")
-        .eq("course_id", courseId)
+        .eq("course_id", effectiveCourseId)
         .eq("template_type", templateType)
         .maybeSingle();
 
@@ -142,19 +170,11 @@ export async function POST(req: NextRequest) {
     // Determine if this is an ID template
     const isIDTemplate = templateType === "excellence";
 
-    // ✅ Always use today's date for givenThisDate
-    const today = new Date();
-    const computedGivenDate = today.toLocaleDateString("en-US", {
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
-
-    
-    // 2. Determine schedule range (Check precomputed first)
+    // 2. Determine schedule range and completion date
     let computedScheduleRange = precomputed?.scheduleRange || "";
+    let completionDate = new Date(); // Fallback to today
     
-    if (!computedScheduleRange && trainee.schedule_id) {
+    if (trainee.schedule_id) {
       try {
         const { data: schedule, error: scheduleError } = await supabase
           .from("schedules")
@@ -171,7 +191,12 @@ export async function POST(req: NextRequest) {
               .single();
 
             if (rangeData) {
-              computedScheduleRange = formatScheduleRange([new Date(rangeData.start_date), new Date(rangeData.end_date)]);
+              const start = new Date(rangeData.start_date);
+              const end = new Date(rangeData.end_date);
+              if (!computedScheduleRange) {
+                computedScheduleRange = formatScheduleRange([start, end]);
+              }
+              completionDate = end;
             }
           } else if (schedule.schedule_type === "staggered") {
             const { data: datesData } = await supabase
@@ -181,7 +206,15 @@ export async function POST(req: NextRequest) {
               .order("date", { ascending: true });
 
             if (datesData?.length) {
-              computedScheduleRange = formatScheduleRange(datesData.map(d => new Date(d.date)));
+              const dates = datesData.map(d => new Date(d.date));
+              const start = dates[0];
+              
+              // ✅ DISGUISE: Start Date to (Start Date + N-1 days)
+              const disguisedEnd = new Date(start);
+              disguisedEnd.setDate(start.getDate() + (dates.length - 1));
+              
+              computedScheduleRange = formatScheduleRange([start, disguisedEnd]);
+              completionDate = disguisedEnd;
             }
           }
         }
@@ -189,6 +222,12 @@ export async function POST(req: NextRequest) {
         console.warn("⚠️ Error fetching schedule dates:", e);
       }
     }
+
+    const computedGivenDate = completionDate.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
 
     // 3. Fetch template image (Using Cache)
     let imageBytes: ArrayBuffer;
