@@ -145,7 +145,7 @@ async function downloadFromServer(
     if (!res.ok) {
       const contentType = res.headers.get('content-type');
       let errorMessage = "Failed to download certificate.";
-      
+
       if (contentType?.includes('application/json')) {
         const err = await res.json();
         errorMessage = err.error || errorMessage;
@@ -155,7 +155,7 @@ async function downloadFromServer(
         errorMessage = `Server error: ${text.substring(0, 200)}`;
         console.error("❌ HTML/Text Error:", text.substring(0, 500));
       }
-      
+
       throw new Error(errorMessage);
     }
 
@@ -185,7 +185,7 @@ function generateDefaultEmailContent(
   scheduleRange: string
 ): { subject: string; message: string } {
   const subject = `Your ${courseName} Certificate - Petrosphere Incorporated`
-  
+
   const message = `
     <!DOCTYPE html>
     <html>
@@ -202,7 +202,7 @@ function generateDefaultEmailContent(
     </head>
     <body>
       <div class="container">
-        <div class="header"><h1>🎓 Certificate of Completion</h1></div>
+        <div class="header"><h1> Certificate of Completion</h1></div>
         <div class="content">
           <p>Dear Participant,</p>
           <p>Congratulations on successfully completing your training!</p>
@@ -221,7 +221,7 @@ function generateDefaultEmailContent(
     </body>
     </html>
   `
-  
+
   return { subject, message }
 }
 
@@ -252,7 +252,7 @@ export default function ParticipantDirectoryDialog({
 
   const [scheduleDateText, setScheduleDateText] = useState<string>("");
   const [batchNumber, setBatchNumber] = useState<number | null>(null); // ADD THIS LINE
-      
+
   // ✅ NEW: Checkbox selection state
   const [selectedTraineeIds, setSelectedTraineeIds] = useState<Set<string>>(new Set())
   const [selectAll, setSelectAll] = useState(false)
@@ -261,6 +261,46 @@ export default function ParticipantDirectoryDialog({
   const [emailComposeOpen, setEmailComposeOpen] = useState(false)
   const [emailSubject, setEmailSubject] = useState("")
   const [emailMessage, setEmailMessage] = useState("")
+
+  // ✅ NEW: Templates availability state
+  const [availableTemplates, setAvailableTemplates] = useState<Set<TemplateType>>(new Set())
+
+  // Fetch available templates for this course
+  useEffect(() => {
+    if (!open || !scheduleId) return
+
+    const fetchAvailable = async () => {
+      // First get course ID for this schedule
+      const { data: schedData } = await tmsDb
+        .from("schedules")
+        .select("course_id")
+        .eq("id", scheduleId)
+        .single()
+        
+      if (!schedData) return
+
+      const { data } = await tmsDb
+        .from("certificate_templates")
+        .select("template_type, image_url")
+        .eq("course_id", schedData.course_id)
+      
+      if (data) {
+        const available = new Set<TemplateType>()
+        data.forEach(t => {
+          if (t.image_url) available.add(t.template_type as TemplateType)
+        })
+        setAvailableTemplates(available)
+        
+        // If current selection is not available, default to one that is
+        if (!available.has(selectedTemplateType as TemplateType) && available.size > 0) {
+          const firstAvailable = Array.from(available)[0]
+          setSelectedTemplateType(firstAvailable)
+        }
+      }
+    }
+
+    fetchAvailable()
+  }, [open, scheduleId, selectedTemplateType])
 
   // ✅ NEW: Certificate preview viewer state
   const [isCertificateViewerOpen, setIsCertificateViewerOpen] = useState(false)
@@ -274,7 +314,7 @@ export default function ParticipantDirectoryDialog({
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null)
   const [isSavingLayout, setIsSavingLayout] = useState(false)
   const [previewZoom, setPreviewZoom] = useState(1)
-  
+
   // ✅ NEW: Performance & Caching State
   const [generationDataMap, setGenerationDataMap] = useState<Map<string, CertificateGenerationData>>(new Map())
   const [isPreFetching, setIsPreFetching] = useState(false)
@@ -313,16 +353,16 @@ export default function ParticipantDirectoryDialog({
     const isID = isIdTemplateSelected
     const canvasW = isID ? 1350 : 842
     const canvasH = isID ? 850 : 595
-    
+
     // Use container dimensions, with a fallback if they are too small initially
     const containerW = Math.max(previewContainerRef.current.clientWidth, 400)
     const containerH = Math.max(previewContainerRef.current.clientHeight, 400)
-    
+
     // Add 40px padding
     const scaleW = (containerW - 40) / canvasW
     const scaleH = (containerH - 40) / canvasH
     const fitScale = Math.min(scaleW, scaleH, 1.0)
-    
+
     setPreviewZoom(Number(fitScale.toFixed(2)))
   }, [isIdTemplateSelected])
 
@@ -353,7 +393,7 @@ export default function ParticipantDirectoryDialog({
     const start = [...dates].sort((a, b) => a.getTime() - b.getTime())[0]
     const end = new Date(start)
     end.setDate(start.getDate() + (dates.length - 1))
-    
+
     // Simple Range Formatting: "Month Day – Day, Year" or "Month Day – Month Day, Year"
     const startMonth = start.toLocaleString("en-US", { month: "long" })
     const endMonth = end.toLocaleString("en-US", { month: "long" })
@@ -374,18 +414,18 @@ export default function ParticipantDirectoryDialog({
     const genData = generationDataMap.get(trainee.id)
     let completionDate = new Date()
     let displayScheduleRange = scheduleRange
-    
+
     if (genData) {
       if (genData.range_end_date) {
         completionDate = new Date(genData.range_end_date)
       } else if (genData.staggered_dates && genData.staggered_dates.length > 0) {
         const dates = genData.staggered_dates.map(d => new Date(d))
         const start = dates.sort((a, b) => a.getTime() - b.getTime())[0]
-        
+
         // DISGUISE: Start Date to (Start Date + N-1 days)
         const disguisedEnd = new Date(start)
         disguisedEnd.setDate(start.getDate() + (dates.length - 1))
-        
+
         completionDate = disguisedEnd
         displayScheduleRange = formatDisguisedRange(dates)
       }
@@ -542,7 +582,7 @@ export default function ParticipantDirectoryDialog({
             const retry = new Image()
             retry.onload = () => {
               // swap in successful image and redraw
-              ;(traineePhoto as any).src = retry.src
+              ; (traineePhoto as any).src = retry.src
               ctx.clearRect(0, 0, canvas.width, canvas.height)
               ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
               // drawFields will now see retry-loaded dimensions via traineePhoto.complete check on next tick
@@ -596,7 +636,7 @@ export default function ParticipantDirectoryDialog({
   ])
 
 
-  
+
   // ✅ NEW: Checkbox handlers
   const handleSelectAll = (checked: boolean) => {
     setSelectAll(checked)
@@ -616,7 +656,7 @@ export default function ParticipantDirectoryDialog({
       setSelectAll(false)
     }
     setSelectedTraineeIds(newSelected)
-    
+
     if (newSelected.size === trainees.length && trainees.length > 0) {
       setSelectAll(true)
     }
@@ -634,12 +674,12 @@ export default function ParticipantDirectoryDialog({
         'Content-Type': 'application/json',
       },
     })
-    
+
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.error || `Failed to ${action}`)
     }
-    
+
     return response.json()
   }
 
@@ -648,7 +688,7 @@ export default function ParticipantDirectoryDialog({
     try {
       const data = await callDatabaseAPI('stats', 'GET')
       setDatabaseStats(data)
-      
+
       setAlertTitle("Database Statistics")
       setAlertMessage(
         `Total Records: ${data.records}\n` +
@@ -731,7 +771,7 @@ export default function ParticipantDirectoryDialog({
     }
   }
 
-// PART 2 OF 3 - Continue from Part 1
+  // PART 2 OF 3 - Continue from Part 1
 
   const ensureCertificateNumbers = async () => {
     if (!scheduleId) return
@@ -769,7 +809,7 @@ export default function ParticipantDirectoryDialog({
         await fetchTrainees()
 
         setAlertMessage("Certificate numbers generated successfully!")
-        
+
         setTimeout(() => {
           setAlertOpen(false)
         }, 2000)
@@ -878,119 +918,119 @@ export default function ParticipantDirectoryDialog({
     fieldOverrides,
   ])
 
-const handleDownloadCertificates = async () => {
-  if (!scheduleId) return;
+  const handleDownloadCertificates = async () => {
+    if (!scheduleId) return;
 
-  const selectedTrainees = getSelectedTrainees();
-  if (selectedTrainees.length === 0) {
-    setAlertTitle("No Selection");
-    setAlertMessage("Please select at least one participant to download certificates.");
-    setAlertOpen(true);
-    return;
-  }
-
-  setIsGenerating(true);
-  startLongOperation(
-    "Generating Certificates",
-    "Preparing downloads... This may take up to a minute due to server cold start."
-  );
-
-  try {
-    console.log("📊 Starting certificate download for", selectedTrainees.length, "selected trainees");
-
-    const { data: scheduleData } = await tmsDb
-      .from("schedules")
-      .select("course_id")
-      .eq("id", scheduleId)
-      .single();
-
-    if (!scheduleData) throw new Error("Missing schedule data");
-
-    const { data: courseData } = await tmsDb
-      .from("courses")
-      .select("id, name, title, serial_number, serial_number_pad")
-      .eq("id", scheduleData.course_id)
-      .single();
-
-    if (!courseData) throw new Error("Missing course data");
-
-    const courseTitle = courseData.title || courseData.name;
-    const serialBase = Number(courseData.serial_number ?? 1);
-    const serialPad = Number(courseData.serial_number_pad ?? 5);
-
-    // Sort trainees alphabetically by last name + first name
-    const sortedTrainees = [...selectedTrainees].sort((a, b) => {
-      const aName = `${a.last_name} ${a.first_name}`.toLowerCase();
-      const bName = `${b.last_name} ${b.first_name}`.toLowerCase();
-      return aName.localeCompare(bName);
-    });
-
-    // Assign serials without saving to DB
-    const updatedTrainees = sortedTrainees.map((trainee, index) => {
-      const serial = serialBase + index + 1;
-      const padded = serial.toString().padStart(serialPad, "0");
-      const certificate_number = `PSI-${courseData.name}-${padded}`;
-      return { ...trainee, certificate_number };
-    });
-
-    const { data: templateCheck } = await tmsDb
-      .from("certificate_templates")
-      .select("template_type")
-      .eq("course_id", courseData.id)
-      .eq("template_type", selectedTemplateType)
-      .maybeSingle();
-
-    if (!templateCheck) {
-      setAlertTitle("Template Not Found");
-      setAlertMessage(
-        `No ${selectedTemplateType} template found for this course.\n\n` +
-        `Please create a ${selectedTemplateType} template first in the template editor.`
-      );
-      setIsGenerating(false);
+    const selectedTrainees = getSelectedTrainees();
+    if (selectedTrainees.length === 0) {
+      setAlertTitle("No Selection");
+      setAlertMessage("Please select at least one participant to download certificates.");
+      setAlertOpen(true);
       return;
     }
 
-    let successCount = 0;
-    let failCount = 0;
-
-    for (let i = 0; i < updatedTrainees.length; i++) {
-      const trainee = updatedTrainees[i];
-
-      try {
-        await downloadFromServer(
-          trainee,
-          selectedTemplateType,
-          courseData.name,
-          scheduleRange,
-          new Date().toLocaleDateString(),
-          courseTitle
-        );
-        successCount++;
-
-        setProgress(Math.floor(((i + 1) / updatedTrainees.length) * 100));
-        setAlertMessage(
-          `Downloaded ${successCount} of ${updatedTrainees.length} certificates...\n` +
-          `Last: ${trainee.first_name} ${trainee.last_name}`
-        );
-      } catch (error: any) {
-        failCount++;
-        console.error(`Failed to download for ${trainee.first_name} ${trainee.last_name}:`, error);
-      }
-    }
-
-    setAlertTitle("Download Complete");
-    setAlertMessage(
-      `Successfully downloaded ${successCount} certificate(s).` +
-      (failCount > 0 ? `\n${failCount} failed.` : "")
+    setIsGenerating(true);
+    startLongOperation(
+      "Generating Certificates",
+      "Preparing downloads... This may take up to a minute due to server cold start."
     );
-  } catch (err: any) {
-    console.error("❌ Critical error:", err);
-    setAlertTitle("Error");
-    setAlertMessage(`Critical error: ${err.message}`);
-  } finally {
-    setIsGenerating(false);
-  }
-};
+
+    try {
+      console.log("📊 Starting certificate download for", selectedTrainees.length, "selected trainees");
+
+      const { data: scheduleData } = await tmsDb
+        .from("schedules")
+        .select("course_id")
+        .eq("id", scheduleId)
+        .single();
+
+      if (!scheduleData) throw new Error("Missing schedule data");
+
+      const { data: courseData } = await tmsDb
+        .from("courses")
+        .select("id, name, title, serial_number, serial_number_pad")
+        .eq("id", scheduleData.course_id)
+        .single();
+
+      if (!courseData) throw new Error("Missing course data");
+
+      const courseTitle = courseData.title || courseData.name;
+      const serialBase = Number(courseData.serial_number ?? 1);
+      const serialPad = Number(courseData.serial_number_pad ?? 5);
+
+      // Sort trainees alphabetically by last name + first name
+      const sortedTrainees = [...selectedTrainees].sort((a, b) => {
+        const aName = `${a.last_name} ${a.first_name}`.toLowerCase();
+        const bName = `${b.last_name} ${b.first_name}`.toLowerCase();
+        return aName.localeCompare(bName);
+      });
+
+      // Assign serials without saving to DB
+      const updatedTrainees = sortedTrainees.map((trainee, index) => {
+        const serial = serialBase + index + 1;
+        const padded = serial.toString().padStart(serialPad, "0");
+        const certificate_number = `PSI-${courseData.name}-${padded}`;
+        return { ...trainee, certificate_number };
+      });
+
+      const { data: templateCheck } = await tmsDb
+        .from("certificate_templates")
+        .select("template_type")
+        .eq("course_id", courseData.id)
+        .eq("template_type", selectedTemplateType)
+        .maybeSingle();
+
+      if (!templateCheck) {
+        setAlertTitle("Template Not Found");
+        setAlertMessage(
+          `No ${selectedTemplateType} template found for this course.\n\n` +
+          `Please create a ${selectedTemplateType} template first in the template editor.`
+        );
+        setIsGenerating(false);
+        return;
+      }
+
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let i = 0; i < updatedTrainees.length; i++) {
+        const trainee = updatedTrainees[i];
+
+        try {
+          await downloadFromServer(
+            trainee,
+            selectedTemplateType,
+            courseData.name,
+            scheduleRange,
+            new Date().toLocaleDateString(),
+            courseTitle
+          );
+          successCount++;
+
+          setProgress(Math.floor(((i + 1) / updatedTrainees.length) * 100));
+          setAlertMessage(
+            `Downloaded ${successCount} of ${updatedTrainees.length} certificates...\n` +
+            `Last: ${trainee.first_name} ${trainee.last_name}`
+          );
+        } catch (error: any) {
+          failCount++;
+          console.error(`Failed to download for ${trainee.first_name} ${trainee.last_name}:`, error);
+        }
+      }
+
+      setAlertTitle("Download Complete");
+      setAlertMessage(
+        `Successfully downloaded ${successCount} certificate(s).` +
+        (failCount > 0 ? `\n${failCount} failed.` : "")
+      );
+    } catch (err: any) {
+      console.error("❌ Critical error:", err);
+      setAlertTitle("Error");
+      setAlertMessage(`Critical error: ${err.message}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   // ✅ NEW: Generate inline preview PDFs for selected trainees (no download)
   const handleOpenCertificateViewer = async () => {
@@ -1076,7 +1116,7 @@ const handleDownloadCertificates = async () => {
       for (let i = 0; i < updatedTrainees.length; i++) {
         const trainee = updatedTrainees[i]
         const genData = generationDataMap.get(trainee.id)
-        
+
         // Check if we already have a background-generated URL in the existing State
         const existingPreview = certificatePreviews.find(p => p.trainee.id === trainee.id)
         if (existingPreview?.url) {
@@ -1146,25 +1186,25 @@ const handleDownloadCertificates = async () => {
 
   const fetchTrainees = async () => {
     if (!scheduleId) return
-    
+
     setLoading(true)
     try {
-       // ADD THIS: Fetch schedule batch number
-    const { data: scheduleData } = await tmsDb
-      .from("schedules")
-      .select("batch_number")
-      .eq("id", scheduleId)
-      .single()
-    
-    if (scheduleData) {
-      setBatchNumber(scheduleData.batch_number)
-    }
+      // ADD THIS: Fetch schedule batch number
+      const { data: scheduleData } = await tmsDb
+        .from("schedules")
+        .select("batch_number")
+        .eq("id", scheduleId)
+        .single()
+
+      if (scheduleData) {
+        setBatchNumber(scheduleData.batch_number)
+      }
       const { data, error } = await tmsDb
         .from("trainings")
         .select("id, first_name, last_name, middle_initial, schedule_id, picture_2x2_url, status, email, certificate_number, course_id, batch_number")
         .eq("schedule_id", scheduleId)
         .order("last_name", { ascending: true })
-      
+
       if (error) {
         console.error("Error fetching trainees:", error)
         alert("Failed to fetch trainees: " + error.message)
@@ -1181,7 +1221,7 @@ const handleDownloadCertificates = async () => {
 
   const fetchScheduleStatus = async () => {
     if (!scheduleId) return
-    
+
     try {
       const { data, error } = await tmsDb
         .from("schedules")
@@ -1202,7 +1242,7 @@ const handleDownloadCertificates = async () => {
   // ✅ NEW: Bulk fetch all data needed for certificates via the new view
   const fetchCertificateGenerationData = async () => {
     if (!scheduleId || !open) return
-    
+
     setIsPreFetching(true)
     try {
       const { data, error } = await tmsDb
@@ -1217,12 +1257,12 @@ const handleDownloadCertificates = async () => {
         data.forEach((item: any) => {
           // Keep only the override for the currently selected template type if available
           if (!item.override_template_type || item.override_template_type === selectedTemplateType) {
-             newMap.set(item.training_id, item as CertificateGenerationData)
+            newMap.set(item.training_id, item as CertificateGenerationData)
           }
         })
         setGenerationDataMap(newMap)
         console.log("🚀 Pre-fetched layout data for", newMap.size, "participants")
-        
+
         // Initialize background pre-fetching queue
         preFetchQueueRef.current = Array.from(newMap.keys())
         setPreFetchTotal(newMap.size)
@@ -1298,7 +1338,7 @@ const handleDownloadCertificates = async () => {
         if (res.ok) {
           const blob = await res.blob()
           const url = URL.createObjectURL(blob)
-          
+
           setCertificatePreviews(prev => {
             // Find if there's an existing placeholder
             const existingIndex = prev.findIndex(p => p.trainee.id === traineeId)
@@ -1354,7 +1394,7 @@ const handleDownloadCertificates = async () => {
       })
 
       const result = await res.json()
-      
+
       if (result.url) {
         const { data, error } = await tmsDb
           .from("trainings")
@@ -1368,7 +1408,7 @@ const handleDownloadCertificates = async () => {
           alert("Failed to update picture. Please try again.")
         } else if (data) {
           console.log("✅ Picture updated successfully:", data)
-          
+
           setSelectedTrainee((prev: any) => ({
             ...prev,
             picture_2x2_url: result.url,
@@ -1413,129 +1453,128 @@ const handleDownloadCertificates = async () => {
 
 
   // ✅ NEW: Open email compose dialog
-const handleOpenEmailCompose = async () => {
-  const selectedTrainees = getSelectedTrainees()
-  if (selectedTrainees.length === 0) {
-    setAlertTitle("No Selection")
-    setAlertMessage("Please select at least one participant to send certificates.")
-    setAlertOpen(true)
-    return
-  }
-
-  await ensureCertificateNumbers()
-
-  // Fetch course title for email
-  if (scheduleId) {
-    const { data: scheduleData } = await tmsDb
-      .from("schedules")
-      .select("course_id")
-      .eq("id", scheduleId)
-      .single()
-
-    if (scheduleData) {
-      const { data: courseData } = await tmsDb
-        .from("courses")
-        .select("title, name")
-        .eq("id", scheduleData.course_id)
-        .single()
-
-      if (courseData) {
-        const courseTitle = courseData.title || courseData.name
-        const { subject, message } = generateDefaultEmailContent(
-          courseData.name,
-          courseTitle,
-          scheduleRange
-        )
-        setEmailSubject(subject)
-        setEmailMessage(message)
-      }
-    }
-  }
-
-  setEmailComposeOpen(true)
-}
-
-const handleSendCertificatesWithEmail = async (customSubject: string, customMessage: string) => {
-  setEmailComposeOpen(false)
-  setIsSendingEmails(true)
-  setProgress(0)
-
-  startLongOperation(
-    "Sending Certificates",
-    `Preparing to send ${selectedTemplateType} certificates...`
-  )
-
-  try {
-    const selectedIds = Array.from(selectedTraineeIds)
-
-    const response = await fetch("/api/send-certificates", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scheduleId,
-        templateType: selectedTemplateType,
-        selectedTraineeIds: selectedIds,
-        customEmailSubject: customSubject,
-        customEmailMessage: customMessage,
-      }),
-    })
-
-    if (!response.ok) {
-      const result = await response.json()
-      setAlertTitle("Error")
-      setAlertMessage(result.error || "Failed to send certificates.")
-      setIsSendingEmails(false)
+  const handleOpenEmailCompose = async () => {
+    const selectedTrainees = getSelectedTrainees()
+    if (selectedTrainees.length === 0) {
+      setAlertTitle("No Selection")
+      setAlertMessage("Please select at least one participant to send certificates.")
+      setAlertOpen(true)
       return
     }
 
-    const reader = response.body?.getReader()
-    const decoder = new TextDecoder()
+    await ensureCertificateNumbers()
 
-    if (!reader) throw new Error("Failed to get response reader")
+    // Fetch course title for email
+    if (scheduleId) {
+      const { data: scheduleData } = await tmsDb
+        .from("schedules")
+        .select("course_id")
+        .eq("id", scheduleId)
+        .single()
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+      if (scheduleData) {
+        const { data: courseData } = await tmsDb
+          .from("courses")
+          .select("title, name")
+          .eq("id", scheduleData.course_id)
+          .single()
 
-      const chunk = decoder.decode(value)
-      const lines = chunk.split("\n")
-
-      for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          try {
-            const data = JSON.parse(line.substring(6))
-
-            if (data.type === "progress") {
-              const progressPercent = Math.floor((data.current / data.total) * 100)
-              setProgress(progressPercent)
-              setAlertMessage(
-                `${data.message}${data.lastSent ? `\nLast sent: ${data.lastSent}` : ""}${
-                  data.lastError ? `\nError: ${data.lastError}` : ""
-                }`
-              )
-            } else if (data.type === "complete") {
-              setProgress(100)
-              setAlertTitle("Done")
-              setAlertMessage(
-                `Successfully sent ${data.successCount} certificate(s). ${
-                  data.failCount > 0 ? `${data.failCount} failed.` : ""
-                }`
-              )
-              setIsSendingEmails(false)
-            }
-          } catch (parseError) {
-            console.error("Failed to parse SSE data:", parseError)
-          }
+        if (courseData) {
+          const courseTitle = courseData.title || courseData.name
+          const { subject, message } = generateDefaultEmailContent(
+            courseData.name,
+            courseTitle,
+            scheduleRange
+          )
+          setEmailSubject(subject)
+          setEmailMessage(message)
         }
       }
     }
-  } catch (error) {
-    console.error("Error sending certificates:", error)
-    setAlertTitle("Error")
-    setAlertMessage("An error occurred while sending certificates.")
-    setIsSendingEmails(false)
+
+    setEmailComposeOpen(true)
   }
-}
+
+  const handleSendCertificatesWithEmail = async (customSubject: string, customMessage: string, attachments: string[]) => {
+    setEmailComposeOpen(false)
+    setIsSendingEmails(true)
+    setProgress(0)
+
+    startLongOperation(
+      "Sending Certificates",
+      `Preparing to send certificates with ${attachments.length} attachment(s) each...`
+    )
+
+    try {
+      const selectedIds = Array.from(selectedTraineeIds)
+
+      const response = await fetch("/api/send-certificates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scheduleId,
+          templateType: selectedTemplateType,
+          attachments,
+          selectedTraineeIds: selectedIds,
+          customEmailSubject: customSubject,
+          customEmailMessage: customMessage,
+        }),
+      })
+
+      if (!response.ok) {
+        const result = await response.json()
+        setAlertTitle("Error")
+        setAlertMessage(result.error || "Failed to send certificates.")
+        setIsSendingEmails(false)
+        return
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) throw new Error("Failed to get response reader")
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split("\n")
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.substring(6))
+
+              if (data.type === "progress") {
+                const progressPercent = Math.floor((data.current / data.total) * 100)
+                setProgress(progressPercent)
+                setAlertMessage(
+                  `${data.message}${data.lastSent ? `\nLast sent: ${data.lastSent}` : ""}${data.lastError ? `\nError: ${data.lastError}` : ""
+                  }`
+                )
+              } else if (data.type === "complete") {
+                setProgress(100)
+                setAlertTitle("Done")
+                setAlertMessage(
+                  `Successfully sent ${data.successCount} certificate(s). ${data.failCount > 0 ? `${data.failCount} failed.` : ""
+                  }`
+                )
+                setIsSendingEmails(false)
+              }
+            } catch (parseError) {
+              console.error("Failed to parse SSE data:", parseError)
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error sending certificates:", error)
+      setAlertTitle("Error")
+      setAlertMessage("An error occurred while sending certificates.")
+      setIsSendingEmails(false)
+    }
+  }
 
   // ✅ NEW: Load layout override for the currently active preview
   const loadLayoutOverrideForActive = async () => {
@@ -1723,7 +1762,7 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
     const canvas = previewCanvasRef.current
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
-    
+
     // Check if we hit a field
     const scaleX = canvas.width / rect.width
     const scaleY = canvas.height / rect.height
@@ -1773,7 +1812,7 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
     const canvas = previewCanvasRef.current
     const ds = dragStateRef.current
     if (!canvas) return
-    
+
     if (ds.mode === "pan") {
       const container = canvas.parentElement
       if (container && ds.startMouseX !== undefined && ds.startMouseY !== undefined) {
@@ -1881,7 +1920,7 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
       alert("Failed to save changes. Please try again.")
     } else if (data) {
       console.log("✅ Supabase update success:", data)
-      
+
       setIsTraineeDialogOpen(false)
       setTrainees((prev) =>
         prev.map((t) => (t.id === selectedTrainee.id ? data as Trainee : t))
@@ -1898,7 +1937,7 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
     setAlertOpen(true)
   }
 
-// PART 3 OF 3 - JSX Return
+  // PART 3 OF 3 - JSX Return
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1926,161 +1965,166 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
         </AlertDialog>
 
         <DialogHeader>
-  <DialogTitle className="text-lg font-semibold bg-muted/50 border p-2 rounded-md flex justify-between items-center">
-    Directory of Participants
+          <DialogTitle className="text-lg font-semibold bg-muted/50 border p-2 rounded-md flex justify-between items-center">
+            Directory of Participants
 
-    {/* Action Button Group */}
-    <TooltipProvider>
-  <div className="flex items-center gap-2">
+            {/* Action Button Group */}
+            <TooltipProvider>
+              <div className="flex items-center gap-2">
 
-    {/* Excel Download */}
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          onClick={handleDownloadExcel}
-          disabled={isDownloadingDirectory}
-          className="cursor-pointer"
-        >
-          {isDownloadingDirectory ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Preparing...
-            </>
-          ) : (
-            <>
-              <Download className="mr-2 h-4 w-4" />
-              Excel
-            </>
-          )}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">
-        Download participant directory as Excel file
-      </TooltipContent>
-        </Tooltip>
+                {/* Excel Download */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDownloadExcel}
+                      disabled={isDownloadingDirectory}
+                      className="cursor-pointer"
+                    >
+                      {isDownloadingDirectory ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Preparing...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="mr-2 h-4 w-4" />
+                          Excel
+                        </>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    Download participant directory as Excel file
+                  </TooltipContent>
+                </Tooltip>
 
-        {/* Database Stats */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={fetchDatabaseStats}
-              disabled={isLoadingStats}
-              className="cursor-pointer"
-            >
-              <Database className="mr-2 h-4 w-4" />
-              Stats
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            View master database statistics
-          </TooltipContent>
-        </Tooltip>
+                {/* Database Stats */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={fetchDatabaseStats}
+                      disabled={isLoadingStats}
+                      className="cursor-pointer"
+                    >
+                      <Database className="mr-2 h-4 w-4" />
+                      Stats
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    View master database statistics
+                  </TooltipContent>
+                </Tooltip>
 
-        {/* Backup */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleBackupDatabase}
-              className="cursor-pointer"
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Backup
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Create a backup of the master database
-          </TooltipContent>
-        </Tooltip>
+                {/* Backup */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBackupDatabase}
+                      className="cursor-pointer"
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Backup
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    Create a backup of the master database
+                  </TooltipContent>
+                </Tooltip>
 
-        {/* Reset */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              variant="outline" 
-              size="sm"
-              className="text-orange-600 border-orange-600 hover:bg-orange-600 hover:text-white cursor-pointer"
-              onClick={handleResetDatabase}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Reset
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Reset the entire database (creates backup first)
-          </TooltipContent>
-        </Tooltip>
+                {/* Reset */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-orange-600 border-orange-600 hover:bg-orange-600 hover:text-white cursor-pointer"
+                      onClick={handleResetDatabase}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Reset
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    Reset the entire database (creates backup first)
+                  </TooltipContent>
+                </Tooltip>
 
-        {/* Delete All */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button 
-              variant="destructive" 
-              size="sm"
-              onClick={handleDeleteAllRecords}
-              className="cursor-pointer"
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete All
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            Delete ALL training records (dangerous)
-          </TooltipContent>
-        </Tooltip>
+                {/* Delete All */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleDeleteAllRecords}
+                      className="cursor-pointer"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete All
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    Delete ALL training records (dangerous)
+                  </TooltipContent>
+                </Tooltip>
 
-      </div>
-    </TooltipProvider>
+              </div>
+            </TooltipProvider>
 
-  </DialogTitle>
-</DialogHeader>
+          </DialogTitle>
+        </DialogHeader>
 
 
         <div className="bg-yellow-400 dark:bg-blue-950 dark:text-white p-4 rounded-md">
-        <div className="text-sm font-semibold uppercase mb-1">
-          <Badge variant={getStatusBadgeVariant(scheduleStatus)} className="text-xs">
-            {scheduleStatus}
-          </Badge>
+          <div className="text-sm font-semibold uppercase mb-1">
+            <Badge variant={getStatusBadgeVariant(scheduleStatus)} className="text-xs">
+              {scheduleStatus}
+            </Badge>
+          </div>
+          <div className="text-xl font-bold">
+            {courseName}
+            {batchNumber && (
+              <span className="ml-2 text-lg font-normal">
+                • Batch #{batchNumber}
+              </span>
+            )}
+          </div>
+          <div className="text-sm">{scheduleRange}</div>
         </div>
-        <div className="text-xl font-bold">
-          {courseName}
-          {batchNumber && (
-            <span className="ml-2 text-lg font-normal">
-              • Batch #{batchNumber}
-            </span>
-          )}
-        </div>
-        <div className="text-sm">{scheduleRange}</div>
-      </div>
 
         <div className="space-y-2 border rounded-lg p-4 bg-muted/50">
-          <Label htmlFor="template-type" className="font-semibold">Certificate Template Type</Label>
-          <Select value={selectedTemplateType} onValueChange={(value: TemplateType) => setSelectedTemplateType(value)}>
-            <SelectTrigger id="template-type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TEMPLATE_OPTIONS.map((option) => {
-                const Icon = option.icon
-                return (
-                  <SelectItem key={option.value} value={option.value}>
-                    <div className="flex items-center gap-2">
-                      <Icon className="h-4 w-4" />
-                      {option.label}
-                    </div>
-                  </SelectItem>
-                )
-              })}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            Select which certificate template to use when generating certificates
-          </p>
+          <Label className="font-semibold">Certificate Template Type</Label>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {TEMPLATE_OPTIONS.map((option) => {
+              const Icon = option.icon
+              const isSelected = selectedTemplateType === option.value
+              const isAvailable = availableTemplates.has(option.value)
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    if (isAvailable) setSelectedTemplateType(option.value)
+                  }}
+                  disabled={!isAvailable}
+                  className={`
+                    inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all border
+                    ${isSelected ? "bg-primary text-primary-foreground border-primary shadow-sm ring-2 ring-primary/20" : "bg-background hover:bg-muted text-foreground border-border"}
+                    ${!isAvailable && "opacity-50 cursor-not-allowed bg-muted/50 text-muted-foreground border-dashed grayscale"}
+                  `}
+                  title={!isAvailable ? "Template not added for this course yet" : ""}
+                >
+                  <Icon className="h-4 w-4" />
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         <div className="border rounded-md text-sm font-semibold px-4 py-2 bg-secondary flex justify-between items-center">
@@ -2095,6 +2139,19 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
 
         {preFetchTotal > 0 && preFetchProgress < preFetchTotal && (
           <Progress value={(preFetchProgress / preFetchTotal) * 100} className="h-1" />
+        )}
+
+        {isSendingEmails && (
+          <div className="bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-md p-4 mb-2">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-semibold text-primary flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Sending Certificates via Email...
+              </span>
+              <span className="text-sm font-medium text-primary">{progress}%</span>
+            </div>
+            <Progress value={progress} className="h-2" />
+          </div>
         )}
 
         {loading ? (
@@ -2231,16 +2288,6 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
           </DialogContent>
         </Dialog>
       </DialogContent>
-      {/* ✅ NEW: Email Compose Dialog */}
-      <EmailComposeDialog
-        open={emailComposeOpen}
-        onOpenChange={setEmailComposeOpen}
-        onSend={handleSendCertificatesWithEmail}
-        defaultSubject={emailSubject}
-        defaultMessage={emailMessage}
-        recipientCount={getSelectedTrainees().length}
-      />
-
       {/* ✅ NEW: Certificate Preview Viewer */}
       <Dialog open={isCertificateViewerOpen} onOpenChange={setIsCertificateViewerOpen}>
         <DialogContent className="w-[98vw] max-w-7xl h-[94vh] flex flex-col p-4">
@@ -2267,7 +2314,7 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
                     Live Viewer
                   </span>
                 </div>
-                
+
                 <div className="flex items-center gap-1">
                   <Button
                     type="button"
@@ -2311,9 +2358,9 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
               {/* Main Preview Work Area */}
               <div className="flex-1 relative flex items-center justify-center bg-muted/10 overflow-hidden group min-h-0">
                 {/* Overlay Navigation: Previous */}
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   disabled={certificatePreviews.length <= 1}
                   className="absolute left-2 z-20 h-10 w-10 rounded-full bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity shadow-sm border border-border/50"
                   onClick={() =>
@@ -2326,7 +2373,7 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
                 </Button>
 
                 {/* Viewport content */}
-                <div 
+                <div
                   ref={previewContainerRef}
                   className="w-full h-full overflow-auto flex items-center justify-center p-8 scrollbar-thin"
                 >
@@ -2358,9 +2405,9 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
                 </div>
 
                 {/* Overlay Navigation: Next */}
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
+                <Button
+                  variant="ghost"
+                  size="icon"
                   disabled={certificatePreviews.length <= 1}
                   className="absolute right-2 z-20 h-10 w-10 rounded-full bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity shadow-sm border border-border/50"
                   onClick={() =>
@@ -2386,7 +2433,7 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
 
             {/* Right Panel: Compact Controls */}
             <div className="w-80 flex flex-col gap-4 overflow-y-auto pr-2 py-1 shrink-0 scrollbar-hide">
-              
+
               {preFetchTotal > 0 && preFetchProgress < preFetchTotal && (
                 <div className="px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg space-y-2">
                   <div className="flex justify-between items-center text-[10px] font-bold text-primary">
@@ -2438,7 +2485,7 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
                     )}
                     Send to Email
                   </Button>
-                  
+
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       variant="outline"
@@ -2609,11 +2656,10 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
                   <button
                     key={item.trainee.id}
                     type="button"
-                    className={`flex items-center gap-2 px-3 py-2 rounded-md border text-xs whitespace-nowrap transition-all ${
-                      index === activePreviewIndex
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md border text-xs whitespace-nowrap transition-all ${index === activePreviewIndex
                         ? "border-primary bg-primary/10 ring-1 ring-primary/30"
                         : "border-muted hover:bg-muted/60"
-                    }`}
+                      }`}
                     onClick={() => setActivePreviewIndex(index)}
                   >
                     <Avatar className="h-6 w-6">
@@ -2633,7 +2679,19 @@ const handleSendCertificatesWithEmail = async (customSubject: string, customMess
           )}
         </DialogContent>
       </Dialog>
+      
+      {/* ✅ NEW: Email Compose Dialog - Placed at the very end to ensure highest z-index over Certificate Preview */}
+      <EmailComposeDialog
+        open={emailComposeOpen}
+        onOpenChange={setEmailComposeOpen}
+        onSend={handleSendCertificatesWithEmail}
+        defaultSubject={emailSubject}
+        defaultMessage={emailMessage}
+        recipientCount={getSelectedTrainees().length}
+        availableTemplates={Array.from(availableTemplates)}
+        selectedTemplateType={selectedTemplateType}
+      />
     </Dialog>
-    
+
   )
 }

@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   Upload, X, Plus, Trash2, Save, Eye, Loader2, Award, CalendarCheck, Trophy,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize, Minimize,
-  ArrowLeftRight, ArrowUpDown, Copy
+  ArrowLeftRight, ArrowUpDown, Copy, FlipHorizontal
 } from "lucide-react"
 import {
   Tooltip,
@@ -267,6 +267,12 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [previewMode, setPreviewMode] = useState(false)
+
+  // ✅ Front/Back ID Card state
+  const [idCardSide, setIdCardSide] = useState<"front" | "back">("front")
+  const [backTemplateImage, setBackTemplateImage] = useState<string | null>(null)
+  const [backTemplateFile, setBackTemplateFile] = useState<File | null>(null)
+  const [backTextFields, setBackTextFields] = useState<TextField[]>([])
   const [canvasZoom, setCanvasZoom] = useState(1)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -457,6 +463,28 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
 
             setTemplateImage(prev => ({ ...prev, [type.value]: data.template.image_url }));
             setTextFields(prev => ({ ...prev, [type.value]: restoredFields }));
+
+            if (isID) {
+              setBackTemplateImage(data.template.back_image_url || null)
+              if (data.template.back_fields) {
+                const restoredBack = (data.template.back_fields as TextField[]).map(
+                  (f: TextField): TextField => ({
+                    ...f,
+                    x: f.x * canvasW,
+                    y: f.y * canvasH,
+                    fontSize: f.fontSize * canvasH,
+                    boxWidth: typeof f.boxWidth === "number" ? f.boxWidth * canvasW : undefined,
+                    boxHeight: typeof f.boxHeight === "number" ? f.boxHeight * canvasH : undefined,
+                    fontWeight: f.fontWeight || "normal",
+                    fontStyle: f.fontStyle || "normal",
+                    fontFamily: f.fontFamily || "Helvetica"
+                  })
+                )
+                setBackTextFields(restoredBack)
+              } else {
+                setBackTextFields([])
+              }
+            }
           } else {
             setTemplateImage(prev => ({ ...prev, [type.value]: null }));
             setTextFields(prev => ({ ...prev, [type.value]: DEFAULT_FIELDS[type.value] }));
@@ -500,15 +528,27 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
     if (file) {
       const reader = new FileReader()
       reader.onload = (event) => {
-        setTemplateImage(prev => ({ ...prev, [currentTemplateType]: event.target?.result as string }))
+        const dataUrl = event.target?.result as string
+        // Route to back image if editing back side of ID card
+        if (currentTemplateType === "excellence" && idCardSide === "back") {
+          setBackTemplateImage(dataUrl)
+          setBackTemplateFile(file)
+        } else {
+          setTemplateImage(prev => ({ ...prev, [currentTemplateType]: dataUrl }))
+          setTemplateFile(prev => ({ ...prev, [currentTemplateType]: file }))
+        }
       }
       reader.readAsDataURL(file)
-      setTemplateFile(prev => ({ ...prev, [currentTemplateType]: file }))
     }
   }
 
+  // Computed: get the active image/fields based on front/back side
+  const isEditingBack = currentTemplateType === "excellence" && idCardSide === "back"
+  const activeImage = isEditingBack ? backTemplateImage : templateImage[currentTemplateType]
+  const activeFields = isEditingBack ? backTextFields : textFields[currentTemplateType]
+
 useEffect(() => {
-  if (!canvasRef.current || !templateImage[currentTemplateType]) return
+  if (!canvasRef.current || !activeImage) return
 
   const canvas = canvasRef.current
   const ctx = canvas.getContext("2d")
@@ -528,7 +568,7 @@ useEffect(() => {
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
 
     // Draw all fields (text + special photo box)
-    textFields[currentTemplateType].forEach((field) => {
+    activeFields.forEach((field) => {
       const isPhotoField = field.value.includes("{{trainee_picture}}")
 
       // Special handling for trainee photo placeholder: draw movable box instead of text
@@ -568,9 +608,9 @@ useEffect(() => {
           .replace(/\{\{certificate_number\}\}/g, "PSI-BOSHSO1-001521")
           .replace(/\{\{batch_number\}\}/g, "Batch 42")
           .replace(/\{\{training_provider\}\}/g, "Petrosphere Inc.")
-          .replace(/\{\{held_on\}\}/g, "January 10–12, 2025")
+          .replace(/\{\{held_on\}\}/g, "January 10\u201312, 2025")
           .replace(/\{\{given_this\}\}/g, "January 15, 2025")
-          .replace(/\{\{schedule_range\}\}/g, "January 10–12, 2025")
+          .replace(/\{\{schedule_range\}\}/g, "January 10\u201312, 2025")
       }
 
       // Split text by newlines
@@ -616,8 +656,8 @@ useEffect(() => {
       }
     })
   }
-  img.src = templateImage[currentTemplateType]!
-}, [templateImage, textFields, selectedField, previewMode, currentTemplateType, courseName])
+  img.src = activeImage!
+}, [activeImage, activeFields, selectedField, previewMode, currentTemplateType, courseName, idCardSide])
 
 const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
   if (previewMode) return
@@ -633,7 +673,7 @@ const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
   const ctx = canvas.getContext("2d")
   if (!ctx) return
 
-  for (const field of textFields[currentTemplateType]) {
+  for (const field of activeFields) {
     const isPhotoField = field.value.includes("{{trainee_picture}}")
 
     let boxX: number
@@ -699,7 +739,7 @@ const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
   const isIDTemplate = currentTemplateType === "excellence"
 
   // First, check if we're grabbing a resize handle of the photo box
-  for (const field of textFields[currentTemplateType]) {
+  for (const field of activeFields) {
     const isPhotoField = field.value.includes("{{trainee_picture}}")
     if (!isPhotoField) continue
 
@@ -786,7 +826,7 @@ const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
   const ctx = canvas.getContext("2d")
   if (!ctx) return
 
-  for (const field of textFields[currentTemplateType]) {
+  for (const field of activeFields) {
     const isPhotoField = field.value.includes("{{trainee_picture}}")
 
     let boxX: number
@@ -930,6 +970,18 @@ const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     }))
   }
 
+  // Helper: set fields for either front or back
+  const setActiveFieldsSetter = (updater: (fields: TextField[]) => TextField[]) => {
+    if (isEditingBack) {
+      setBackTextFields(prev => updater(prev))
+    } else {
+      setTextFields(prev => ({
+        ...prev,
+        [currentTemplateType]: updater(prev[currentTemplateType])
+      }))
+    }
+  }
+
   const addTextField = () => {
     const isIDTemplate = currentTemplateType === "excellence"
     const defaultX = isIDTemplate ? 810 : 421
@@ -950,28 +1002,21 @@ const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
       color: "#000000",
       align: isIDTemplate ? "left" : "center"
     }
-    setTextFields(prev => ({
-      ...prev,
-      [currentTemplateType]: [...prev[currentTemplateType], newField]
-    }))
+    setActiveFieldsSetter(fields => [...fields, newField])
     setSelectedField(newField.id)
   }
 
   const updateField = (updates: Partial<TextField>) => {
     if (!selectedField) return
-    setTextFields((prev) => ({
-      ...prev,
-      [currentTemplateType]: prev[currentTemplateType].map((field) =>
+    setActiveFieldsSetter(fields =>
+      fields.map(field =>
         field.id === selectedField ? { ...field, ...updates } : field
       )
-    }))
+    )
   }
 
   const deleteField = (id: string) => {
-    setTextFields(prev => ({
-      ...prev,
-      [currentTemplateType]: prev[currentTemplateType].filter((field) => field.id !== id)
-    }))
+    setActiveFieldsSetter(fields => fields.filter(field => field.id !== id))
     if (selectedField === id) {
       setSelectedField(null)
     }
@@ -979,14 +1024,13 @@ const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
 
   const insertPlaceholder = (placeholder: string) => {
     if (!selectedField) return
-    setTextFields((prev) => ({
-      ...prev,
-      [currentTemplateType]: prev[currentTemplateType].map((field) =>
+    setActiveFieldsSetter(fields =>
+      fields.map(field =>
         field.id === selectedField 
           ? { ...field, value: field.value + (field.value ? " " : "") + placeholder }
           : field
       )
-    }))
+    )
     setShowPlaceholderMenu(false)
   }
 
@@ -1017,6 +1061,26 @@ const handleSave = async () => {
 
     const isID = currentTemplateType === "excellence";
 
+    let finalBackImageUrl = backTemplateImage;
+    if (isID && (finalBackImageUrl?.startsWith("data:") || backTemplateFile)) {
+      if (!backTemplateFile) {
+        toast.error("Please provide the file for the back template image.");
+        setSaving(false);
+        return;
+      }
+      const uploadedBackUrl = await uploadImageToStorage(backTemplateFile, `${currentTemplateType}_back` as TemplateType);
+      
+      if (!uploadedBackUrl) {
+        toast.error("❌ Failed to upload back image.");
+        setSaving(false);
+        return;
+      }
+
+      finalBackImageUrl = uploadedBackUrl;
+      setBackTemplateFile(null);
+      setBackTemplateImage(finalBackImageUrl);
+    }
+
     const response = await fetch("/api/certificate-template", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -1024,6 +1088,15 @@ const handleSave = async () => {
     courseId,
     imageUrl: imageUrl,
     fields: textFields[currentTemplateType].map((f) => ({
+      ...f,
+      x: toPercentX(f.x, isID),
+      y: toPercentY(f.y, isID),
+      fontSize: toPercentFont(f.fontSize, isID),
+      boxWidth: typeof f.boxWidth === "number" ? toPercentX(f.boxWidth, isID) : undefined,
+      boxHeight: typeof f.boxHeight === "number" ? toPercentY(f.boxHeight, isID) : undefined,
+    })),
+    backImageUrl: finalBackImageUrl,
+    backFields: backTextFields.map((f) => ({
       ...f,
       x: toPercentX(f.x, isID),
       y: toPercentY(f.y, isID),
@@ -1082,6 +1155,16 @@ toast.success("Template saved successfully!")
         }
 
         const isID = type.value === "excellence"
+        let finalBackImageUrl = backTemplateImage
+
+        if (isID && backTemplateFile) {
+          const uploadedBackUrl = await uploadImageToStorage(backTemplateFile, `${type.value}_back` as TemplateType)
+          if (!uploadedBackUrl) {
+            errorCount++
+            continue
+          }
+          finalBackImageUrl = uploadedBackUrl
+        }
 
         const response = await fetch("/api/certificate-template", {
           method: "POST",
@@ -1095,6 +1178,15 @@ toast.success("Template saved successfully!")
               y: toPercentY(f.y, isID),
               fontSize: toPercentFont(f.fontSize, isID)
             })),
+            ...(isID ? {
+              backImageUrl: finalBackImageUrl,
+              backFields: backTextFields.map((f: TextField): TextField => ({
+                ...f,
+                x: toPercentX(f.x, isID),
+                y: toPercentY(f.y, isID),
+                fontSize: toPercentFont(f.fontSize, isID)
+              })),
+            } : {}),
             templateType: type.value
           })
         })
@@ -1120,7 +1212,7 @@ toast.success("Template saved successfully!")
     }
   }
 
-  const currentField = textFields[currentTemplateType].find((f) => f.id === selectedField)
+  const currentField = activeFields.find((f) => f.id === selectedField)
   const currentTemplateInfo = TEMPLATE_TYPES.find(t => t.value === currentTemplateType)!
 
   // UI COMPONENT STARTS HERE - See next message for complete JSX
@@ -1220,6 +1312,29 @@ toast.success("Template saved successfully!")
         
         <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
 
+        {currentTemplateType === "excellence" && (
+          <div className="flex items-center bg-muted p-0.5 rounded-md">
+            <Button
+              variant={idCardSide === "front" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-3 text-xs"
+              onClick={() => setIdCardSide("front")}
+            >
+              Front
+            </Button>
+            <Button
+              variant={idCardSide === "back" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-3 text-xs"
+              onClick={() => setIdCardSide("back")}
+            >
+              Back
+            </Button>
+          </div>
+        )}
+
+        <div className="h-6 w-px bg-border mx-1 hidden sm:block" />
+
         <Button
           variant={previewMode ? "default" : "outline"}
           size="sm"
@@ -1272,7 +1387,7 @@ toast.success("Template saved successfully!")
     </div>
     
     {/* Specialized controls for Trainee Picture */}
-    {selectedField && textFields[currentTemplateType].find(f => f.id === selectedField)?.value.includes("{{trainee_picture}}") && (
+    {selectedField && activeFields.find(f => f.id === selectedField)?.value.includes("{{trainee_picture}}") && (
       <div className="flex items-center gap-1.5 p-1.5 bg-primary/5 border border-primary/20 rounded-lg mb-2 w-fit shadow-sm animate-in fade-in slide-in-from-top-1">
         <div className="flex items-center gap-1 px-2 border-r border-primary/10">
           <Maximize className="h-3.5 w-3.5 text-primary" />
@@ -1456,7 +1571,7 @@ toast.success("Template saved successfully!")
         <div className="flex items-center bg-card justify-center h-64 text-muted-foreground">
           <div className="text-center">
             <Upload className="h-12 w-12 mx-auto mb-2 opacity-50" />
-            <p>Upload a {currentTemplateInfo.label.toLowerCase()} template</p>
+            <p>Upload a {currentTemplateInfo.label.toLowerCase()} {isEditingBack ? "back" : "front"} template</p>
             <p className="text-xs mt-1">
               {currentTemplateType === "excellence" 
                 ? "Recommended: 1350x850 pixels (ID card format)"
@@ -1494,7 +1609,7 @@ toast.success("Template saved successfully!")
         </Button>
 
         <div className="space-y-2 max-h-96 overflow-y-auto">
-          {textFields[currentTemplateType].map((field) => (
+          {activeFields.map((field) => (
             <div
               key={field.id}
               className={`p-3 border rounded-lg cursor-pointer transition-colors ${

@@ -58,11 +58,11 @@ export async function DELETE(req: Request) {
       )
     }
 
-    // Fetch existing template to get image_url
+    // Fetch existing template to get image_url and back_image_url
     const { data: template, error: getError } = await supabaseServer
       .schema("tms")
       .from("certificate_templates")
-      .select("id, image_url")
+      .select("id, image_url, back_image_url")
       .eq("course_id", courseId)
       .eq("template_type", templateType)
       .maybeSingle()
@@ -80,13 +80,20 @@ export async function DELETE(req: Request) {
 
     // Extract storage path from public URL
     const imageUrl = template.image_url
-    const storagePath = imageUrl.split("/trainee-photos/")[1]
+    const storagePath = imageUrl?.split("/trainee-photos/")[1]
+
+    const backImageUrl = template.back_image_url
+    const backStoragePath = backImageUrl?.split("/trainee-photos/")[1]
+
+    const pathsToDelete = []
+    if (storagePath) pathsToDelete.push(storagePath)
+    if (backStoragePath) pathsToDelete.push(backStoragePath)
 
     // Delete image from storage
-    if (storagePath) {
+    if (pathsToDelete.length > 0) {
       await supabaseServer.storage
         .from("trainee-photos")
-        .remove([storagePath])
+        .remove(pathsToDelete)
     }
 
     // Delete database row
@@ -117,7 +124,7 @@ export async function DELETE(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { courseId, imageUrl, fields, templateType = "participation" } = await req.json()
+    const { courseId, imageUrl, fields, backImageUrl, backFields, templateType = "participation" } = await req.json()
 
     console.log("Saving template:", { 
       courseId, 
@@ -159,6 +166,8 @@ export async function POST(req: Request) {
         .update({
           image_url: imageUrl,
           fields: fields,
+          ...(backImageUrl !== undefined && { back_image_url: backImageUrl }),
+          ...(backFields !== undefined && { back_fields: backFields }),
           updated_at: new Date().toISOString()
         })
         .eq("course_id", courseId)
@@ -181,6 +190,8 @@ export async function POST(req: Request) {
           course_id: courseId,
           image_url: imageUrl,
           fields: fields,
+          ...(backImageUrl !== undefined && { back_image_url: backImageUrl }),
+          ...(backFields !== undefined && { back_fields: backFields }),
           template_type: templateType
         })
 

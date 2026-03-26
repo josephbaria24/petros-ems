@@ -95,6 +95,8 @@ interface CertificateTemplate {
   template_type: string;
   image_url: string;
   fields: TextField[];
+  back_image_url?: string;
+  back_fields?: any;
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -248,7 +250,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: `Failed to load template image: ${error.message}` }, { status: 500 });
     }
 
-    // 4. Create PDF document and embed template
+    // 5. Fetch back template image (if ID and exists)
+    let backImageBytes: ArrayBuffer | null = null;
+    if (isIDTemplate && template.back_image_url) {
+      try {
+        if (imageCache.has(template.back_image_url)) {
+          backImageBytes = imageCache.get(template.back_image_url)!;
+        } else if (template.back_image_url.startsWith('data:')) {
+          const base64Data = template.back_image_url.split(',')[1];
+          backImageBytes = Buffer.from(base64Data, 'base64').buffer;
+          imageCache.set(template.back_image_url, backImageBytes);
+        } else {
+          const backImageResponse = await fetch(template.back_image_url);
+          if (backImageResponse.ok) {
+            backImageBytes = await backImageResponse.arrayBuffer();
+            imageCache.set(template.back_image_url, backImageBytes);
+          }
+        }
+      } catch (error) {
+        console.warn("⚠️ Failed to load back template image:", error);
+      }
+    }
+
+    // 6. Embed template images
     const pdfDoc = await PDFDocument.create();
     const imageType = template.image_url.toLowerCase();
     let templateImage;
@@ -258,10 +282,20 @@ export async function POST(req: NextRequest) {
       templateImage = await pdfDoc.embedJpg(imageBytes);
     }
 
+    let backTemplateImage;
+    if (backImageBytes) {
+      const backImageType = template.back_image_url!.toLowerCase();
+      if (backImageType.includes('png') || backImageType.includes('data:image/png')) {
+        backTemplateImage = await pdfDoc.embedPng(backImageBytes);
+      } else {
+        backTemplateImage = await pdfDoc.embedJpg(backImageBytes);
+      }
+    }
+
     const CANVAS_WIDTH = isIDTemplate ? 1350 : 842;
     const CANVAS_HEIGHT = isIDTemplate ? 850 : 595;
 
-    // 5. Layout overrides (Check precomputed first)
+    // 7. Layout overrides (Check precomputed first)
     let offsetX = 0;
     let offsetY = 0;
     let fieldOverrides: Record<string, any> = {};
@@ -295,16 +329,28 @@ export async function POST(req: NextRequest) {
 
     console.log("📐 Canvas dimensions:", CANVAS_WIDTH, "x", CANVAS_HEIGHT);
 
-    // Add page with template dimensions
-    const page = pdfDoc.addPage([CANVAS_WIDTH, CANVAS_HEIGHT]);
+    // Add page for Front
+    const frontPage = pdfDoc.addPage([CANVAS_WIDTH, CANVAS_HEIGHT]);
     
-    // Draw template image
-    page.drawImage(templateImage, {
+    // Draw template image (Front)
+    frontPage.drawImage(templateImage, {
       x: 0,
       y: 0,
       width: CANVAS_WIDTH,
       height: CANVAS_HEIGHT,
     });
+
+    let backPage: any = null;
+    if (backTemplateImage) {
+      // Add page for Back
+      backPage = pdfDoc.addPage([CANVAS_WIDTH, CANVAS_HEIGHT]);
+      backPage.drawImage(backTemplateImage, {
+        x: 0,
+        y: 0,
+        width: CANVAS_WIDTH,
+        height: CANVAS_HEIGHT,
+      });
+    }
 
     // Load trainee photo
     if (trainee.picture_2x2_url) {
@@ -355,7 +401,7 @@ export async function POST(req: NextRequest) {
               photoYTop = normY * CANVAS_HEIGHT;
             }
 
-            page.drawImage(traineeImage, {
+            frontPage.drawImage(traineeImage, {
               x: photoX,
               y: CANVAS_HEIGHT - photoYTop - photoH,
               width: photoW,
@@ -391,7 +437,7 @@ export async function POST(req: NextRequest) {
               photoYTop = normY * CANVAS_HEIGHT;
             }
 
-            page.drawImage(traineeImage, {
+            frontPage.drawImage(traineeImage, {
               x: photoX,
               y: CANVAS_HEIGHT - photoYTop - photoH,
               width: photoW,
@@ -444,78 +490,83 @@ export async function POST(req: NextRequest) {
     const helveticaOblique = await pdfDoc.embedFont('Helvetica-Oblique');
     const helveticaBoldOblique = await pdfDoc.embedFont('Helvetica-BoldOblique');
 
-    // Draw text fields
-    console.log("✍️ Drawing", template.fields.length, "text fields");
-    template.fields.forEach((field, index) => {
-      const fo = fieldOverrides[field.id] || {};
-      let displayText = field.value;
+    const drawFields = (pageToDraw: any, fields: TextField[], isBackSide: boolean = false) => {
+      console.log(`✍️ Drawing ${fields.length} text fields for ${isBackSide ? 'Back' : 'Front'}`);
+      fields.forEach((field, index) => {
+        const fo = fieldOverrides[field.id] || {};
+        let displayText = field.value || "";
 
-      // Replace all placeholders
-      Object.entries(replacements).forEach(([key, val]) => {
-        displayText = displayText.replace(new RegExp(key, 'g'), val);
-      });
-
-      // base position with global offset
-      let normX = field.x + offsetX;
-      let normY = field.y + offsetY;
-
-      // per-field absolute overrides (normalized 0–1)
-      if (typeof fo.x === "number") normX = fo.x;
-      if (typeof fo.y === "number") normY = fo.y;
-
-      const x = normX * CANVAS_WIDTH;
-      const y = normY * CANVAS_HEIGHT;
-
-      const baseFontSizeNorm = field.fontSize;
-      const fontSizeNorm = typeof fo.fontSize === "number" ? fo.fontSize : baseFontSizeNorm;
-      const fontSize = fontSizeNorm * CANVAS_HEIGHT;
-      const lineHeight = (field.lineHeight || 1.2) * fontSize;
-
-      const colorHex = typeof fo.color === "string" ? fo.color : field.color;
-      const color = hexToRgb(colorHex);
-      
-      let selectedFont = helveticaFont;
-      
-      if (field.fontFamily === "Helvetica") {
-        if (field.fontWeight === "bold" || field.fontWeight === "extrabold") {
-          selectedFont = field.fontStyle === "italic" ? helveticaBoldOblique : helveticaBold;
-        } else {
-          selectedFont = field.fontStyle === "italic" ? helveticaOblique : helveticaFont;
-        }
-      }
-
-      // ✅ FIXED: Split text by newlines and respect alignment
-      const lines = displayText.split('\n');
-      let currentY = CANVAS_HEIGHT - y;
-
-      lines.forEach((line) => {
-        const textWidth = selectedFont.widthOfTextAtSize(line, fontSize);
-        
-        let finalX = x;
-        
-        // ✅ KEY FIX: Left-aligned text stays anchored to x position
-        // Only center and right alignments adjust based on text width
-        if (field.align === "center") {
-          finalX = x - textWidth / 2;
-        } else if (field.align === "right") {
-          finalX = x - textWidth;
-        }
-        // For "left" alignment: finalX = x (no adjustment needed)
-
-        page.drawText(line, {
-          x: finalX,
-          y: currentY,
-          size: fontSize,
-          font: selectedFont,
-          color: rgb(color.r, color.g, color.b),
+        // Replace all placeholders
+        Object.entries(replacements).forEach(([key, val]) => {
+          displayText = displayText.replace(new RegExp(key, 'g'), val);
         });
 
-        // Move to next line
-        currentY -= lineHeight;
-      });
+        // base position with global offset
+        let normX = field.x + offsetX;
+        let normY = field.y + offsetY;
 
-      console.log(`  Field ${index + 1}: "${field.label}" (${lines.length} line${lines.length > 1 ? 's' : ''})`);
-    });
+        // per-field absolute overrides (normalized 0–1)
+        if (typeof fo.x === "number") normX = fo.x;
+        if (typeof fo.y === "number") normY = fo.y;
+
+        const x = normX * CANVAS_WIDTH;
+        const y = normY * CANVAS_HEIGHT;
+
+        const baseFontSizeNorm = field.fontSize;
+        const fontSizeNorm = typeof fo.fontSize === "number" ? fo.fontSize : baseFontSizeNorm;
+        const fontSize = fontSizeNorm * CANVAS_HEIGHT;
+        const lineHeight = (field.lineHeight || 1.2) * fontSize;
+
+        const colorHex = typeof fo.color === "string" ? fo.color : field.color;
+        const color = hexToRgb(colorHex || "#000000");
+        
+        let selectedFont = helveticaFont;
+        
+        if (field.fontFamily === "Helvetica") {
+          if (field.fontWeight === "bold" || field.fontWeight === "extrabold") {
+            selectedFont = field.fontStyle === "italic" ? helveticaBoldOblique : helveticaBold;
+          } else {
+            selectedFont = field.fontStyle === "italic" ? helveticaOblique : helveticaFont;
+          }
+        }
+
+        const lines = displayText.split('\n');
+        
+        let currentY = CANVAS_HEIGHT - y;
+
+        lines.forEach((line) => {
+          const textWidth = selectedFont.widthOfTextAtSize(line, fontSize);
+          
+          let finalX = x;
+          if (field.align === "center") {
+            finalX = x - textWidth / 2;
+          } else if (field.align === "right") {
+            finalX = x - textWidth;
+          }
+
+          pageToDraw.drawText(line, {
+            x: finalX,
+            y: currentY,
+            size: fontSize,
+            font: selectedFont,
+            color: rgb(color.r, color.g, color.b),
+          });
+
+          // Move to next line
+          currentY -= lineHeight;
+        });
+
+        console.log(`  Field ${index + 1}: "${field.label}" (${lines.length} line${lines.length > 1 ? 's' : ''})`);
+      });
+    };
+
+    // Draw front fields
+    drawFields(frontPage, template.fields, false);
+
+    // Draw back fields if back side is present
+    if (backPage && template.back_fields) {
+      drawFields(backPage, (template.back_fields as any[]).map(f => f as TextField), true);
+    }
 
     // Add metadata
     pdfDoc.setTitle(`${isIDTemplate ? 'ID Card' : 'Certificate'} - ${trainee.first_name} ${trainee.last_name}`);

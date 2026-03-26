@@ -36,31 +36,52 @@ interface EmailTemplate {
 interface EmailComposeDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSend: (subject: string, message: string) => void
+  onSend: (subject: string, message: string, attachments: string[]) => void
   defaultSubject?: string
   defaultMessage?: string
   recipientCount: number
+  availableTemplates: string[]
+  selectedTemplateType: string
 }
 
 // Helper function to convert plain text to HTML
+// Preserves whitespace, indentation, and line breaks exactly as composed
 function plainTextToHtml(text: string): string {
+  // Convert each line: preserve leading whitespace as &nbsp; entities
+  const htmlLines = text.split('\n').map(line => {
+    if (!line && line !== '') return '<p style="margin:0;padding:0;min-height:1em;">&nbsp;</p>'
+    // Convert leading spaces/tabs to &nbsp;
+    const leadingMatch = line.match(/^(\s+)/)
+    let processedLine = line
+    if (leadingMatch) {
+      const spaces = leadingMatch[1]
+        .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;')
+        .replace(/ /g, '&nbsp;')
+      processedLine = spaces + line.trimStart()
+    }
+    if (!processedLine) processedLine = '&nbsp;'
+    return `<p style="margin:0;padding:0;line-height:1.6;">${processedLine}</p>`
+  }).join('\n')
+
   return `
     <!DOCTYPE html>
     <html>
     <head>
       <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; background: #f9f9f9; }
-        .header { background: #4F46E5; color: white; padding: 30px 20px; text-align: center; border-radius: 5px 5px 0 0; }
+        .header { background: #1e3a8a; padding: 30px 20px; text-align: center; border-radius: 5px 5px 0 0; border-bottom: 5px solid #d4af37; }
+        .header h1 { margin: 0; font-size: 24px; color: #d4af37; letter-spacing: 1px; text-transform: uppercase; }
         .content { background: white; padding: 30px; border-radius: 0 0 5px 5px; }
+        .content p { margin: 0; padding: 0; line-height: 1.6; }
         .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
       </style>
     </head>
     <body>
       <div class="container">
-        <div class="header"><h1>🎓 Certificate of Completion</h1></div>
+        <div class="header"><h1> PETROSPHERE INCORPORATED</h1></div>
         <div class="content">
-          ${text.split('\n').map(line => `<p>${line || '&nbsp;'}</p>`).join('')}
+          ${htmlLines}
         </div>
         <div class="footer">
           <p>© ${new Date().getFullYear()} Petrosphere Incorporated. All rights reserved.</p>
@@ -76,13 +97,13 @@ function htmlToPlainText(html: string): string {
   // Remove HTML tags and get just the text content
   const tempDiv = document.createElement('div')
   tempDiv.innerHTML = html
-  
+
   // Try to extract content from .content div if it exists
   const contentDiv = tempDiv.querySelector('.content')
   if (contentDiv) {
     return contentDiv.textContent?.trim() || ''
   }
-  
+
   // Otherwise just get all text
   return tempDiv.textContent?.trim() || ''
 }
@@ -94,6 +115,8 @@ export default function EmailComposeDialog({
   defaultSubject = "",
   defaultMessage = "",
   recipientCount,
+  availableTemplates,
+  selectedTemplateType,
 }: EmailComposeDialogProps) {
   const [templates, setTemplates] = useState<EmailTemplate[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("")
@@ -104,16 +127,20 @@ export default function EmailComposeDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showSaveForm, setShowSaveForm] = useState(false)
+  const [selectedAttachments, setSelectedAttachments] = useState<string[]>([selectedTemplateType])
 
   // Fetch templates on mount
   useEffect(() => {
     if (open) {
+      setIsLoading(false)
       fetchTemplates()
       setSubject(defaultSubject)
       // Convert HTML to plain text for editing
       setMessage(htmlToPlainText(defaultMessage))
+      // Reset selected attachments to the currently viewed template type
+      setSelectedAttachments([selectedTemplateType])
     }
-  }, [open, defaultSubject, defaultMessage])
+  }, [open, defaultSubject, defaultMessage, selectedTemplateType])
 
   const fetchTemplates = async () => {
     try {
@@ -134,7 +161,7 @@ export default function EmailComposeDialog({
       setMessage(htmlToPlainText(defaultMessage))
       return
     }
-    
+
     const template = templates.find((t) => t.id === templateId)
     if (template) {
       setSubject(template.subject)
@@ -152,7 +179,7 @@ export default function EmailComposeDialog({
     try {
       // Convert plain text to HTML before saving
       const htmlMessage = plainTextToHtml(message)
-      
+
       const response = await fetch("/api/email-templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,10 +236,14 @@ export default function EmailComposeDialog({
       alert("Please enter both subject and message")
       return
     }
+    if (selectedAttachments.length === 0) {
+      alert("Please select at least one attachment to include.")
+      return
+    }
     setIsLoading(true)
     // Convert plain text to HTML before sending
     const htmlMessage = plainTextToHtml(message)
-    onSend(subject, htmlMessage)
+    onSend(subject, htmlMessage, selectedAttachments)
   }
 
   const getPreviewHtml = () => {
@@ -282,7 +313,7 @@ export default function EmailComposeDialog({
                 Preview
               </TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="compose" className="space-y-2">
               <Label htmlFor="email-message">Message</Label>
               <Textarea
@@ -314,7 +345,7 @@ Thank you for choosing Petrosphere Incorporated!"
                 </ul>
               </div>
             </TabsContent>
-            
+
             <TabsContent value="preview" className="space-y-2">
               <Label>Email Preview</Label>
               <div className="border rounded-md p-4 bg-gray-50 dark:bg-gray-900 max-h-[400px] overflow-y-auto">
@@ -392,7 +423,43 @@ Thank you for choosing Petrosphere Incorporated!"
           )}
         </div>
 
-        <DialogFooter className="gap-2">
+        {/* Attachments Selection */}
+        <div className="space-y-3 pt-4 border-t mt-4">
+          <Label className="font-semibold text-sm">Attachments to Include</Label>
+          <div className="flex flex-col gap-2">
+            {[
+              { id: "completion", label: "Certificate of Completion" },
+              { id: "participation", label: "Certificate of Participation" },
+              { id: "excellence", label: "ID Card" },
+            ].map((tmpl) => {
+              const isAvailable = availableTemplates.includes(tmpl.id)
+              return (
+                <div key={tmpl.id} className={`flex items-center gap-2 ${!isAvailable && "opacity-50"}`}>
+                  <Checkbox
+                    id={`attach-${tmpl.id}`}
+                    checked={selectedAttachments.includes(tmpl.id)}
+                    disabled={!isAvailable}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setSelectedAttachments((prev) => [...prev, tmpl.id])
+                      } else {
+                        setSelectedAttachments((prev) => prev.filter((a) => a !== tmpl.id))
+                      }
+                    }}
+                  />
+                  <Label
+                    htmlFor={`attach-${tmpl.id}`}
+                    className={`text-sm ${isAvailable ? "cursor-pointer" : "cursor-not-allowed"}`}
+                  >
+                    {tmpl.label} {!isAvailable && <span className="text-xs text-muted-foreground ml-1">(No template uploaded)</span>}
+                  </Label>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 border-t pt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

@@ -96,8 +96,9 @@ export async function POST(req: NextRequest) {
       templateType = "completion", 
       courseTitle: providedCourseTitle,
       selectedTraineeIds,
-      customEmailSubject,  // ✅ NEW
-      customEmailMessage   // ✅ NEW
+      customEmailSubject,
+      customEmailMessage,
+      attachments = [] // ✅ NEW
     } = await req.json();
     
     console.log("✅ Custom email subject:", customEmailSubject);
@@ -246,32 +247,54 @@ export async function POST(req: NextRequest) {
           try {
             console.log(`📤 Generating certificate for: ${trainee.first_name} ${trainee.last_name}`);
 
-            // Generate PDF
-            const pdfResponse = await fetch(
-              `${req.nextUrl.origin}/api/generate-certificate-pdf`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  trainee,
-                  courseName: courseData.name,
-                  courseTitle: courseTitle,
-                  courseId: courseData.id,
-                  givenThisDate: computedGivenDate,
-                  scheduleRange: computedScheduleRange,
-                  templateType,
-                }),
-              }
-            );
+            // ✅ NEW: Support multiple attachments
+            const pdfAttachments = [];
+            const attachmentTypes = attachments.length > 0 ? attachments : [templateType];
+            
+            console.log(`📄 Generating ${attachmentTypes.length} PDFs for ${trainee.first_name}`);
 
-            if (!pdfResponse.ok) {
-              const errTxt = await pdfResponse.text();
-              throw new Error(`PDF generation failed: ${errTxt.substring(0, 300)}`);
+            for (const type of attachmentTypes) {
+              const pdfResponse = await fetch(
+                `${req.nextUrl.origin}/api/generate-certificate-pdf`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    trainee,
+                    courseName: courseData.name,
+                    courseTitle: courseTitle,
+                    courseId: courseData.id,
+                    givenThisDate: computedGivenDate,
+                    scheduleRange: computedScheduleRange,
+                    templateType: type, // use the current attachment type
+                  }),
+                }
+              );
+
+              if (!pdfResponse.ok) {
+                const errTxt = await pdfResponse.text();
+                console.error(`❌ PDF generation failed for ${type}:`, errTxt);
+                continue; // skip this attachment but try others
+              }
+
+              const pdfBlob = await pdfResponse.blob();
+              const pdfBuffer = Buffer.from(await pdfBlob.arrayBuffer());
+              const pdfBase64 = pdfBuffer.toString("base64");
+              
+              let filename = `Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`;
+              if (type === "participation") filename = `Participation_${filename}`;
+              if (type === "excellence") filename = `ID_Card_${trainee.last_name}_${trainee.first_name}.pdf`;
+
+              pdfAttachments.push({
+                filename,
+                content: pdfBase64,
+                encoding: "base64",
+              });
             }
 
-            const pdfBlob = await pdfResponse.blob();
-            const pdfBuffer = Buffer.from(await pdfBlob.arrayBuffer());
-            const pdfBase64 = pdfBuffer.toString("base64");
+            if (pdfAttachments.length === 0) {
+              throw new Error("No PDFs could be generated.");
+            }
 
             // ✅ UPDATED: Use custom email or default
             let emailSubject = customEmailSubject;
@@ -299,13 +322,7 @@ export async function POST(req: NextRequest) {
                 to: trainee.email,
                 subject: emailSubject,
                 message: emailMessage,
-                attachments: [
-                  {
-                    filename: `Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`,
-                    content: pdfBase64,
-                    encoding: "base64",
-                  },
-                ],
+                attachments: pdfAttachments, // ✅ Send ALL attachments
               }),
             });
 
