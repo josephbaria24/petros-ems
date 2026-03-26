@@ -27,6 +27,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import EmailComposeDialog from "./email-composed-dialog"
+import { useToast } from "@/hooks/use-toast"
 
 
 interface ParticipantDirectoryDialogProps {
@@ -239,9 +240,7 @@ export default function ParticipantDirectoryDialog({
   const [isTraineeDialogOpen, setIsTraineeDialogOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [selectedTemplateType, setSelectedTemplateType] = useState<TemplateType>("completion")
-  const [alertOpen, setAlertOpen] = useState(false)
-  const [alertTitle, setAlertTitle] = useState("")
-  const [alertMessage, setAlertMessage] = useState("")
+  const { toast } = useToast()
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSendingEmails, setIsSendingEmails] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -689,18 +688,19 @@ export default function ParticipantDirectoryDialog({
       const data = await callDatabaseAPI('stats', 'GET')
       setDatabaseStats(data)
 
-      setAlertTitle("Database Statistics")
-      setAlertMessage(
-        `Total Records: ${data.records}\n` +
-        `Database Exists: ${data.exists ? "Yes" : "No"}\n` +
-        `Hostinger Configured: ${data.hostinger_configured ? "Yes" : "No"}`
-      )
-      setAlertOpen(true)
+      toast({
+        title: "Database Statistics",
+        description: `Total Records: ${data.records}\n` +
+          `Database Exists: ${data.exists ? "Yes" : "No"}\n` +
+          `Hostinger Configured: ${data.hostinger_configured ? "Yes" : "No"}`
+      })
     } catch (error: any) {
       console.error("Error fetching stats:", error)
-      setAlertTitle("Error")
-      setAlertMessage(error.message || "Failed to fetch database statistics")
-      setAlertOpen(true)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to fetch database statistics"
+      })
     } finally {
       setIsLoadingStats(false)
     }
@@ -715,17 +715,23 @@ export default function ParticipantDirectoryDialog({
       const data = await callDatabaseAPI('reset', 'POST')
 
       if (data.status === "success") {
-        setAlertTitle("Success")
-        setAlertMessage(
-          `Database reset successfully!\nBackup: ${data.backup_file}\nTimestamp: ${data.timestamp}`
-        )
+        toast({
+          title: "Success",
+          description: `Database reset successfully!\nBackup: ${data.backup_file}\nTimestamp: ${data.timestamp}`
+        })
       } else {
-        setAlertTitle("Error")
-        setAlertMessage(`Reset failed: ${data.error}`)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: `Reset failed: ${data.error}`
+        })
       }
     } catch (error: any) {
-      setAlertTitle("Error")
-      setAlertMessage(`Failed to reset: ${error.message}`)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: `Failed to reset: ${error.message}`
+      })
     }
   }
 
@@ -736,17 +742,23 @@ export default function ParticipantDirectoryDialog({
       const data = await callDatabaseAPI('backup', 'GET')
 
       if (data.status === "success") {
-        setAlertTitle("Success")
-        setAlertMessage(
-          `Backup created!\n\nFile: ${data.backup_file}\nSize: ${(data.file_size / 1024).toFixed(2)} KB\nTimestamp: ${data.timestamp}`
-        )
+        toast({
+          title: "Success",
+          description: `Backup created!\n\nFile: ${data.backup_file}\nSize: ${(data.file_size / 1024).toFixed(2)} KB\nTimestamp: ${data.timestamp}`
+        })
       } else {
-        setAlertTitle("Error")
-        setAlertMessage(`Backup failed: ${data.error}`)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: `Backup failed: ${data.error}`
+        })
       }
     } catch (error: any) {
-      setAlertTitle("Error")
-      setAlertMessage(`Failed: ${error.message}`)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: `Failed: ${error.message}`
+      })
     }
   }
 
@@ -759,15 +771,23 @@ export default function ParticipantDirectoryDialog({
       const data = await callDatabaseAPI('delete-all-records', 'POST')
 
       if (data.status === "success") {
-        setAlertTitle("Success")
-        setAlertMessage(`Deleted ${data.records_deleted} records.`)
+        toast({
+          title: "Success",
+          description: `Deleted ${data.records_deleted} records.`
+        })
       } else {
-        setAlertTitle("Error")
-        setAlertMessage(`Delete failed: ${data.error}`)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: `Delete failed: ${data.error}`
+        })
       }
     } catch (error: any) {
-      setAlertTitle("Error")
-      setAlertMessage(`Failed to delete: ${error.message}`)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: `Failed to delete: ${error.message}`
+      })
     }
   }
 
@@ -796,9 +816,10 @@ export default function ParticipantDirectoryDialog({
       const traineesNeedingSerials = trainees.filter((t) => !t.certificate_number)
 
       if (traineesNeedingSerials.length > 0) {
-        setAlertTitle("Generating Certificate Numbers")
-        setAlertMessage(`Generating serial numbers for ${traineesNeedingSerials.length} trainee(s)...`)
-        setAlertOpen(true)
+        toast({
+          title: "Generating Certificate Numbers",
+          description: `Generating serial numbers for ${traineesNeedingSerials.length} trainee(s)...`,
+        })
 
         await batchAssignCertificateSerials(
           trainees,
@@ -808,16 +829,18 @@ export default function ParticipantDirectoryDialog({
 
         await fetchTrainees()
 
-        setAlertMessage("Certificate numbers generated successfully!")
-
-        setTimeout(() => {
-          setAlertOpen(false)
-        }, 2000)
+        toast({
+          title: "Success",
+          description: "Certificate numbers generated successfully!",
+        })
       }
     } catch (error) {
       console.error("Error ensuring certificate numbers:", error)
-      setAlertTitle("Error")
-      setAlertMessage("Failed to generate certificate numbers")
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to generate certificate numbers"
+      })
     }
   }
 
@@ -923,9 +946,10 @@ export default function ParticipantDirectoryDialog({
 
     const selectedTrainees = getSelectedTrainees();
     if (selectedTrainees.length === 0) {
-      setAlertTitle("No Selection");
-      setAlertMessage("Please select at least one participant to download certificates.");
-      setAlertOpen(true);
+      toast({
+        title: "No Selection",
+        description: "Please select at least one participant to download certificates.",
+      });
       return;
     }
 
@@ -981,11 +1005,11 @@ export default function ParticipantDirectoryDialog({
         .maybeSingle();
 
       if (!templateCheck) {
-        setAlertTitle("Template Not Found");
-        setAlertMessage(
-          `No ${selectedTemplateType} template found for this course.\n\n` +
-          `Please create a ${selectedTemplateType} template first in the template editor.`
-        );
+        toast({
+          variant: "destructive",
+          title: "Template Not Found",
+          description: `No ${selectedTemplateType} template found for this course.\n\nPlease create a ${selectedTemplateType} template first in the template editor.`
+        });
         setIsGenerating(false);
         return;
       }
@@ -1008,25 +1032,24 @@ export default function ParticipantDirectoryDialog({
           successCount++;
 
           setProgress(Math.floor(((i + 1) / updatedTrainees.length) * 100));
-          setAlertMessage(
-            `Downloaded ${successCount} of ${updatedTrainees.length} certificates...\n` +
-            `Last: ${trainee.first_name} ${trainee.last_name}`
-          );
         } catch (error: any) {
           failCount++;
           console.error(`Failed to download for ${trainee.first_name} ${trainee.last_name}:`, error);
         }
       }
 
-      setAlertTitle("Download Complete");
-      setAlertMessage(
-        `Successfully downloaded ${successCount} certificate(s).` +
-        (failCount > 0 ? `\n${failCount} failed.` : "")
-      );
+      toast({
+        title: "Download Complete",
+        description: `Successfully downloaded ${successCount} certificate(s).` +
+          (failCount > 0 ? `\n${failCount} failed.` : "")
+      });
     } catch (err: any) {
       console.error("❌ Critical error:", err);
-      setAlertTitle("Error");
-      setAlertMessage(`Critical error: ${err.message}`);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: `Critical error: ${err.message}`
+      });
     } finally {
       setIsGenerating(false);
     }
@@ -1038,9 +1061,10 @@ export default function ParticipantDirectoryDialog({
 
     const selectedTrainees = getSelectedTrainees()
     if (selectedTrainees.length === 0) {
-      setAlertTitle("No Selection")
-      setAlertMessage("Please select at least one participant to view certificates.")
-      setAlertOpen(true)
+      toast({
+        title: "No Selection",
+        description: "Please select at least one participant to view certificates.",
+      })
       return
     }
 
@@ -1173,12 +1197,17 @@ export default function ParticipantDirectoryDialog({
       setActivePreviewIndex(0)
       setIsCertificateViewerOpen(true)
 
-      setAlertTitle("Previews Ready")
-      setAlertMessage("Certificate previews generated. You can now review them before sending or downloading.")
+      toast({
+        title: "Previews Ready",
+        description: "Certificate previews generated. You can now review them before sending or downloading.",
+      })
     } catch (err: any) {
       console.error("❌ Error generating previews:", err)
-      setAlertTitle("Error")
-      setAlertMessage(err.message || "Failed to generate certificate previews.")
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.message || "Failed to generate certificate previews.",
+      })
     } finally {
       setIsLoadingPreviews(false)
     }
@@ -1207,7 +1236,11 @@ export default function ParticipantDirectoryDialog({
 
       if (error) {
         console.error("Error fetching trainees:", error)
-        alert("Failed to fetch trainees: " + error.message)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to fetch trainees: " + error.message,
+        })
       } else {
         console.log("✅ Fetched trainees:", data)
         setTrainees(data || [])
@@ -1405,7 +1438,11 @@ export default function ParticipantDirectoryDialog({
 
         if (error) {
           console.error("❌ Failed to update picture in database:", error)
-          alert("Failed to update picture. Please try again.")
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to update picture in database: " + error.message,
+          })
         } else if (data) {
           console.log("✅ Picture updated successfully:", data)
 
@@ -1418,15 +1455,26 @@ export default function ParticipantDirectoryDialog({
             prev.map((t) => (t.id === selectedTrainee.id ? { ...t, picture_2x2_url: result.url } : t))
           )
 
-          alert("Picture updated successfully!")
+          toast({
+            title: "Success",
+            description: "Picture updated successfully!",
+          })
         }
       } else {
         console.error("Upload failed:", result.error)
-        alert("Upload failed. Please try again.")
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Upload failed: " + result.error,
+        })
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Upload error:", error)
-      alert("An error occurred during upload.")
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An error occurred during upload: " + error.message,
+      })
     } finally {
       setIsUploading(false)
     }
@@ -1436,16 +1484,23 @@ export default function ParticipantDirectoryDialog({
     if (!scheduleId) return
 
     setIsDownloadingDirectory(true)
-    setAlertTitle("Downloading Participant Directory")
-    setAlertMessage("Preparing Excel file... This may take up to a minute due to server cold start.")
-    setAlertOpen(true)
+    toast({
+      title: "Downloading Participant Directory",
+      description: "Preparing Excel file... This may take up to a minute due to server cold start.",
+    })
 
     try {
       await exportTraineeExcel(scheduleId, scheduleRange)
-      setAlertMessage("Download complete!")
+      toast({
+        title: "Success",
+        description: "Download complete!",
+      })
     } catch (error) {
-      setAlertTitle("Error")
-      setAlertMessage("Failed to download directory.")
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to download directory.",
+      })
     } finally {
       setIsDownloadingDirectory(false)
     }
@@ -1456,9 +1511,10 @@ export default function ParticipantDirectoryDialog({
   const handleOpenEmailCompose = async () => {
     const selectedTrainees = getSelectedTrainees()
     if (selectedTrainees.length === 0) {
-      setAlertTitle("No Selection")
-      setAlertMessage("Please select at least one participant to send certificates.")
-      setAlertOpen(true)
+      toast({
+        title: "No Selection",
+        description: "Please select at least one participant to send certificates.",
+      })
       return
     }
 
@@ -1523,8 +1579,11 @@ export default function ParticipantDirectoryDialog({
 
       if (!response.ok) {
         const result = await response.json()
-        setAlertTitle("Error")
-        setAlertMessage(result.error || "Failed to send certificates.")
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: result.error || "Failed to send certificates.",
+        })
         setIsSendingEmails(false)
         return
       }
@@ -1549,17 +1608,13 @@ export default function ParticipantDirectoryDialog({
               if (data.type === "progress") {
                 const progressPercent = Math.floor((data.current / data.total) * 100)
                 setProgress(progressPercent)
-                setAlertMessage(
-                  `${data.message}${data.lastSent ? `\nLast sent: ${data.lastSent}` : ""}${data.lastError ? `\nError: ${data.lastError}` : ""
-                  }`
-                )
+                // Removed alertMessage update to avoid toast spam
               } else if (data.type === "complete") {
                 setProgress(100)
-                setAlertTitle("Done")
-                setAlertMessage(
-                  `Successfully sent ${data.successCount} certificate(s). ${data.failCount > 0 ? `${data.failCount} failed.` : ""
-                  }`
-                )
+                toast({
+                  title: "Done",
+                  description: `Successfully sent ${data.successCount} certificate(s). ${data.failCount > 0 ? `${data.failCount} failed.` : ""}`,
+                })
                 setIsSendingEmails(false)
               }
             } catch (parseError) {
@@ -1570,8 +1625,11 @@ export default function ParticipantDirectoryDialog({
       }
     } catch (error) {
       console.error("Error sending certificates:", error)
-      setAlertTitle("Error")
-      setAlertMessage("An error occurred while sending certificates.")
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An error occurred while sending certificates.",
+      })
       setIsSendingEmails(false)
     }
   }
@@ -1930,11 +1988,10 @@ export default function ParticipantDirectoryDialog({
   }
 
   const startLongOperation = (title: string, message: string = "") => {
-    setAlertTitle(title)
-    setAlertMessage(
-      message || "Please wait... This may take up to a minute due to server cold start."
-    )
-    setAlertOpen(true)
+    toast({
+      title: title,
+      description: message || "Please wait... This may take up to a minute due to server cold start.",
+    })
   }
 
   // PART 3 OF 3 - JSX Return
@@ -1942,27 +1999,6 @@ export default function ParticipantDirectoryDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="lg:w-[60vw] sm:w-[90vw] max-h-[90vh] overflow-y-auto pt-10 bg-card">
-        <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
-          <AlertDialogContent className="max-w-sm">
-            <AlertDialogHeader>
-              <AlertDialogTitle>{alertTitle}</AlertDialogTitle>
-            </AlertDialogHeader>
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground whitespace-pre-line">{alertMessage}</p>
-              {(isGenerating || isSendingEmails) && (
-                <Progress value={progress} className="h-2" />
-              )}
-            </div>
-            <AlertDialogFooter className="pt-4">
-              <Button
-                onClick={() => setAlertOpen(false)}
-                disabled={isGenerating || isSendingEmails}
-              >
-                Close
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
 
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold bg-muted/50 border p-2 rounded-md flex justify-between items-center">
@@ -2468,12 +2504,13 @@ export default function ParticipantDirectoryDialog({
                   <Button
                     variant="default"
                     size="sm"
-                    className="w-full justify-start gap-2 h-9"
+                    className="w-full justify-start gap-2 h-9 shadow-sm"
                     onClick={() => {
-                      const current = certificatePreviews[activePreviewIndex]
-                      if (!current) return
-                      setSelectedTraineeIds(new Set([current.trainee.id]))
-                      setSelectAll(false)
+                      if (selectedTraineeIds.size === 0) {
+                        const current = certificatePreviews[activePreviewIndex]
+                        if (!current) return
+                        setSelectedTraineeIds(new Set([current.trainee.id]))
+                      }
                       handleOpenEmailCompose()
                     }}
                     disabled={isSendingEmails}
@@ -2483,7 +2520,9 @@ export default function ParticipantDirectoryDialog({
                     ) : (
                       <Mail className="h-4 w-4" />
                     )}
-                    Send to Email
+                    {selectedTraineeIds.size > 1 
+                      ? `Send to ${selectedTraineeIds.size} Selected` 
+                      : "Send to Email"}
                   </Button>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -2651,28 +2690,65 @@ export default function ParticipantDirectoryDialog({
           {/* Horizontal strip of participants */}
           {certificatePreviews.length > 0 && (
             <div className="mt-4 border-t pt-3 shrink-0">
+              <div className="flex items-center justify-between mb-2 px-1">
+                <div className="flex items-center gap-2">
+                  <Checkbox 
+                    id="preview-select-all"
+                    checked={selectedTraineeIds.size === certificatePreviews.length && certificatePreviews.length > 0}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setSelectedTraineeIds(new Set(certificatePreviews.map(p => p.trainee.id)))
+                      } else {
+                        setSelectedTraineeIds(new Set())
+                      }
+                    }}
+                  />
+                  <Label htmlFor="preview-select-all" className="text-[10px] uppercase font-bold text-muted-foreground cursor-pointer">
+                    Select All for Email
+                  </Label>
+                </div>
+                <div className="text-[10px] font-bold text-primary px-2 py-0.5 bg-primary/10 rounded-full">
+                  {selectedTraineeIds.size} Selected
+                </div>
+              </div>
               <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                 {certificatePreviews.map((item, index) => (
-                  <button
-                    key={item.trainee.id}
-                    type="button"
-                    className={`flex items-center gap-2 px-3 py-2 rounded-md border text-xs whitespace-nowrap transition-all ${index === activePreviewIndex
-                        ? "border-primary bg-primary/10 ring-1 ring-primary/30"
-                        : "border-muted hover:bg-muted/60"
-                      }`}
-                    onClick={() => setActivePreviewIndex(index)}
-                  >
-                    <Avatar className="h-6 w-6">
-                      <AvatarImage src={item.trainee.picture_2x2_url} />
-                      <AvatarFallback className="text-[10px]">
-                        {item.trainee.first_name?.[0]}
-                        {item.trainee.last_name?.[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span>
-                      {item.trainee.last_name}, {item.trainee.first_name}
-                    </span>
-                  </button>
+                  <div key={item.trainee.id} className="relative group/card">
+                    <button
+                      type="button"
+                      className={`flex items-center gap-2 px-3 py-2 rounded-md border text-xs whitespace-nowrap transition-all pr-8 ${index === activePreviewIndex
+                          ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                          : "border-muted hover:bg-muted/60"
+                        }`}
+                      onClick={() => setActivePreviewIndex(index)}
+                    >
+                      <Avatar className="h-6 w-6">
+                        <AvatarImage src={item.trainee.picture_2x2_url} />
+                        <AvatarFallback className="text-[10px]">
+                          {item.trainee.first_name?.[0]}
+                          {item.trainee.last_name?.[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span>
+                        {item.trainee.last_name}, {item.trainee.first_name}
+                      </span>
+                    </button>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 z-30">
+                      <Checkbox 
+                        checked={selectedTraineeIds.has(item.trainee.id)}
+                        onCheckedChange={(checked) => {
+                          const newIds = new Set(selectedTraineeIds)
+                          if (checked) {
+                            newIds.add(item.trainee.id)
+                          } else {
+                            newIds.delete(item.trainee.id)
+                          }
+                          setSelectedTraineeIds(newIds)
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
