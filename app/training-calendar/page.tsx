@@ -23,6 +23,7 @@ import {
 type ScheduleEvent = {
   id: string
   course: string
+  courseTitle: string
   branch: string
   status: 'planned' | 'confirmed' | 'cancelled' | 'finished' | 'ongoing'
   startDate: Date
@@ -309,7 +310,7 @@ export default function TrainingCalendar() {
         branch,
         status,
         schedule_type,
-        courses (id, name, cover_image),
+        courses (id, name, title, cover_image),
         schedule_ranges (start_date, end_date),
         schedule_dates (date)
       `)
@@ -318,6 +319,7 @@ export default function TrainingCalendar() {
       const mapped = data
         .map((s: any): ScheduleEvent | null => {
           const course = s.courses?.name || 'Unknown'
+          const courseTitle = s.courses?.title || course
           const cover_image = s.courses?.cover_image || null
           const course_id = s.courses?.id || null
 
@@ -325,6 +327,7 @@ export default function TrainingCalendar() {
             return {
               id: s.id,
               course,
+              courseTitle,
               branch: s.branch,
               status: s.status || 'planned',
               startDate: new Date(s.schedule_ranges[0].start_date + 'T00:00:00'),
@@ -340,6 +343,7 @@ export default function TrainingCalendar() {
             return {
               id: s.id,
               course,
+              courseTitle,
               branch: s.branch,
               status: s.status || 'planned',
               startDate: dates[0],
@@ -683,10 +687,10 @@ export default function TrainingCalendar() {
                   onClick={() => openModal(event)}
                   onMouseEnter={() => setHoveredEventId(event.id)}
                   onMouseLeave={() => setHoveredEventId(null)}
-                  title={`${event.course} - ${event.branch}`}
+                  title={`${event.courseTitle} - ${event.branch}`}
                 >
                   <div className="truncate">
-                    {isStart && `${event.branch} ${event.course} - ${event.status}`}
+                    {isStart && `${event.branch} ${event.courseTitle} - ${event.status}`}
                   </div>
                 </div>
               )
@@ -753,10 +757,11 @@ export default function TrainingCalendar() {
     const eventsByCourse: { [key: string]: ScheduleEvent[] } = {}
 
     events.forEach(event => {
-      if (!eventsByCourse[event.course]) {
-        eventsByCourse[event.course] = []
+      const key = event.courseTitle || event.course
+      if (!eventsByCourse[key]) {
+        eventsByCourse[key] = []
       }
-      eventsByCourse[event.course].push(event)
+      eventsByCourse[key].push(event)
     })
 
     const sortedCourses = Object.keys(eventsByCourse).sort()
@@ -796,7 +801,7 @@ export default function TrainingCalendar() {
                               className="inline-block px-2 py-1 text-white rounded cursor-pointer hover:opacity-80 text-xs"
                               style={{ backgroundColor: color }}
                               onClick={() => openModal(event)}
-                              title={`${event.course} - ${event.branch}`}
+                              title={`${event.courseTitle} - ${event.branch}`}
                             >
                               {event.scheduleType === 'staggered' && event.dates
                                 ? event.dates
@@ -984,7 +989,10 @@ export default function TrainingCalendar() {
 
               {/* Title + Actions */}
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold">{selectedEvent.course}</h2>
+                <div>
+                  <h2 className="text-xl font-bold">{selectedEvent.courseTitle}</h2>
+                  <p className="text-sm font-medium text-muted-foreground">{selectedEvent.course}</p>
+                </div>
 
                 <div className="flex items-center gap-2">
                   <DropdownMenu>
@@ -1018,6 +1026,11 @@ export default function TrainingCalendar() {
 
 
             <div className="p-6 space-y-4">
+              <div>
+                <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Course Title</div>
+                <div className="text-sm font-bold">{selectedEvent.courseTitle}</div>
+              </div>
+
               <div>
                 <div className="text-xs font-semibold uppercase text-muted-foreground mb-1">Course Name</div>
                 <div className="text-sm">{selectedEvent.course}</div>

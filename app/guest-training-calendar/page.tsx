@@ -21,6 +21,7 @@ type NewsItem = {
 type ScheduleEvent = {
   id: string
   course: string
+  courseTitle: string
   branch: string
   status: 'planned' | 'confirmed' | 'cancelled' | 'finished' | 'ongoing'
   startDate: Date
@@ -136,7 +137,7 @@ export default function TrainingCalendar() {
       branch,
       status,
       schedule_type,
-      courses (name, cover_image),
+      courses (name, title, cover_image),
       schedule_ranges (start_date, end_date),
       schedule_dates (date)
     `)
@@ -145,12 +146,14 @@ export default function TrainingCalendar() {
       const mapped = data
         .map((s: any): ScheduleEvent | null => {
           const course = s.courses?.name || 'Unknown'
+          const courseTitle = s.courses?.title || course
           const cover_image = s.courses?.cover_image || null
 
           if (s.schedule_type === 'regular' && s.schedule_ranges?.[0]) {
             return {
               id: s.id,
               course,
+              courseTitle,
               branch: s.branch,
               status: s.status || 'planned',
               startDate: new Date(s.schedule_ranges[0].start_date),
@@ -165,6 +168,7 @@ export default function TrainingCalendar() {
             return {
               id: s.id,
               course,
+              courseTitle,
               branch: s.branch,
               status: s.status || 'planned',
               startDate: dates[0],
@@ -419,12 +423,12 @@ export default function TrainingCalendar() {
                   onClick={() => openModal(event)}
                   onMouseEnter={() => setHoveredEventId(event.id)}
                   onMouseLeave={() => setHoveredEventId(null)}
-                  title={`${event.course} - ${event.branch}`}
+                  title={`${event.courseTitle} - ${event.branch}`}
                 >
                   <div className="truncate">
                     {isStart && (
                       <span className={event.status === 'cancelled' ? 'line-through' : ''}>
-                        {event.branch} {event.course} - {displayStatus}
+                        {event.branch} {event.courseTitle} - {displayStatus}
                       </span>
                     )}
                   </div>
@@ -453,10 +457,11 @@ export default function TrainingCalendar() {
     const eventsByCourse: { [key: string]: ScheduleEvent[] } = {}
 
     events.forEach(event => {
-      if (!eventsByCourse[event.course]) {
-        eventsByCourse[event.course] = []
+      const key = event.courseTitle || event.course
+      if (!eventsByCourse[key]) {
+        eventsByCourse[key] = []
       }
-      eventsByCourse[event.course].push(event)
+      eventsByCourse[key].push(event)
     })
 
     const sortedCourses = Object.keys(eventsByCourse).sort()
@@ -496,7 +501,7 @@ export default function TrainingCalendar() {
                               className="inline-block px-2 py-1 text-white rounded cursor-pointer hover:opacity-80 text-xs"
                               style={{ backgroundColor: color }}
                               onClick={() => openModal(event)}
-                              title={`${event.course} - ${event.branch}`}
+                              title={`${event.courseTitle} - ${event.branch}`}
                             >
                               {event.scheduleType === 'staggered' && event.dates
                                 ? event.dates
@@ -710,7 +715,8 @@ export default function TrainingCalendar() {
               </Button>
 
               <div className="absolute bottom-0 left-0 w-full p-5 bg-gradient-to-t from-black/90 via-black/70 to-transparent text-white space-y-0">
-                <h2 className="text-xl font-bold">{selectedEvent.course}</h2>
+                <h2 className="text-xl font-bold">{selectedEvent.courseTitle}</h2>
+                <p className="text-sm font-medium text-gray-300">{selectedEvent.course}</p>
                 <p className="text-sm">{selectedEvent.branch === 'online' ? 'Online' : selectedEvent.branch}</p>
                 {selectedEvent.scheduleType === 'staggered' && selectedEvent.dates ? (
                   <div className="text-sm space-y-1">

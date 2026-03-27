@@ -992,7 +992,7 @@ export default function CoursesPage() {
           </DialogHeader>
           <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
             <div className="space-y-2">
-              <Label htmlFor="add-name">Course Name *</Label>
+              <Label htmlFor="add-name">Course Code *</Label>
               <Input
                 id="add-name"
                 placeholder="Enter course name"
