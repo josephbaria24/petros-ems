@@ -121,6 +121,7 @@ async function downloadFromServer(
   scheduleRange: string,
   givenThisDate: string = new Date().toLocaleDateString(),
   courseTitle: string = courseName,
+  layoutOverride?: any
 ) {
   console.log("🔽 Downloading certificate for:", trainee.first_name, trainee.last_name);
   console.log("📚 Using courseTitle:", courseTitle);
@@ -137,6 +138,7 @@ async function downloadFromServer(
         courseId: trainee.course_id,
         templateType,
         givenThisDate,
+        layoutOverride
       }),
     })
 
@@ -167,7 +169,8 @@ async function downloadFromServer(
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`;
+    const dateStr = new Date().toISOString().split('T')[0];
+    a.download = `${trainee.last_name} ${trainee.first_name}_${trainee.certificate_number}_${dateStr}.pdf`;
     a.click();
 
     URL.revokeObjectURL(url);
@@ -1027,7 +1030,12 @@ export default function ParticipantDirectoryDialog({
             courseData.name,
             scheduleRange,
             new Date().toLocaleDateString(),
-            courseTitle
+            courseTitle,
+            isCertificateViewerOpen ? {
+              offsetX: layoutOffset.offsetX,
+              offsetY: layoutOffset.offsetY,
+              fieldOverrides,
+            } : undefined
           );
           successCount++;
 
@@ -2523,6 +2531,30 @@ export default function ParticipantDirectoryDialog({
                     {selectedTraineeIds.size > 1 
                       ? `Send to ${selectedTraineeIds.size} Selected` 
                       : "Send to Email"}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start gap-2 h-9 shadow-sm"
+                    onClick={() => {
+                      if (selectedTraineeIds.size === 0) {
+                        const current = certificatePreviews[activePreviewIndex]
+                        if (!current) return
+                        setSelectedTraineeIds(new Set([current.trainee.id]))
+                      }
+                      handleDownloadCertificates()
+                    }}
+                    disabled={isGenerating}
+                  >
+                    {isGenerating ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    {selectedTraineeIds.size > 1 
+                      ? `Download ${selectedTraineeIds.size} Selected` 
+                      : "Download PDF"}
                   </Button>
 
                   <div className="grid grid-cols-2 gap-2">
