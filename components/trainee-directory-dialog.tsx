@@ -264,7 +264,8 @@ export default function ParticipantDirectoryDialog({
   const [emailSubject, setEmailSubject] = useState("")
   const [emailMessage, setEmailMessage] = useState("")
 
-  // ✅ NEW: Templates availability state
+  // ✅ NEW: Performance & Caching State - Move this higher to ensure it's available
+  const [generationDataMap, setGenerationDataMap] = useState<Map<string, CertificateGenerationData>>(new Map())
   const [availableTemplates, setAvailableTemplates] = useState<Set<TemplateType>>(new Set())
 
   // Fetch available templates for this course
@@ -318,9 +319,9 @@ export default function ParticipantDirectoryDialog({
   const [previewZoom, setPreviewZoom] = useState(1)
 
   // ✅ NEW: Performance & Caching State
-  const [generationDataMap, setGenerationDataMap] = useState<Map<string, CertificateGenerationData>>(new Map())
+  const [certificateCache, setCertificateCache] = useState<Map<string, string>>(new Map())
   const [isPreFetching, setIsPreFetching] = useState(false)
-  const preFetchQueueRef = useRef<string[]>([])
+  const preFetchQueueRef = useRef<[string, TemplateType][]>([])
   const isPreFetchingRunningRef = useRef(false)
   const [preFetchProgress, setPreFetchProgress] = useState(0)
   const [preFetchTotal, setPreFetchTotal] = useState(0)
@@ -1064,7 +1065,7 @@ export default function ParticipantDirectoryDialog({
   };
 
   // ✅ NEW: Generate inline preview PDFs for selected trainees (no download)
-  const handleOpenCertificateViewer = async () => {
+  const handleOpenCertificateViewer = () => {
     if (!scheduleId) return
 
     const selectedTrainees = getSelectedTrainees()
@@ -1077,149 +1078,105 @@ export default function ParticipantDirectoryDialog({
     }
 
     setIsLoadingPreviews(true)
-    setProgress(0)
-    startLongOperation(
-      "Generating Certificate Previews",
-      "Rendering certificates for selected participants..."
-    )
+    
+    // We do a quick fetch of course/template data to setup the viewer, then open immediately
+    const openViewer = async () => {
+      try {
+        const { data: scheduleData } = await tmsDb
+          .from("schedules")
+          .select("course_id")
+          .eq("id", scheduleId)
+          .single()
 
-    try {
-      const { data: scheduleData } = await tmsDb
-        .from("schedules")
-        .select("course_id")
-        .eq("id", scheduleId)
-        .single()
+        if (!scheduleData) throw new Error("Missing schedule data")
 
-      if (!scheduleData) throw new Error("Missing schedule data")
+        const { data: courseData } = await tmsDb
+          .from("courses")
+          .select("id, name, title, serial_number, serial_number_pad")
+          .eq("id", scheduleData.course_id)
+          .single()
 
-      const { data: courseData } = await tmsDb
-        .from("courses")
-        .select("id, name, title, serial_number, serial_number_pad")
-        .eq("id", scheduleData.course_id)
-        .single()
+        if (!courseData) throw new Error("Missing course data")
 
-      if (!courseData) throw new Error("Missing course data")
+        const serialBase = Number(courseData.serial_number ?? 1)
+        const serialPad = Number(courseData.serial_number_pad ?? 5)
 
-      const courseTitle = courseData.title || courseData.name
-      const serialBase = Number(courseData.serial_number ?? 1)
-      const serialPad = Number(courseData.serial_number_pad ?? 5)
+        // Load template fields for current type
+        const { data: templateData } = await tmsDb
+          .from("certificate_templates")
+          .select("fields, image_url")
+          .eq("course_id", courseData.id)
+          .eq("template_type", selectedTemplateType)
+          .maybeSingle()
 
-      // Load template fields for per-field controls
-      const { data: templateData } = await tmsDb
-        .from("certificate_templates")
-        .select("fields, image_url")
-        .eq("course_id", courseData.id)
-        .eq("template_type", selectedTemplateType)
-        .maybeSingle()
+        if (templateData?.fields) {
+          setTemplateFields(
+            (templateData.fields as any[]).map((f) => ({
+              id: f.id as string,
+              label: (f.label as string) || (f.id as string),
+            }))
+          )
+          setTemplateForViewer({
+            imageUrl: (templateData as any).image_url as string,
+            fields: templateData.fields as any,
+          })
+        }
 
-      if (templateData?.fields) {
-        setTemplateFields(
-          (templateData.fields as any[]).map((f) => ({
-            id: f.id as string,
-            label: (f.label as string) || (f.id as string),
-          }))
-        )
-        setTemplateForViewer({
-          imageUrl: (templateData as any).image_url as string,
-          fields: templateData.fields as any,
+        // Prepare the previews list instantly, pulling from cache where available
+        const sortedTrainees = [...selectedTrainees].sort((a, b) => {
+          const aName = `${a.last_name} ${a.first_name}`.toLowerCase()
+          const bName = `${b.last_name} ${b.first_name}`.toLowerCase()
+          return aName.localeCompare(bName)
         })
-      } else {
-        setTemplateFields([])
-        setTemplateForViewer(null)
+
+        const updatedTrainees: DownloadTrainee[] = sortedTrainees.map((trainee, index) => {
+          const serial = serialBase + index + 1
+          const padded = serial.toString().padStart(serialPad, "0")
+          const certificate_number = `PSI-${courseData.name}-${padded}`
+          return { ...trainee, certificate_number }
+        })
+
+        const previews = updatedTrainees.map(trainee => ({
+          trainee,
+          url: certificateCache.get(`${trainee.id}-${selectedTemplateType}`) || null
+        }))
+
+        setCertificatePreviews(previews)
+        setActivePreviewIndex(0)
+        setIsCertificateViewerOpen(true)
+      } catch (err: any) {
+        console.error("❌ Error opening viewer:", err)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: err.message || "Failed to open viewer"
+        })
+      } finally {
+        setIsLoadingPreviews(false)
       }
-
-      // Sort trainees alphabetically to keep consistent serial assignment
-      const sortedTrainees = [...selectedTrainees].sort((a, b) => {
-        const aName = `${a.last_name} ${a.first_name}`.toLowerCase()
-        const bName = `${b.last_name} ${b.first_name}`.toLowerCase()
-        return aName.localeCompare(bName)
-      })
-
-      // Assign serials without saving to DB
-      const updatedTrainees: DownloadTrainee[] = sortedTrainees.map((trainee, index) => {
-        const serial = serialBase + index + 1
-        const padded = serial.toString().padStart(serialPad, "0")
-        const certificate_number = `PSI-${courseData.name}-${padded}`
-        return { ...trainee, certificate_number }
-      })
-
-      const previews: { trainee: DownloadTrainee; url: string | null; error?: string }[] = []
-
-      for (let i = 0; i < updatedTrainees.length; i++) {
-        const trainee = updatedTrainees[i]
-        const genData = generationDataMap.get(trainee.id)
-
-        // Check if we already have a background-generated URL in the existing State
-        const existingPreview = certificatePreviews.find(p => p.trainee.id === trainee.id)
-        if (existingPreview?.url) {
-          previews.push({ ...existingPreview, trainee }) // reuse the URL
-          setProgress(Math.round(((i + 1) / updatedTrainees.length) * 100))
-          continue
-        }
-
-        try {
-          const res = await fetch("/api/generate-certificate-pdf", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              trainee,
-              courseName: courseData.name,
-              courseTitle,
-              scheduleRange,
-              courseId: trainee.course_id,
-              templateType: selectedTemplateType,
-              precomputed: genData ? {
-                layout: {
-                  offsetX: genData.offset_x,
-                  offsetY: genData.offset_y,
-                  fieldOverrides: genData.field_overrides
-                }
-              } : undefined
-            }),
-          })
-
-          if (!res.ok) {
-            const text = await res.text()
-            previews.push({
-              trainee,
-              url: null,
-              error: text.substring(0, 200) || "Failed to generate preview",
-            })
-          } else {
-            const blob = await res.blob()
-            const url = URL.createObjectURL(blob)
-            previews.push({ trainee, url })
-          }
-
-          setProgress(Math.floor(((i + 1) / updatedTrainees.length) * 100))
-        } catch (err: any) {
-          previews.push({
-            trainee,
-            url: null,
-            error: err?.message || "Failed to generate preview",
-          })
-        }
-      }
-
-      setCertificatePreviews(previews)
-      setActivePreviewIndex(0)
-      setIsCertificateViewerOpen(true)
-
-      toast({
-        title: "Previews Ready",
-        description: "Certificate previews generated. You can now review them before sending or downloading.",
-      })
-    } catch (err: any) {
-      console.error("❌ Error generating previews:", err)
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: err.message || "Failed to generate certificate previews.",
-      })
-    } finally {
-      setIsLoadingPreviews(false)
     }
+
+    openViewer()
   }
+
+  // ✅ NEW: Sync background cache to active previews
+  useEffect(() => {
+    if (!isCertificateViewerOpen || certificatePreviews.length === 0) return
+
+    setCertificatePreviews(prev => {
+      let changed = false
+      const next = prev.map(p => {
+        const cacheKey = `${p.trainee.id}-${selectedTemplateType}`
+        const cachedUrl = certificateCache.get(cacheKey)
+        if (cachedUrl && p.url !== cachedUrl) {
+          changed = true
+          return { ...p, url: cachedUrl }
+        }
+        return p
+      })
+      return changed ? next : prev
+    })
+  }, [certificateCache, isCertificateViewerOpen, selectedTemplateType])
 
   const fetchTrainees = async () => {
     if (!scheduleId) return
@@ -1304,9 +1261,18 @@ export default function ParticipantDirectoryDialog({
         setGenerationDataMap(newMap)
         console.log("🚀 Pre-fetched layout data for", newMap.size, "participants")
 
-        // Initialize background pre-fetching queue
-        preFetchQueueRef.current = Array.from(newMap.keys())
-        setPreFetchTotal(newMap.size)
+        // Initialize background pre-fetching queue for ALL 3 templates
+        const traineeIds = Array.from(newMap.keys())
+        const fullQueue: [string, TemplateType][] = []
+        
+        traineeIds.forEach(id => {
+          fullQueue.push([id, "participation"])
+          fullQueue.push([id, "completion"])
+          fullQueue.push([id, "excellence"])
+        })
+
+        preFetchQueueRef.current = fullQueue
+        setPreFetchTotal(fullQueue.length)
         setPreFetchProgress(0)
       }
     } catch (err) {
@@ -1327,21 +1293,25 @@ export default function ParticipantDirectoryDialog({
       }
 
       isPreFetchingRunningRef.current = true
-      const traineeId = preFetchQueueRef.current.shift()
-      if (!traineeId) {
+      const nextTask = preFetchQueueRef.current.shift()
+      if (!nextTask) {
         isPreFetchingRunningRef.current = false
         return
       }
 
-      // Skip if already has a preview
-      const hasPreview = certificatePreviews.some(p => p.trainee.id === traineeId && p.url)
-      if (hasPreview) {
+      const [traineeId, templateType] = nextTask
+      const cacheKey = `${traineeId}-${templateType}`
+
+      // Skip if already has a preview in cache
+      if (certificateCache.has(cacheKey)) {
+        isPreFetchingRunningRef.current = false
         setTimeout(processQueue, 50)
         return
       }
 
       const genData = generationDataMap.get(traineeId)
       if (!genData) {
+        isPreFetchingRunningRef.current = false
         setTimeout(processQueue, 50)
         return
       }
@@ -1365,7 +1335,7 @@ export default function ParticipantDirectoryDialog({
             courseName: genData.course_name,
             courseTitle: genData.course_title,
             courseId: genData.course_id,
-            templateType: selectedTemplateType,
+            templateType: templateType,
             precomputed: {
               layout: {
                 offsetX: genData.offset_x,
@@ -1380,28 +1350,24 @@ export default function ParticipantDirectoryDialog({
           const blob = await res.blob()
           const url = URL.createObjectURL(blob)
 
-          setCertificatePreviews(prev => {
-            // Find if there's an existing placeholder
-            const existingIndex = prev.findIndex(p => p.trainee.id === traineeId)
-            if (existingIndex >= 0) {
-              const newPreviews = [...prev]
-              newPreviews[existingIndex] = { ...newPreviews[existingIndex], url }
-              return newPreviews
-            }
-            return prev
+          setCertificateCache(prev => {
+            const newCache = new Map(prev)
+            newCache.set(cacheKey, url)
+            return newCache
           })
         }
         setPreFetchProgress(prev => prev + 1)
       } catch (e) {
-        console.warn("Silent pre-fetch failed for", traineeId, e)
+        console.warn("Silent pre-fetch failed for", traineeId, templateType, e)
       }
 
+      isPreFetchingRunningRef.current = false
       // Next one after a short delay to keep CPU low
-      setTimeout(processQueue, 1000)
+      setTimeout(processQueue, 200)
     }
 
     processQueue()
-  }, [generationDataMap, open, selectedTemplateType, certificatePreviews])
+  }, [generationDataMap, open, certificateCache])
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status?.toLowerCase()) {
@@ -2124,6 +2090,19 @@ export default function ParticipantDirectoryDialog({
         </DialogHeader>
 
 
+        {preFetchTotal > 0 && preFetchProgress < preFetchTotal && (
+          <div className="space-y-1 mb-4">
+            <div className="flex justify-between items-center text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
+              <span>Background Certificate Caching</span>
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {preFetchProgress} / {preFetchTotal}
+              </span>
+            </div>
+            <Progress value={(preFetchProgress / preFetchTotal) * 100} className="h-1.5 bg-muted" />
+          </div>
+        )}
+
         <div className="bg-yellow-400 dark:bg-blue-950 dark:text-white p-4 rounded-md">
           <div className="text-sm font-semibold uppercase mb-1">
             <Badge variant={getStatusBadgeVariant(scheduleStatus)} className="text-xs">
@@ -2173,17 +2152,7 @@ export default function ParticipantDirectoryDialog({
 
         <div className="border rounded-md text-sm font-semibold px-4 py-2 bg-secondary flex justify-between items-center">
           <span>Attendee Details ({trainees.length} participants)</span>
-          {preFetchTotal > 0 && preFetchProgress < preFetchTotal && (
-            <div className="flex items-center gap-2 text-[10px] font-normal text-muted-foreground animate-pulse">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              <span>Caching Previews: {preFetchProgress}/{preFetchTotal}</span>
-            </div>
-          )}
         </div>
-
-        {preFetchTotal > 0 && preFetchProgress < preFetchTotal && (
-          <Progress value={(preFetchProgress / preFetchTotal) * 100} className="h-1" />
-        )}
 
         {isSendingEmails && (
           <div className="bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-md p-4 mb-2">
@@ -2291,9 +2260,10 @@ export default function ParticipantDirectoryDialog({
             </Button>
           </div>
         </DialogFooter>
+      </DialogContent>
 
-        <Dialog open={isTraineeDialogOpen} onOpenChange={setIsTraineeDialogOpen}>
-          <DialogContent className="lg:w-[40vw] sm:w-[90vw]">
+      <Dialog open={isTraineeDialogOpen} onOpenChange={setIsTraineeDialogOpen}>
+        <DialogContent className="lg:w-[40vw] sm:w-[90vw]">
             <DialogHeader>
               <DialogTitle>Edit Participant Details</DialogTitle>
             </DialogHeader>
@@ -2331,7 +2301,7 @@ export default function ParticipantDirectoryDialog({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </DialogContent>
+
       {/* ✅ NEW: Certificate Preview Viewer */}
       <Dialog open={isCertificateViewerOpen} onOpenChange={setIsCertificateViewerOpen}>
         <DialogContent className="w-[98vw] max-w-7xl h-[94vh] flex flex-col p-4">
@@ -2346,6 +2316,16 @@ export default function ParticipantDirectoryDialog({
               )}
             </DialogTitle>
           </DialogHeader>
+
+          {preFetchTotal > 0 && preFetchProgress < preFetchTotal && (
+            <div className="px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg space-y-1 mt-2">
+              <div className="flex justify-between items-center text-[10px] font-bold text-primary uppercase tracking-wider">
+                <span>Background Generation Status</span>
+                <span>{preFetchProgress} / {preFetchTotal}</span>
+              </div>
+              <Progress value={(preFetchProgress / preFetchTotal) * 100} className="h-1 bg-primary/10" />
+            </div>
+          )}
 
           <div className="flex-1 flex gap-4 overflow-hidden mt-4 min-h-0">
             {/* Left Panel: Preview Container */}
@@ -2401,6 +2381,19 @@ export default function ParticipantDirectoryDialog({
 
               {/* Main Preview Work Area */}
               <div className="flex-1 relative flex items-center justify-center bg-muted/10 overflow-hidden group min-h-0">
+                {/* PDF Loading Overlay */}
+                {!certificatePreviews[activePreviewIndex]?.url && (
+                  <div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-[2px] flex flex-col items-center justify-center p-6 text-center">
+                    <div className="relative mb-4">
+                      <div className="h-16 w-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+                    </div>
+                    <h3 className="text-lg font-bold text-foreground">Generating Certificate...</h3>
+                    <p className="text-sm text-muted-foreground max-w-xs mt-2">
+                       This certificate is being rendered in the background. It will appear automatically in a few seconds.
+                    </p>
+                  </div>
+                )}
+
                 {/* Overlay Navigation: Previous */}
                 <Button
                   variant="ghost"
@@ -2477,16 +2470,6 @@ export default function ParticipantDirectoryDialog({
 
             {/* Right Panel: Compact Controls */}
             <div className="w-80 flex flex-col gap-4 overflow-y-auto pr-2 py-1 shrink-0 scrollbar-hide">
-
-              {preFetchTotal > 0 && preFetchProgress < preFetchTotal && (
-                <div className="px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg space-y-2">
-                  <div className="flex justify-between items-center text-[10px] font-bold text-primary">
-                    <span className="uppercase tracking-wider">Generating Previews</span>
-                    <span>{preFetchProgress} / {preFetchTotal}</span>
-                  </div>
-                  <Progress value={(preFetchProgress / preFetchTotal) * 100} className="h-1 bg-primary/10" />
-                </div>
-              )}
 
               {/* 1. Participant Summary & Actions */}
               <div className="border rounded-lg bg-card p-3 shadow-sm space-y-3">
@@ -2787,7 +2770,7 @@ export default function ParticipantDirectoryDialog({
           )}
         </DialogContent>
       </Dialog>
-      
+
       {/* ✅ NEW: Email Compose Dialog - Placed at the very end to ensure highest z-index over Certificate Preview */}
       <EmailComposeDialog
         open={emailComposeOpen}
@@ -2800,6 +2783,5 @@ export default function ParticipantDirectoryDialog({
         selectedTemplateType={selectedTemplateType}
       />
     </Dialog>
-
   )
 }

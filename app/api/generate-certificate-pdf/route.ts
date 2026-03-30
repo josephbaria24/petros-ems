@@ -123,8 +123,9 @@ function capitalize(word: string | null | undefined): string {
 const imageCache = new Map<string, ArrayBuffer>();
 
 export async function POST(req: NextRequest) {
+  let body: any;
   try {
-    const body = await req.json();
+    body = await req.json();
     const { 
       trainee, 
       courseName, 
@@ -132,10 +133,11 @@ export async function POST(req: NextRequest) {
       courseId, 
       templateType = "completion",
       layoutOverride,
-      precomputed, // NEW: Allow passing pre-fetched data
+      precomputed, 
     } = body;
 
-    console.log("📝 PDF Generation Request (Optimized):", trainee?.id);
+    console.log(`🚀 Processing ${templateType} for [${trainee?.id}] ${trainee?.last_name}`);
+    if (precomputed) console.log("📦 Using precomputed data for optimization");
 
     if (!trainee || (!courseName && !precomputed?.courseName)) {
       return NextResponse.json(
@@ -592,15 +594,24 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error("❌ PDF generation error:", error);
-    console.error("❌ Error stack:", error.stack);
-    return NextResponse.json(
-      {
-        success: false,
-        error: error.message || "Failed to generate PDF",
-        details: error.stack,
-      },
-      { status: 500 }
-    );
+    const errorMsg = error.message || "Unknown error during PDF generation";
+    const errorStack = error.stack || "No stack trace available";
+    
+    console.error("❌ PDF GENERATION CRITICAL ERROR:", errorMsg);
+    console.error("📊 Context:", {
+      traineeId: body?.trainee?.id,
+      templateType: body?.templateType,
+      courseId: body?.courseId || body?.trainee?.course_id
+    });
+    console.error("🥞 Stack Trace:", errorStack);
+
+    return new Response(JSON.stringify({
+      success: false,
+      error: errorMsg,
+      details: process.env.NODE_ENV === 'development' ? errorStack : undefined
+    }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 }
