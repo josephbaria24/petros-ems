@@ -1,6 +1,8 @@
 // components\trainee-directory-dialog.tsx
 "use client"
 
+import JSZip from "jszip"
+
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from "@/components/ui/alert-dialog"
 import { Progress } from "@/components/ui/progress"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -314,6 +316,8 @@ export default function ParticipantDirectoryDialog({
   const [fieldOverrides, setFieldOverrides] = useState<Record<string, any>>({})
   const [templateFields, setTemplateFields] = useState<{ id: string; label: string }[]>([])
   const [templateForViewer, setTemplateForViewer] = useState<{ imageUrl: string; fields: TemplateField[] } | null>(null)
+  const [backTemplateForViewer, setBackTemplateForViewer] = useState<{ imageUrl: string; fields: TemplateField[] } | null>(null)
+  const [idCardSide, setIdCardSide] = useState<"front" | "back">("front")
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null)
   const [isSavingLayout, setIsSavingLayout] = useState(false)
   const [previewZoom, setPreviewZoom] = useState(1)
@@ -458,7 +462,11 @@ export default function ParticipantDirectoryDialog({
     if (!isCertificateViewerOpen) return
     const current = certificatePreviews[activePreviewIndex]
     if (!current?.trainee) return
-    if (!templateForViewer?.imageUrl || !templateForViewer.fields?.length) return
+
+    // Determine which template to render based on side toggle
+    const isShowingBack = isIdTemplateSelected && idCardSide === "back"
+    const activeTemplate = isShowingBack ? backTemplateForViewer : templateForViewer
+    if (!activeTemplate?.imageUrl || !activeTemplate.fields?.length) return
     const canvas = previewCanvasRef.current
     if (!canvas) return
 
@@ -496,7 +504,7 @@ export default function ParticipantDirectoryDialog({
       const traineePhoto = new Image()
       const hasPhoto = !!current.trainee.picture_2x2_url
 
-      const fields = templateForViewer.fields
+      const fields = activeTemplate.fields
       const drawFields = () => fields.forEach((f) => {
         const fo = fieldOverrides[f.id] || {}
         let normX = f.x + layoutOffset.offsetX
@@ -623,11 +631,13 @@ export default function ParticipantDirectoryDialog({
 
       drawFields()
     }
-    img.src = templateForViewer.imageUrl
+    img.src = activeTemplate.imageUrl
   }, [
     isCertificateViewerOpen,
     activePreviewIndex,
     templateForViewer,
+    backTemplateForViewer,
+    idCardSide,
     fieldOverrides,
     layoutOffset.offsetX,
     layoutOffset.offsetY,
@@ -993,11 +1003,15 @@ export default function ParticipantDirectoryDialog({
         return aName.localeCompare(bName);
       });
 
-      // Assign serials without saving to DB
-      const updatedTrainees = sortedTrainees.map((trainee, index) => {
-        const serial = serialBase + index + 1;
+      // Use existing certificate number from DB, or fallback to sequential generation
+      let fallbackIndex = 0;
+      const updatedTrainees = sortedTrainees.map((trainee) => {
+        if (trainee.certificate_number) return trainee;
+
+        const serial = serialBase + fallbackIndex + 1;
         const padded = serial.toString().padStart(serialPad, "0");
         const certificate_number = `PSI-${courseData.name}-${padded}`;
+        fallbackIndex++;
         return { ...trainee, certificate_number };
       });
 
@@ -1018,38 +1032,109 @@ export default function ParticipantDirectoryDialog({
         return;
       }
 
+      const isIDTemplate = selectedTemplateType === "excellence";
+      // Zip if 2 or more participants selected
+      const shouldZip = updatedTrainees.length >= 2;
+
       let successCount = 0;
       let failCount = 0;
 
-      for (let i = 0; i < updatedTrainees.length; i++) {
-        const trainee = updatedTrainees[i];
+      if (shouldZip) {
+        // ===== ZIP MODE =====
+        const zip = new JSZip();
+        const dateStr = new Date().toISOString().split('T')[0];
 
-        try {
-          await downloadFromServer(
-            trainee,
-            selectedTemplateType,
-            courseData.name,
-            scheduleRange,
-            new Date().toLocaleDateString(),
-            courseTitle,
-            isCertificateViewerOpen ? {
-              offsetX: layoutOffset.offsetX,
-              offsetY: layoutOffset.offsetY,
-              fieldOverrides,
-            } : undefined
-          );
-          successCount++;
+        for (let i = 0; i < updatedTrainees.length; i++) {
+          const trainee = updatedTrainees[i];
 
-          setProgress(Math.floor(((i + 1) / updatedTrainees.length) * 100));
-        } catch (error: any) {
-          failCount++;
-          console.error(`Failed to download for ${trainee.first_name} ${trainee.last_name}:`, error);
+          try {
+            // For IDs, only download front side (side: "front")
+            const res = await fetch("/api/generate-certificate-pdf", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                trainee,
+                courseName: courseData.name,
+                courseTitle,
+                scheduleRange,
+                courseId: trainee.course_id,
+                templateType: selectedTemplateType,
+                givenThisDate: new Date().toLocaleDateString(),
+                layoutOverride: isCertificateViewerOpen ? {
+                  offsetX: layoutOffset.offsetX,
+                  offsetY: layoutOffset.offsetY,
+                  fieldOverrides,
+                } : undefined,
+                side: isIDTemplate ? "front" : "both",
+              }),
+            });
+
+            if (!res.ok) {
+              failCount++;
+              console.error(`Failed to generate for ${trainee.first_name} ${trainee.last_name}`);
+              continue;
+            }
+
+            const blob = await res.blob();
+            const fileName = isIDTemplate
+              ? `ID_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`
+              : `Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`;
+            
+            zip.file(fileName, blob);
+            successCount++;
+
+            setProgress(Math.floor(((i + 1) / updatedTrainees.length) * 100));
+          } catch (error: any) {
+            failCount++;
+            console.error(`Failed to download for ${trainee.first_name} ${trainee.last_name}:`, error);
+          }
+        }
+
+        // Generate and download zip
+        if (successCount > 0) {
+          const zipBlob = await zip.generateAsync({ type: "blob" });
+          const zipUrl = URL.createObjectURL(zipBlob);
+          const a = document.createElement("a");
+          a.href = zipUrl;
+          const zipName = isIDTemplate
+            ? `${courseData.name}_IDs_${dateStr}.zip`
+            : `${courseData.name}_Certificates_${dateStr}.zip`;
+          a.download = zipName;
+          a.click();
+          URL.revokeObjectURL(zipUrl);
+        }
+      } else {
+        // ===== SINGLE DOWNLOAD MODE (1 participant) =====
+        for (let i = 0; i < updatedTrainees.length; i++) {
+          const trainee = updatedTrainees[i];
+
+          try {
+            await downloadFromServer(
+              trainee,
+              selectedTemplateType,
+              courseData.name,
+              scheduleRange,
+              new Date().toLocaleDateString(),
+              courseTitle,
+              isCertificateViewerOpen ? {
+                offsetX: layoutOffset.offsetX,
+                offsetY: layoutOffset.offsetY,
+                fieldOverrides,
+              } : undefined
+            );
+            successCount++;
+
+            setProgress(Math.floor(((i + 1) / updatedTrainees.length) * 100));
+          } catch (error: any) {
+            failCount++;
+            console.error(`Failed to download for ${trainee.first_name} ${trainee.last_name}:`, error);
+          }
         }
       }
 
       toast({
         title: "Download Complete",
-        description: `Successfully downloaded ${successCount} certificate(s).` +
+        description: `Successfully downloaded ${successCount} ${isIDTemplate ? "ID(s)" : "certificate(s)"}${shouldZip ? " as ZIP" : ""}.` +
           (failCount > 0 ? `\n${failCount} failed.` : "")
       });
     } catch (err: any) {
@@ -1104,7 +1189,7 @@ export default function ParticipantDirectoryDialog({
         // Load template fields for current type
         const { data: templateData } = await tmsDb
           .from("certificate_templates")
-          .select("fields, image_url")
+          .select("fields, image_url, back_image_url, back_fields")
           .eq("course_id", courseData.id)
           .eq("template_type", selectedTemplateType)
           .maybeSingle()
@@ -1120,7 +1205,19 @@ export default function ParticipantDirectoryDialog({
             imageUrl: (templateData as any).image_url as string,
             fields: templateData.fields as any,
           })
+
+          // Load back template data for ID cards
+          if (selectedTemplateType === "excellence" && (templateData as any).back_image_url) {
+            setBackTemplateForViewer({
+              imageUrl: (templateData as any).back_image_url as string,
+              fields: ((templateData as any).back_fields as TemplateField[]) || [],
+            })
+          } else {
+            setBackTemplateForViewer(null)
+          }
         }
+        // Reset to front side when opening viewer
+        setIdCardSide("front")
 
         // Prepare the previews list instantly, pulling from cache where available
         const sortedTrainees = [...selectedTrainees].sort((a, b) => {
@@ -1129,10 +1226,14 @@ export default function ParticipantDirectoryDialog({
           return aName.localeCompare(bName)
         })
 
-        const updatedTrainees: DownloadTrainee[] = sortedTrainees.map((trainee, index) => {
-          const serial = serialBase + index + 1
+        let fallbackIndex = 0;
+        const updatedTrainees: DownloadTrainee[] = sortedTrainees.map((trainee) => {
+          if (trainee.certificate_number) return trainee;
+
+          const serial = serialBase + fallbackIndex + 1
           const padded = serial.toString().padStart(serialPad, "0")
           const certificate_number = `PSI-${courseData.name}-${padded}`
+          fallbackIndex++
           return { ...trainee, certificate_number }
         })
 
@@ -1717,12 +1818,14 @@ export default function ParticipantDirectoryDialog({
   const hitTestFieldAt = (canvasX: number, canvasY: number) => {
     const current = certificatePreviews[activePreviewIndex]
     const canvas = previewCanvasRef.current
-    if (!current?.trainee || !canvas || !templateForViewer) return null
+    const isShowingBack = isIdTemplateSelected && idCardSide === "back"
+    const activeTemplate = isShowingBack ? backTemplateForViewer : templateForViewer
+    if (!current?.trainee || !canvas || !activeTemplate) return null
     const ctx = canvas.getContext("2d")
     if (!ctx) return null
 
     // Top-most match wins, so iterate reverse
-    const fields = [...templateForViewer.fields].reverse()
+    const fields = [...activeTemplate.fields].reverse()
     for (const f of fields) {
       const fo = fieldOverrides[f.id] || {}
       let normX = f.x + layoutOffset.offsetX
@@ -2337,6 +2440,38 @@ export default function ParticipantDirectoryDialog({
                   <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
                     Live Viewer
                   </span>
+
+                  {/* Front/Back toggle for ID templates */}
+                  {isIdTemplateSelected && (
+                    <>
+                      <div className="w-px h-4 bg-border mx-1" />
+                      <div className="flex items-center bg-muted rounded-md p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setIdCardSide("front")}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all ${
+                            idCardSide === "front"
+                              ? "bg-primary text-primary-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          Front
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIdCardSide("back")}
+                          disabled={!backTemplateForViewer}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition-all ${
+                            idCardSide === "back"
+                              ? "bg-primary text-primary-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          } ${!backTemplateForViewer ? "opacity-30 cursor-not-allowed" : ""}`}
+                        >
+                          Back
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1">
@@ -2422,7 +2557,11 @@ export default function ParticipantDirectoryDialog({
                   ) : (
                     <div className="relative shadow-2xl transition-transform duration-200">
                       {/* Direct Editor Layer (Canvas) */}
-                      {templateForViewer?.imageUrl && templateForViewer.fields?.length > 0 && (
+                      {(() => {
+                        const isShowingBack = isIdTemplateSelected && idCardSide === "back"
+                        const activeTempl = isShowingBack ? backTemplateForViewer : templateForViewer
+                        return activeTempl?.imageUrl && activeTempl.fields?.length > 0
+                      })() && (
                         <canvas
                           ref={previewCanvasRef}
                           className="cursor-crosshair bg-white"

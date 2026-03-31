@@ -206,18 +206,24 @@ export async function POST(req: NextRequest) {
     });
 
     // Assign certificate numbers
+    let newSerialsGenerated = 0;
     const updatedTrainees = traineesData.map((trainee, index) => {
-      const serial = serialBase + index + 1;
+      if (trainee.certificate_number) return trainee;
+      
+      const serial = serialBase + newSerialsGenerated + 1;
       const padded = serial.toString().padStart(serialPad, "0");
       const certificate_number = `PSI-${courseData.name}-${padded}`;
+      newSerialsGenerated++;
       return { ...trainee, certificate_number };
     });
 
-    const lastSerialUsed = serialBase + updatedTrainees.length;
-    await supabase
-      .from("courses")
-      .update({ serial_number: lastSerialUsed })
-      .eq("id", courseData.id);
+    if (newSerialsGenerated > 0) {
+      const lastSerialUsed = serialBase + newSerialsGenerated;
+      await supabase
+        .from("courses")
+        .update({ serial_number: lastSerialUsed })
+        .eq("id", courseData.id);
+    }
 
     console.log(`👥 Sending to ${updatedTrainees.length} trainees`);
 

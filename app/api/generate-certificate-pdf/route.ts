@@ -133,7 +133,8 @@ export async function POST(req: NextRequest) {
       courseId, 
       templateType = "completion",
       layoutOverride,
-      precomputed, 
+      precomputed,
+      side = "both",  // 'front' | 'back' | 'both' — controls which pages are included for ID cards
     } = body;
 
     console.log(`🚀 Processing ${templateType} for [${trainee?.id}] ${trainee?.last_name}`);
@@ -331,19 +332,24 @@ export async function POST(req: NextRequest) {
 
     console.log("📐 Canvas dimensions:", CANVAS_WIDTH, "x", CANVAS_HEIGHT);
 
+    // Determine which sides to include (only relevant for ID cards)
+    const includeFront = !isIDTemplate || side === "front" || side === "both";
+    const includeBack = !isIDTemplate || (side === "back" || side === "both");
+
     // Add page for Front
-    const frontPage = pdfDoc.addPage([CANVAS_WIDTH, CANVAS_HEIGHT]);
-    
-    // Draw template image (Front)
-    frontPage.drawImage(templateImage, {
-      x: 0,
-      y: 0,
-      width: CANVAS_WIDTH,
-      height: CANVAS_HEIGHT,
-    });
+    let frontPage: any = null;
+    if (includeFront) {
+      frontPage = pdfDoc.addPage([CANVAS_WIDTH, CANVAS_HEIGHT]);
+      frontPage.drawImage(templateImage, {
+        x: 0,
+        y: 0,
+        width: CANVAS_WIDTH,
+        height: CANVAS_HEIGHT,
+      });
+    }
 
     let backPage: any = null;
-    if (backTemplateImage) {
+    if (includeBack && backTemplateImage) {
       // Add page for Back
       backPage = pdfDoc.addPage([CANVAS_WIDTH, CANVAS_HEIGHT]);
       backPage.drawImage(backTemplateImage, {
@@ -354,8 +360,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Load trainee photo
-    if (trainee.picture_2x2_url) {
+    // Load trainee photo (only on front page)
+    if (trainee.picture_2x2_url && frontPage) {
       // Try to get photo position from template fields ({{trainee_picture}}), fallback to defaults
       const photoField = template.fields.find((f) =>
         f.value && f.value.includes("{{trainee_picture}}")
@@ -563,7 +569,9 @@ export async function POST(req: NextRequest) {
     };
 
     // Draw front fields
-    drawFields(frontPage, template.fields, false);
+    if (frontPage) {
+      drawFields(frontPage, template.fields, false);
+    }
 
     // Draw back fields if back side is present
     if (backPage && template.back_fields) {

@@ -11,8 +11,21 @@ import {
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
-import { format, subDays, subWeeks, subMonths, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns"
-import { useState } from "react"
+import {
+  format,
+  subDays,
+  subWeeks,
+  subMonths,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  endOfYear,
+  startOfDay,
+  endOfDay,
+} from "date-fns"
+import { useEffect, useState } from "react"
 
 export type DateRange = {
   from: Date
@@ -31,6 +44,13 @@ export function DateFilter({ value, dateRange, onChange }: DateFilterProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [customFrom, setCustomFrom] = useState<Date | undefined>(dateRange.from)
   const [customTo, setCustomTo] = useState<Date | undefined>(dateRange.to)
+
+  useEffect(() => {
+    if (value === "custom") {
+      setCustomFrom(dateRange.from)
+      setCustomTo(dateRange.to)
+    }
+  }, [value, dateRange.from, dateRange.to])
 
   const getPresetRange = (preset: FilterPreset): DateRange => {
     const today = new Date()
@@ -65,17 +85,27 @@ export function DateFilter({ value, dateRange, onChange }: DateFilterProps) {
 
   const handlePresetChange = (preset: FilterPreset) => {
     if (preset === "custom") {
+      // Must update parent to "custom" or the popover never mounts (it only renders when value === "custom")
+      onChange("custom", { from: dateRange.from, to: dateRange.to })
+      setCustomFrom(dateRange.from)
+      setCustomTo(dateRange.to)
       setIsOpen(true)
       return
     }
-    
+
     const range = getPresetRange(preset)
     onChange(preset, range)
   }
 
   const handleCustomApply = () => {
     if (customFrom && customTo) {
-      onChange("custom", { from: customFrom, to: customTo })
+      let from = customFrom
+      let to = customTo
+      if (from > to) [from, to] = [to, from]
+      onChange("custom", {
+        from: startOfDay(from),
+        to: endOfDay(to),
+      })
       setIsOpen(false)
     }
   }
@@ -88,7 +118,7 @@ export function DateFilter({ value, dateRange, onChange }: DateFilterProps) {
   }
 
   return (
-    <div className="flex gap-2 items-center">
+    <div className="flex gap-2 items-center shrink-0">
       <Select value={value} onValueChange={handlePresetChange}>
         <SelectTrigger className="w-[180px]">
           <SelectValue />
@@ -108,15 +138,25 @@ export function DateFilter({ value, dateRange, onChange }: DateFilterProps) {
       </Select>
 
       {value === "custom" && (
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <Popover open={isOpen} onOpenChange={setIsOpen} modal={false}>
           <PopoverTrigger asChild>
-            <Button variant="outline" className="gap-2">
-              <Calendar className="h-4 w-4" />
-              {formatDateRange()}
+            <Button variant="outline" className="gap-2 max-w-full">
+              <Calendar className="h-4 w-4 shrink-0" />
+              <span className="truncate">{formatDateRange()}</span>
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <div className="p-4 space-y-4">
+          <PopoverContent
+            className="w-auto max-w-[min(100vw-1rem,28rem)] p-0"
+            align="end"
+            side="bottom"
+            sideOffset={8}
+            alignOffset={0}
+            collisionPadding={12}
+            sticky="always"
+            updatePositionStrategy="always"
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
+            <div className="max-h-[min(85vh,42rem)] overflow-y-auto overscroll-contain p-4 space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">From Date</label>
                 <CalendarComponent
