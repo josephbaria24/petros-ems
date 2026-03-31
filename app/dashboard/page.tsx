@@ -50,8 +50,8 @@ type DashboardData = {
   ageDistribution: { range: string; count: number }[]
   yearComparison: { month: string; currentYear: number; previousYear: number }[]
   employmentStatus: { name: string; value: number }[]
-  branchDistribution: { name: string; value: number }[]
-  trainingStatusDist: { name: string; value: number }[]
+  revenuePerCourse: { name: string; value: number }[]
+  participantsPerCourse: { name: string; value: number }[]
   companyDistribution: { name: string; value: number }[]
   recentEvents: { course: string; date: string; participants: number; status: string }[]
   monthlyTarget: number
@@ -108,7 +108,7 @@ const ageCfg = {
 type ChartType =
   | "enrollment" | "revenue" | "coursePopularity" | "paymentStatus"
   | "gender" | "age" | "yearComparison" | "employment"
-  | "branch" | "trainingStatus" | "company"
+  | "revenuePerCourse" | "participantsPerCourse" | "company"
 
 const CHART_OPTIONS: { value: ChartType; label: string }[] = [
   { value: "enrollment", label: "Enrollment Trend" },
@@ -119,8 +119,8 @@ const CHART_OPTIONS: { value: ChartType; label: string }[] = [
   { value: "age", label: "Age Distribution" },
   { value: "yearComparison", label: "Year Comparison" },
   { value: "employment", label: "Employment Status" },
-  { value: "branch", label: "Branch Distribution" },
-  { value: "trainingStatus", label: "Training Status" },
+  { value: "revenuePerCourse", label: "Revenue per Course" },
+  { value: "participantsPerCourse", label: "Participants per Course" },
   { value: "company", label: "Top Companies" },
 ]
 
@@ -144,8 +144,8 @@ export default function DashboardPage() {
   const [showCourseModal, setShowCourseModal] = useState(false)
 
   // Swappable chart slots (bottom row)
-  const [slot1, setSlot1] = useState<ChartType>("branch")
-  const [slot2, setSlot2] = useState<ChartType>("trainingStatus")
+  const [slot1, setSlot1] = useState<ChartType>("revenuePerCourse")
+  const [slot2, setSlot2] = useState<ChartType>("participantsPerCourse")
 
   // ─── Fetch ───────────────────────────────────────────────────────────────
 
@@ -207,9 +207,33 @@ export default function DashboardPage() {
   const paymentPie = useMemo(() => data ? makePieData(data.paymentStatus) : null, [data])
   const genderPie = useMemo(() => data ? makePieData(data.genderDistribution) : null, [data])
   const employmentPie = useMemo(() => data ? makePieData(data.employmentStatus) : null, [data])
-  const branchPie = useMemo(() => data ? makePieData(data.branchDistribution) : null, [data])
-  const trainingStatusPie = useMemo(() => data ? makePieData(data.trainingStatusDist) : null, [data])
   const companyPie = useMemo(() => data ? makePieData(data.companyDistribution) : null, [data])
+
+  const revenuePerCourseCfg = useMemo<ChartConfig>(() => {
+    if (!data) return {}
+    return {
+      value: { label: "Revenue (₱)" },
+      ...Object.fromEntries(
+        data.revenuePerCourse.map((item, i) => [
+          toKey(item.name),
+          { label: item.name, color: COLORS[i % COLORS.length] },
+        ])
+      ),
+    }
+  }, [data])
+
+  const participantsPerCourseCfg = useMemo<ChartConfig>(() => {
+    if (!data) return {}
+    return {
+      value: { label: "Participants" },
+      ...Object.fromEntries(
+        data.participantsPerCourse.map((item, i) => [
+          toKey(item.name),
+          { label: item.name, color: COLORS[i % COLORS.length] },
+        ])
+      ),
+    }
+  }, [data])
 
   const courseCfg = useMemo<ChartConfig>(() => {
     if (!data) return {}
@@ -338,24 +362,62 @@ export default function DashboardPage() {
             </PieChart>
           </ChartContainer>
         )
-      case "branch":
-        return branchPie && (
-          <ChartContainer config={branchPie.config} className="h-[200px] w-full">
-            <PieChart>
-              <Pie data={branchPie.data} dataKey="value" nameKey="key" cx="50%" cy="50%" innerRadius={45} outerRadius={72} animationDuration={600} />
-              <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
-              <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-1 text-xs" />} />
-            </PieChart>
+      case "revenuePerCourse":
+        return (
+          <ChartContainer config={revenuePerCourseCfg} className="h-[200px] w-full">
+            <BarChart data={data.revenuePerCourse} layout="vertical" margin={{ left: 0, right: 8 }}>
+              <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+              <XAxis
+                type="number"
+                tickLine={false}
+                axisLine={false}
+                fontSize={11}
+                tickFormatter={(v) => `₱${(v / 1000).toFixed(0)}k`}
+              />
+              <YAxis type="category" dataKey="name" width={100} tickLine={false} axisLine={false} fontSize={9} />
+              <ChartTooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null
+                  const row = payload[0].payload as { name: string; value: number }
+                  return (
+                    <div className="border-border/50 bg-background min-w-[8rem] rounded-lg border px-2.5 py-1.5 text-xs shadow-xl">
+                      <p className="font-medium">{row.name}</p>
+                      <p className="font-mono tabular-nums text-foreground">₱{row.value.toLocaleString()}</p>
+                    </div>
+                  )
+                }}
+              />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} animationDuration={600}>
+                {data.revenuePerCourse.map((_, i) => (
+                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                ))}
+              </Bar>
+            </BarChart>
           </ChartContainer>
         )
-      case "trainingStatus":
-        return trainingStatusPie && (
-          <ChartContainer config={trainingStatusPie.config} className="h-[200px] w-full">
-            <PieChart>
-              <Pie data={trainingStatusPie.data} dataKey="value" nameKey="key" cx="50%" cy="50%" outerRadius={72} animationDuration={600} />
-              <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
-              <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-1 text-xs" />} />
-            </PieChart>
+      case "participantsPerCourse":
+        return (
+          <ChartContainer config={participantsPerCourseCfg} className="h-[200px] w-full">
+            <BarChart
+              data={data.participantsPerCourse.map((d, i) => ({ ...d, fill: COLORS[i % COLORS.length] }))}
+              layout="vertical"
+              margin={{ left: 0, right: 8 }}
+            >
+              <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+              <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
+              <YAxis type="category" dataKey="name" width={100} tickLine={false} axisLine={false} fontSize={10} />
+              <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} animationDuration={600} style={{ cursor: "pointer" }}>
+                {data.participantsPerCourse.map((entry, i) => (
+                  <Cell
+                    key={i}
+                    fill={COLORS[i % COLORS.length]}
+                    className="cursor-pointer"
+                    onClick={() => { setSelectedCourse(entry.name); setShowCourseModal(true) }}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
           </ChartContainer>
         )
       case "company":

@@ -141,7 +141,7 @@ export async function GET(req: NextRequest) {
         .limit(10000),
       tmsServerDb
         .from("payments")
-        .select("amount_paid, payment_date")
+        .select("amount_paid, payment_date, trainings(courses(name))")
         .gte("payment_date", from)
         .lte("payment_date", to)
         .limit(50000),
@@ -201,16 +201,30 @@ export async function GET(req: NextRequest) {
     payments.forEach(p => { mr[new Date(p.payment_date).getMonth()] += Number(p.amount_paid) || 0 })
     const revenueData = months.map((m, i) => ({ month: m, revenue: Math.round(mr[i]), target: monthlyTarget }))
 
-    // Course popularity (top 7)
+    // Course popularity & participants per course (same counts, different slices)
     const cc: Record<string, number> = {}
     trainings.forEach(t => {
       const name = (t.courses as any)?.name || "Other"
       cc[name] = (cc[name] || 0) + 1
     })
-    const coursePopularity = Object.entries(cc)
+    const byCourseParticipants = Object.entries(cc)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
-      .slice(0, 7)
+    const coursePopularity = byCourseParticipants.slice(0, 7)
+    const participantsPerCourse = byCourseParticipants.slice(0, 8)
+
+    // Revenue per course (payments in range, grouped by training's course)
+    const rev: Record<string, number> = {}
+    payments.forEach((p: any) => {
+      const tr = p.trainings
+      const training = Array.isArray(tr) ? tr[0] : tr
+      const name = training?.courses?.name || "Other"
+      rev[name] = (rev[name] || 0) + (Number(p.amount_paid) || 0)
+    })
+    const revenuePerCourse = Object.entries(rev)
+      .map(([name, value]) => ({ name, value: Math.round(value) }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8)
 
     // Payment status
     const ps: Record<string, number> = {}
@@ -253,16 +267,6 @@ export async function GET(req: NextRequest) {
     const es: Record<string, number> = {}
     trainings.forEach(t => { es[t.employment_status || "Unknown"] = (es[t.employment_status || "Unknown"] || 0) + 1 })
     const employmentStatus = Object.entries(es).map(([name, value]) => ({ name, value }))
-
-    // Branch distribution
-    const bc: Record<string, number> = {}
-    schedules.forEach(s => { bc[s.branch || "Unknown"] = (bc[s.branch || "Unknown"] || 0) + 1 })
-    const branchDistribution = Object.entries(bc).map(([name, value]) => ({ name, value }))
-
-    // Training status
-    const ts: Record<string, number> = {}
-    trainings.forEach(t => { ts[t.training_status || "Unknown"] = (ts[t.training_status || "Unknown"] || 0) + 1 })
-    const trainingStatusDist = Object.entries(ts).map(([name, value]) => ({ name, value }))
 
     // Company distribution (top 10)
     const coc: Record<string, number> = {}
@@ -329,8 +333,8 @@ export async function GET(req: NextRequest) {
       ageDistribution,
       yearComparison,
       employmentStatus,
-      branchDistribution,
-      trainingStatusDist,
+      revenuePerCourse,
+      participantsPerCourse,
       companyDistribution,
       recentEvents,
       monthlyTarget,
