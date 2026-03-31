@@ -22,6 +22,17 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { DateFilter, type DateRange, type FilterPreset } from "@/components/date-filter"
+import {
+  PieOutlinedLabel,
+  columnBarLabelContent,
+  enrollmentLineLabelContent,
+  horizontalBarLabelContent,
+  horizontalRevenueBarLabelContent,
+  revenueBarLabelContent,
+  targetBarLabelContent,
+  yearCurrentLabelContent,
+  yearPreviousLabelContent,
+} from "@/components/charts/chart-data-labels"
 import { CourseDetailsModal } from "@/components/modals/course-details-modal"
 import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
@@ -29,11 +40,13 @@ import {
   Users, BookOpen, Calendar, TrendingUp, Loader2, Pencil,
 } from "lucide-react"
 import {
-  Area, AreaChart,
+  Area,
   Bar, BarChart,
+  ComposedChart,
   Line, LineChart,
   Pie, PieChart,
   Cell,
+  LabelList,
   XAxis, YAxis, CartesianGrid,
 } from "recharts"
 import { startOfYear } from "date-fns"
@@ -197,7 +210,7 @@ export default function DashboardPage() {
   // ─── Dynamic configs ─────────────────────────────────────────────────────
 
   const yearCfg = useMemo<ChartConfig>(() => {
-    if (!data) return {}
+    if (!data) return {} as ChartConfig
     return {
       currentYear: { label: `${data.currentYear}`, color: "var(--chart-1)" },
       previousYear: { label: `${data.currentYear - 1}`, color: "var(--chart-3)" },
@@ -256,7 +269,7 @@ export default function DashboardPage() {
       case "enrollment":
         return (
           <ChartContainer config={enrollmentCfg} className="h-[200px] w-full">
-            <AreaChart data={data.enrollmentTrend} margin={{ left: -20, right: 8 }}>
+            <ComposedChart data={data.enrollmentTrend} margin={{ left: -20, right: 8, top: 22 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
               <YAxis tickLine={false} axisLine={false} fontSize={11} />
@@ -267,33 +280,49 @@ export default function DashboardPage() {
                   <stop offset="95%" stopColor="var(--color-enrollments)" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <Area type="monotone" dataKey="enrollments" stroke="var(--color-enrollments)" fill="url(#gEnroll)" strokeWidth={2} animationDuration={700} />
-            </AreaChart>
+              <Area type="monotone" dataKey="enrollments" stroke="none" fill="url(#gEnroll)" animationDuration={700} />
+              <Line
+                type="monotone"
+                dataKey="enrollments"
+                stroke="var(--color-enrollments)"
+                strokeWidth={2}
+                dot={{ r: 3, fill: "var(--color-enrollments)", strokeWidth: 0 }}
+                fill="none"
+                animationDuration={700}
+              >
+                <LabelList dataKey="enrollments" position="top" offset={6} content={enrollmentLineLabelContent} />
+              </Line>
+            </ComposedChart>
           </ChartContainer>
         )
       case "revenue":
         return (
           <ChartContainer config={revenueCfg} className="h-[200px] w-full">
-            <BarChart data={data.revenueData} margin={{ left: -20, right: 8 }}>
+            <BarChart data={data.revenueData} margin={{ left: -20, right: 8, top: 18 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
               <YAxis tickLine={false} axisLine={false} fontSize={11} tickFormatter={v => `₱${(v / 1000).toFixed(0)}k`} />
               <ChartTooltip content={<ChartTooltipContent />} />
               <ChartLegend content={<ChartLegendContent />} />
-              <Bar dataKey="revenue" fill="var(--color-revenue)" radius={[4, 4, 0, 0]} animationDuration={600} />
-              <Bar dataKey="target" fill="var(--color-target)" radius={[4, 4, 0, 0]} animationDuration={600} />
+              <Bar dataKey="revenue" fill="var(--color-revenue)" radius={[4, 4, 0, 0]} animationDuration={600}>
+                <LabelList dataKey="revenue" position="top" offset={4} content={revenueBarLabelContent} />
+              </Bar>
+              <Bar dataKey="target" fill="var(--color-target)" radius={[4, 4, 0, 0]} animationDuration={600}>
+                <LabelList dataKey="target" position="top" offset={4} content={targetBarLabelContent} />
+              </Bar>
             </BarChart>
           </ChartContainer>
         )
       case "coursePopularity":
         return (
           <ChartContainer config={courseCfg} className="h-[200px] w-full">
-            <BarChart data={data.coursePopularity.map((d, i) => ({ ...d, fill: COLORS[i % COLORS.length] }))} layout="vertical" margin={{ left: 0, right: 8 }}>
+            <BarChart data={data.coursePopularity.map((d, i) => ({ ...d, fill: COLORS[i % COLORS.length] }))} layout="vertical" margin={{ left: 0, right: 28 }}>
               <CartesianGrid horizontal={false} strokeDasharray="3 3" />
               <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
               <YAxis type="category" dataKey="name" width={100} tickLine={false} axisLine={false} fontSize={10} />
               <ChartTooltip content={<ChartTooltipContent hideLabel />} />
               <Bar dataKey="value" radius={[0, 4, 4, 0]} animationDuration={600} style={{ cursor: "pointer" }}>
+                <LabelList dataKey="value" position="right" offset={4} content={horizontalBarLabelContent} />
                 {data.coursePopularity.map((entry, i) => (
                   <Cell
                     key={i}
@@ -310,7 +339,19 @@ export default function DashboardPage() {
         return paymentPie && (
           <ChartContainer config={paymentPie.config} className="h-[200px] w-full">
             <PieChart>
-              <Pie data={paymentPie.data} dataKey="value" nameKey="key" cx="50%" cy="50%" innerRadius={45} outerRadius={72} strokeWidth={2} animationDuration={600} />
+              <Pie
+                data={paymentPie.data}
+                dataKey="value"
+                nameKey="key"
+                cx="50%"
+                cy="50%"
+                innerRadius={45}
+                outerRadius={72}
+                strokeWidth={2}
+                animationDuration={600}
+                label={PieOutlinedLabel}
+                labelLine={false}
+              />
               <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
               <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-1 text-xs" />} />
             </PieChart>
@@ -320,7 +361,17 @@ export default function DashboardPage() {
         return genderPie && (
           <ChartContainer config={genderPie.config} className="h-[200px] w-full">
             <PieChart>
-              <Pie data={genderPie.data} dataKey="value" nameKey="key" cx="50%" cy="50%" outerRadius={72} animationDuration={600} />
+              <Pie
+                data={genderPie.data}
+                dataKey="value"
+                nameKey="key"
+                cx="50%"
+                cy="50%"
+                outerRadius={72}
+                animationDuration={600}
+                label={PieOutlinedLabel}
+                labelLine={false}
+              />
               <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
               <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-1 text-xs" />} />
             </PieChart>
@@ -329,26 +380,32 @@ export default function DashboardPage() {
       case "age":
         return (
           <ChartContainer config={ageCfg} className="h-[200px] w-full">
-            <BarChart data={data.ageDistribution} margin={{ left: -20, right: 8 }}>
+            <BarChart data={data.ageDistribution} margin={{ left: -20, right: 8, top: 14 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="range" tickLine={false} axisLine={false} fontSize={11} />
               <YAxis tickLine={false} axisLine={false} fontSize={11} />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} animationDuration={600} />
+              <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} animationDuration={600}>
+                <LabelList dataKey="count" position="top" offset={4} content={columnBarLabelContent} />
+              </Bar>
             </BarChart>
           </ChartContainer>
         )
       case "yearComparison":
         return (
           <ChartContainer config={yearCfg} className="h-[200px] w-full">
-            <LineChart data={data.yearComparison} margin={{ left: -20, right: 8 }}>
+            <LineChart data={data.yearComparison} margin={{ left: -20, right: 8, top: 12, bottom: 4 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
               <YAxis tickLine={false} axisLine={false} fontSize={11} />
               <ChartTooltip content={<ChartTooltipContent />} />
               <ChartLegend content={<ChartLegendContent />} />
-              <Line type="monotone" dataKey="currentYear" stroke="var(--color-currentYear)" strokeWidth={2} dot={{ r: 3 }} animationDuration={700} />
-              <Line type="monotone" dataKey="previousYear" stroke="var(--color-previousYear)" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" animationDuration={700} />
+              <Line type="monotone" dataKey="currentYear" stroke="var(--color-currentYear)" strokeWidth={2} dot={{ r: 3 }} animationDuration={700}>
+                <LabelList dataKey="currentYear" position="top" offset={6} content={yearCurrentLabelContent} />
+              </Line>
+              <Line type="monotone" dataKey="previousYear" stroke="var(--color-previousYear)" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" animationDuration={700}>
+                <LabelList dataKey="previousYear" position="bottom" offset={6} content={yearPreviousLabelContent} />
+              </Line>
             </LineChart>
           </ChartContainer>
         )
@@ -356,7 +413,18 @@ export default function DashboardPage() {
         return employmentPie && (
           <ChartContainer config={employmentPie.config} className="h-[200px] w-full">
             <PieChart>
-              <Pie data={employmentPie.data} dataKey="value" nameKey="key" cx="50%" cy="50%" innerRadius={45} outerRadius={72} animationDuration={600} />
+              <Pie
+                data={employmentPie.data}
+                dataKey="value"
+                nameKey="key"
+                cx="50%"
+                cy="50%"
+                innerRadius={45}
+                outerRadius={72}
+                animationDuration={600}
+                label={PieOutlinedLabel}
+                labelLine={false}
+              />
               <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
               <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-1 text-xs" />} />
             </PieChart>
@@ -365,7 +433,7 @@ export default function DashboardPage() {
       case "revenuePerCourse":
         return (
           <ChartContainer config={revenuePerCourseCfg} className="h-[200px] w-full">
-            <BarChart data={data.revenuePerCourse} layout="vertical" margin={{ left: 0, right: 8 }}>
+            <BarChart data={data.revenuePerCourse} layout="vertical" margin={{ left: 0, right: 36 }}>
               <CartesianGrid horizontal={false} strokeDasharray="3 3" />
               <XAxis
                 type="number"
@@ -388,6 +456,7 @@ export default function DashboardPage() {
                 }}
               />
               <Bar dataKey="value" radius={[0, 4, 4, 0]} animationDuration={600}>
+                <LabelList dataKey="value" position="right" offset={4} content={horizontalRevenueBarLabelContent} />
                 {data.revenuePerCourse.map((_, i) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
                 ))}
@@ -401,13 +470,14 @@ export default function DashboardPage() {
             <BarChart
               data={data.participantsPerCourse.map((d, i) => ({ ...d, fill: COLORS[i % COLORS.length] }))}
               layout="vertical"
-              margin={{ left: 0, right: 8 }}
+              margin={{ left: 0, right: 28 }}
             >
               <CartesianGrid horizontal={false} strokeDasharray="3 3" />
               <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
               <YAxis type="category" dataKey="name" width={100} tickLine={false} axisLine={false} fontSize={10} />
               <ChartTooltip content={<ChartTooltipContent hideLabel />} />
               <Bar dataKey="value" radius={[0, 4, 4, 0]} animationDuration={600} style={{ cursor: "pointer" }}>
+                <LabelList dataKey="value" position="right" offset={4} content={horizontalBarLabelContent} />
                 {data.participantsPerCourse.map((entry, i) => (
                   <Cell
                     key={i}
@@ -423,12 +493,13 @@ export default function DashboardPage() {
       case "company":
         return (
           <ChartContainer config={{ value: { label: "Registrations", color: "var(--chart-4)" } }} className="h-[200px] w-full">
-            <BarChart data={data.companyDistribution} layout="vertical" margin={{ left: 0, right: 8 }}>
+            <BarChart data={data.companyDistribution} layout="vertical" margin={{ left: 0, right: 28 }}>
               <CartesianGrid horizontal={false} strokeDasharray="3 3" />
               <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
               <YAxis type="category" dataKey="name" width={100} tickLine={false} axisLine={false} fontSize={9} />
               <ChartTooltip content={<ChartTooltipContent hideLabel />} />
               <Bar dataKey="value" fill="var(--color-value)" radius={[0, 4, 4, 0]} animationDuration={600}>
+                <LabelList dataKey="value" position="right" offset={4} content={horizontalBarLabelContent} />
                 {data.companyDistribution.map((_, i) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
                 ))}
@@ -517,7 +588,7 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent className="px-4 pb-3">
           <ChartContainer config={enrollmentCfg} className="h-[220px] w-full">
-            <AreaChart data={data.enrollmentTrend} margin={{ left: -20, right: 12 }}>
+            <ComposedChart data={data.enrollmentTrend} margin={{ left: -20, right: 12, top: 22 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
               <YAxis tickLine={false} axisLine={false} fontSize={11} />
@@ -528,8 +599,19 @@ export default function DashboardPage() {
                   <stop offset="95%" stopColor="var(--color-enrollments)" stopOpacity={0.02} />
                 </linearGradient>
               </defs>
-              <Area type="monotone" dataKey="enrollments" stroke="var(--color-enrollments)" fill="url(#gEnrollMain)" strokeWidth={2} animationDuration={800} />
-            </AreaChart>
+              <Area type="monotone" dataKey="enrollments" stroke="none" fill="url(#gEnrollMain)" animationDuration={800} />
+              <Line
+                type="monotone"
+                dataKey="enrollments"
+                stroke="var(--color-enrollments)"
+                strokeWidth={2}
+                dot={{ r: 3, fill: "var(--color-enrollments)", strokeWidth: 0 }}
+                fill="none"
+                animationDuration={800}
+              >
+                <LabelList dataKey="enrollments" position="top" offset={6} content={enrollmentLineLabelContent} />
+              </Line>
+            </ComposedChart>
           </ChartContainer>
         </CardContent>
       </Card>
@@ -573,14 +655,18 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="px-4 pb-3">
             <ChartContainer config={revenueCfg} className="h-[220px] w-full">
-              <BarChart data={data.revenueData} margin={{ left: -20, right: 8 }}>
+              <BarChart data={data.revenueData} margin={{ left: -20, right: 8, top: 18 }}>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
                 <YAxis tickLine={false} axisLine={false} fontSize={11} tickFormatter={v => `₱${(v / 1000).toFixed(0)}k`} />
                 <ChartTooltip content={<ChartTooltipContent />} />
                 <ChartLegend content={<ChartLegendContent />} />
-                <Bar dataKey="revenue" fill="var(--color-revenue)" radius={[4, 4, 0, 0]} animationDuration={600} />
-                <Bar dataKey="target" fill="var(--color-target)" radius={[4, 4, 0, 0]} animationDuration={600} />
+                <Bar dataKey="revenue" fill="var(--color-revenue)" radius={[4, 4, 0, 0]} animationDuration={600}>
+                  <LabelList dataKey="revenue" position="top" offset={4} content={revenueBarLabelContent} />
+                </Bar>
+                <Bar dataKey="target" fill="var(--color-target)" radius={[4, 4, 0, 0]} animationDuration={600}>
+                  <LabelList dataKey="target" position="top" offset={4} content={targetBarLabelContent} />
+                </Bar>
               </BarChart>
             </ChartContainer>
           </CardContent>
@@ -596,13 +682,14 @@ export default function DashboardPage() {
               <BarChart
                 data={data.coursePopularity.map((d, i) => ({ ...d, fill: COLORS[i % COLORS.length] }))}
                 layout="vertical"
-                margin={{ left: 0, right: 8 }}
+                margin={{ left: 0, right: 28 }}
               >
                 <CartesianGrid horizontal={false} strokeDasharray="3 3" />
                 <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
                 <YAxis type="category" dataKey="name" width={100} tickLine={false} axisLine={false} fontSize={10} />
                 <ChartTooltip content={<ChartTooltipContent hideLabel />} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]} animationDuration={600} style={{ cursor: "pointer" }}>
+                  <LabelList dataKey="value" position="right" offset={4} content={horizontalBarLabelContent} />
                   {data.coursePopularity.map((entry, i) => (
                     <Cell
                       key={i}
@@ -629,7 +716,19 @@ export default function DashboardPage() {
             {paymentPie && (
               <ChartContainer config={paymentPie.config} className="h-[200px] w-full">
                 <PieChart>
-                  <Pie data={paymentPie.data} dataKey="value" nameKey="key" cx="50%" cy="50%" innerRadius={40} outerRadius={68} strokeWidth={2} animationDuration={600} />
+                  <Pie
+                    data={paymentPie.data}
+                    dataKey="value"
+                    nameKey="key"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={40}
+                    outerRadius={68}
+                    strokeWidth={2}
+                    animationDuration={600}
+                    label={PieOutlinedLabel}
+                    labelLine={false}
+                  />
                   <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
                   <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-x-3 gap-y-0.5 text-[11px]" />} />
                 </PieChart>
@@ -647,7 +746,17 @@ export default function DashboardPage() {
             {genderPie && (
               <ChartContainer config={genderPie.config} className="h-[200px] w-full">
                 <PieChart>
-                  <Pie data={genderPie.data} dataKey="value" nameKey="key" cx="50%" cy="50%" outerRadius={68} animationDuration={600} />
+                  <Pie
+                    data={genderPie.data}
+                    dataKey="value"
+                    nameKey="key"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={68}
+                    animationDuration={600}
+                    label={PieOutlinedLabel}
+                    labelLine={false}
+                  />
                   <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
                   <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-x-3 gap-y-0.5 text-[11px]" />} />
                 </PieChart>
@@ -665,7 +774,18 @@ export default function DashboardPage() {
             {employmentPie && (
               <ChartContainer config={employmentPie.config} className="h-[200px] w-full">
                 <PieChart>
-                  <Pie data={employmentPie.data} dataKey="value" nameKey="key" cx="50%" cy="50%" innerRadius={40} outerRadius={68} animationDuration={600} />
+                  <Pie
+                    data={employmentPie.data}
+                    dataKey="value"
+                    nameKey="key"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={40}
+                    outerRadius={68}
+                    animationDuration={600}
+                    label={PieOutlinedLabel}
+                    labelLine={false}
+                  />
                   <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
                   <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-x-3 gap-y-0.5 text-[11px]" />} />
                 </PieChart>
@@ -684,12 +804,14 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="px-4 pb-3">
             <ChartContainer config={ageCfg} className="h-[200px] w-full">
-              <BarChart data={data.ageDistribution} margin={{ left: -20, right: 8 }}>
+              <BarChart data={data.ageDistribution} margin={{ left: -20, right: 8, top: 14 }}>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
                 <XAxis dataKey="range" tickLine={false} axisLine={false} fontSize={11} />
                 <YAxis tickLine={false} axisLine={false} fontSize={11} />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} animationDuration={600} />
+                <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} animationDuration={600}>
+                  <LabelList dataKey="count" position="top" offset={4} content={columnBarLabelContent} />
+                </Bar>
               </BarChart>
             </ChartContainer>
           </CardContent>
@@ -702,14 +824,18 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="px-4 pb-3">
             <ChartContainer config={yearCfg} className="h-[200px] w-full">
-              <LineChart data={data.yearComparison} margin={{ left: -20, right: 8 }}>
+              <LineChart data={data.yearComparison} margin={{ left: -20, right: 8, top: 12, bottom: 4 }}>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
                 <YAxis tickLine={false} axisLine={false} fontSize={11} />
                 <ChartTooltip content={<ChartTooltipContent />} />
                 <ChartLegend content={<ChartLegendContent />} />
-                <Line type="monotone" dataKey="currentYear" stroke="var(--color-currentYear)" strokeWidth={2} dot={{ r: 3 }} animationDuration={700} />
-                <Line type="monotone" dataKey="previousYear" stroke="var(--color-previousYear)" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" animationDuration={700} />
+                <Line type="monotone" dataKey="currentYear" stroke="var(--color-currentYear)" strokeWidth={2} dot={{ r: 3 }} animationDuration={700}>
+                  <LabelList dataKey="currentYear" position="top" offset={6} content={yearCurrentLabelContent} />
+                </Line>
+                <Line type="monotone" dataKey="previousYear" stroke="var(--color-previousYear)" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" animationDuration={700}>
+                  <LabelList dataKey="previousYear" position="bottom" offset={6} content={yearPreviousLabelContent} />
+                </Line>
               </LineChart>
             </ChartContainer>
           </CardContent>
