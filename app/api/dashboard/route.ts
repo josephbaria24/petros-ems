@@ -32,6 +32,18 @@ function normalizeDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }
 
+/** Collapse casing/whitespace variants so the chart does not show duplicate slices for the same gender. */
+function normalizeGenderForChart(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim().replace(/\s+/g, " ")
+  if (!s) return "Unspecified"
+  const lower = s.toLowerCase()
+  if (lower === "female" || lower === "f" || lower === "woman") return "Female"
+  if (lower === "male" || lower === "m" || lower === "man") return "Male"
+  if (lower === "unspecified" || lower === "unknown" || lower === "n/a" || lower === "prefer not to say")
+    return "Unspecified"
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
+}
+
 function getScheduleBounds(s: {
   schedule_dates?: { date: string }[] | null
   schedule_ranges?: { start_date: string; end_date: string }[] | null
@@ -235,9 +247,12 @@ export async function GET(req: NextRequest) {
     })
     const paymentStatus = Object.entries(ps).map(([name, value]) => ({ name, value }))
 
-    // Gender
+    // Gender (normalize so "Female"/"female", "MALE"/"male", stray spaces, etc. aggregate to one slice each)
     const gc: Record<string, number> = {}
-    trainings.forEach(t => { gc[t.gender || "Unspecified"] = (gc[t.gender || "Unspecified"] || 0) + 1 })
+    trainings.forEach(t => {
+      const key = normalizeGenderForChart(t.gender)
+      gc[key] = (gc[key] || 0) + 1
+    })
     const genderDistribution = Object.entries(gc).map(([name, value]) => ({ name, value }))
 
     // Age
