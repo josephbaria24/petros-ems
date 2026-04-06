@@ -739,11 +739,11 @@ export default function CoursesPage() {
           {selectedCourse && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label className="text-muted-foreground">Course Name</Label>
+                <Label className="text-muted-foreground">Course Code</Label>
                 <p className="text-lg font-semibold">{selectedCourse.name}</p>
               </div>
               <div className="space-y-2">
-                <Label className="text-muted-foreground">Course Title</Label>
+                <Label className="text-muted-foreground">Course Name</Label>
                 <p className="text-sm">
                   {selectedCourse.title || "Not specified"}
                 </p>

@@ -205,9 +205,9 @@ export async function POST(req: NextRequest) {
       return aName.localeCompare(bName);
     });
 
-    // Assign certificate numbers
+    // Assign certificate numbers and persist them permanently
     let newSerialsGenerated = 0;
-    const updatedTrainees = traineesData.map((trainee, index) => {
+    const updatedTrainees = traineesData.map((trainee) => {
       if (trainee.certificate_number) return trainee;
       
       const serial = serialBase + newSerialsGenerated + 1;
@@ -223,6 +223,18 @@ export async function POST(req: NextRequest) {
         .from("courses")
         .update({ serial_number: lastSerialUsed })
         .eq("id", courseData.id);
+
+      // Persist assigned certificate numbers to trainings table
+      for (const t of updatedTrainees) {
+        if (!t.certificate_number) continue;
+        const original = traineesData.find((o) => o.id === t.id);
+        if (original?.certificate_number) continue; // already had one
+        await supabase
+          .from("trainings")
+          .update({ certificate_number: t.certificate_number })
+          .eq("id", t.id)
+          .is("certificate_number", null);
+      }
     }
 
     console.log(`👥 Sending to ${updatedTrainees.length} trainees`);

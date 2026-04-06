@@ -77,6 +77,25 @@ export default function TrainingSchedulesPage() {
       } else {
         console.log(`✅ ${toUpdate.length} schedules auto-updated to "finished".`)
         setRefreshTrigger((prev) => prev + 1)
+
+        // Assign certificate serial numbers to participants of newly-finished schedules
+        for (const scheduleId of toUpdate) {
+          try {
+            const res = await fetch("/api/assign-certificate-serials", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ scheduleId }),
+            })
+            const result = await res.json()
+            if (result.success) {
+              console.log(`✅ Assigned ${result.assigned} certificate numbers for schedule ${scheduleId}`)
+            } else {
+              console.warn(`⚠️ Certificate assignment for ${scheduleId}:`, result.error)
+            }
+          } catch (err) {
+            console.error(`❌ Certificate assignment failed for schedule ${scheduleId}:`, err)
+          }
+        }
       }
     }
   }

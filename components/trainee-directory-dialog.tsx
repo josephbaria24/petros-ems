@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { tmsDb } from "@/lib/supabase-client"
-import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, Eye } from "lucide-react"
+import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, Eye, ListOrdered } from "lucide-react"
 import { Slider } from "@/components/ui/slider"
 import { exportTraineeExcel } from "@/lib/exports/export-excel"
 import { exportCertificatesNew } from "@/lib/exports/export-certificate"
@@ -253,6 +253,7 @@ export default function ParticipantDirectoryDialog({
   const [databaseStats, setDatabaseStats] = useState<any>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
   const [isDownloadingDirectory, setIsDownloadingDirectory] = useState(false)
+  const [isRefreshingSerials, setIsRefreshingSerials] = useState(false)
 
   const [scheduleDateText, setScheduleDateText] = useState<string>("");
   const [batchNumber, setBatchNumber] = useState<number | null>(null); // ADD THIS LINE
@@ -855,6 +856,70 @@ export default function ParticipantDirectoryDialog({
         title: "Error",
         description: "Failed to generate certificate numbers"
       })
+    }
+  }
+
+  const handleRefreshSerialNumbers = async () => {
+    if (!scheduleId) return
+
+    const hasExisting = trainees.some((t) => !!t.certificate_number)
+
+    // If participants already have numbers, confirm overwrite
+    if (hasExisting) {
+      const confirmed = window.confirm(
+        "Some participants already have certificate numbers.\n\n" +
+        "This will RE-ASSIGN new sequential numbers to ALL participants " +
+        "in this batch using the current course serial counter.\n\n" +
+        "Continue?"
+      )
+      if (!confirmed) return
+    }
+
+    setIsRefreshingSerials(true)
+    try {
+      const res = await fetch("/api/assign-certificate-serials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scheduleId,
+          force: true,
+          reassign: hasExisting,
+        }),
+      })
+      const result = await res.json()
+
+      if (!res.ok || !result.success) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: result.error || "Failed to assign serial numbers",
+        })
+        return
+      }
+
+      if (result.assigned === 0) {
+        toast({
+          title: "Up to date",
+          description: "All participants already have certificate numbers.",
+        })
+      } else {
+        const verb = result.reassigned ? "Reassigned" : "Assigned"
+        toast({
+          title: "Serial Numbers Updated",
+          description: `${verb} ${result.assigned} certificate number(s). Range: ${result.range?.from}–${result.range?.to}`,
+        })
+      }
+
+      await fetchTrainees()
+    } catch (err) {
+      console.error("Error refreshing serial numbers:", err)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to sync serial numbers. Please try again.",
+      })
+    } finally {
+      setIsRefreshingSerials(false)
     }
   }
 
@@ -2039,28 +2104,37 @@ export default function ParticipantDirectoryDialog({
 
     console.log("Submitting update for:", selectedTrainee)
 
+    const updates: Record<string, unknown> = {
+      first_name: selectedTrainee.first_name,
+      last_name: selectedTrainee.last_name,
+      middle_initial: selectedTrainee.middle_initial,
+      email: selectedTrainee.email || null,
+      certificate_number: selectedTrainee.certificate_number || null,
+    }
+
     const { data, error } = await tmsDb
       .from("trainings")
-      .update({
-        first_name: selectedTrainee.first_name,
-        last_name: selectedTrainee.last_name,
-        middle_initial: selectedTrainee.middle_initial,
-      })
+      .update(updates)
       .eq("id", selectedTrainee.id)
       .select()
       .single()
 
     if (error) {
       console.error("❌ Supabase update error:", error)
-      alert("Failed to save changes. Please try again.")
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to save changes. Please try again.",
+      })
     } else if (data) {
-      console.log("✅ Supabase update success:", data)
-
       setIsTraineeDialogOpen(false)
       setTrainees((prev) =>
         prev.map((t) => (t.id === selectedTrainee.id ? data as Trainee : t))
       )
-      alert("Changes saved successfully!")
+      toast({
+        title: "Saved",
+        description: "Participant details updated successfully.",
+      })
     }
   }
 
@@ -2084,6 +2158,34 @@ export default function ParticipantDirectoryDialog({
             {/* Action Button Group */}
             <TooltipProvider>
               <div className="flex items-center gap-2">
+
+                {/* Refresh Serial Numbers */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRefreshSerialNumbers}
+                      disabled={isRefreshingSerials}
+                      className="cursor-pointer"
+                    >
+                      {isRefreshingSerials ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Syncing...
+                        </>
+                      ) : (
+                        <>
+                          <ListOrdered className="mr-2 h-4 w-4" />
+                          Refresh Serial No.
+                        </>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    Assign certificate serial numbers to participants without one (alphabetical order, uses course sequence)
+                  </TooltipContent>
+                </Tooltip>
 
                 {/* Excel Download */}
                 <Tooltip>
@@ -2395,6 +2497,26 @@ export default function ParticipantDirectoryDialog({
                 <div className="space-y-2">
                   <Label>Middle Initial</Label>
                   <Input value={selectedTrainee.middle_initial || ""} onChange={(e) => setSelectedTrainee({ ...selectedTrainee, middle_initial: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    placeholder="participant@email.com"
+                    value={selectedTrainee.email || ""}
+                    onChange={(e) => setSelectedTrainee({ ...selectedTrainee, email: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Certificate Number</Label>
+                  <Input
+                    placeholder="e.g. PSI-COURSE-000001"
+                    value={selectedTrainee.certificate_number || ""}
+                    onChange={(e) => setSelectedTrainee({ ...selectedTrainee, certificate_number: e.target.value })}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Editing this will change the serial number on the participant&apos;s certificate.
+                  </p>
                 </div>
               </div>
             )}

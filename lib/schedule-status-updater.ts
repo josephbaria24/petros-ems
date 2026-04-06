@@ -75,6 +75,28 @@ export async function recalculateScheduleStatus(scheduleId: string) {
         console.error('Error updating schedule status:', updateError)
       } else {
         console.log(`Schedule ${scheduleId} status updated: ${schedule.status} → ${newStatus}`)
+
+        // When a schedule transitions to "finished", assign certificate serial numbers
+        if (newStatus === 'finished') {
+          try {
+            const res = await fetch(
+              `${typeof window !== 'undefined' ? '' : process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/api/assign-certificate-serials`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ scheduleId }),
+              }
+            )
+            const result = await res.json()
+            if (result.success) {
+              console.log(`✅ Assigned ${result.assigned} certificate numbers for schedule ${scheduleId}`)
+            } else {
+              console.warn(`⚠️ Certificate assignment for ${scheduleId}:`, result.error)
+            }
+          } catch (err) {
+            console.error(`❌ Certificate assignment failed for schedule ${scheduleId}:`, err)
+          }
+        }
       }
     }
   } catch (error) {

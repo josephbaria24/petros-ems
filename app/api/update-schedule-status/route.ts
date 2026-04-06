@@ -69,6 +69,76 @@ function calculateScheduleStatus(
   return currentStatus
 }
 
+/**
+ * Assign certificate serial numbers for all participants of a finished schedule
+ * who don't already have one. Uses courses.serial_number as the authoritative counter.
+ */
+async function assignCertificateSerials(scheduleId: string): Promise<{ success: boolean; assigned: number }> {
+  const { data: schedule } = await supabase
+    .from("schedules")
+    .select("course_id")
+    .eq("id", scheduleId)
+    .single()
+
+  if (!schedule?.course_id) return { success: false, assigned: 0 }
+
+  const { data: course } = await supabase
+    .from("courses")
+    .select("id, name, serial_number, serial_number_pad")
+    .eq("id", schedule.course_id)
+    .single()
+
+  if (!course) return { success: false, assigned: 0 }
+
+  const { data: trainees } = await supabase
+    .from("trainings")
+    .select("id, first_name, last_name")
+    .eq("schedule_id", scheduleId)
+    .is("certificate_number", null)
+    .order("last_name", { ascending: true })
+    .order("first_name", { ascending: true })
+
+  if (!trainees?.length) return { success: true, assigned: 0 }
+
+  const serialBase = Number(course.serial_number ?? 0)
+  const serialPad = Number(course.serial_number_pad ?? 6)
+  const newCounter = serialBase + trainees.length
+
+  // Optimistic lock on serial_number
+  const { data: lockData } = await supabase
+    .from("courses")
+    .update({ serial_number: newCounter })
+    .eq("id", course.id)
+    .eq("serial_number", serialBase)
+    .select("id")
+
+  if (!lockData?.length) return { success: false, assigned: 0 }
+
+  let assigned = 0
+  for (let i = 0; i < trainees.length; i++) {
+    const padded = (serialBase + i + 1).toString().padStart(serialPad, "0")
+    const certNumber = `PSI-${course.name}-${padded}`
+
+    const { error } = await supabase
+      .from("trainings")
+      .update({ certificate_number: certNumber })
+      .eq("id", trainees[i].id)
+      .is("certificate_number", null)
+
+    if (!error) assigned++
+  }
+
+  await supabase.from("certificate_logs").insert({
+    action: "batch_assign",
+    serial_number: `PSI-${course.name}-${(serialBase + 1).toString().padStart(serialPad, "0")} → PSI-${course.name}-${newCounter.toString().padStart(serialPad, "0")}`,
+    details: `Auto-assigned ${assigned} certificate numbers for schedule ${scheduleId} (course: ${course.name}). Alphabetical order.`,
+    performed_by: "system/cron",
+  })
+
+  console.log(`✅ Assigned ${assigned} certificate numbers for schedule ${scheduleId}`)
+  return { success: true, assigned }
+}
+
 export async function POST(request: Request) {
   try {
     // Optional: Add authentication header check for security
@@ -117,6 +187,7 @@ export async function POST(request: Request) {
     }
 
     // Batch update all changed statuses
+    const certResults: { scheduleId: string; assigned: number }[] = []
     if (updates.length > 0) {
       for (const update of updates) {
         const { error: updateError } = await supabase
@@ -126,6 +197,19 @@ export async function POST(request: Request) {
 
         if (updateError) {
           console.error(`Error updating schedule ${update.id}:`, updateError)
+          continue
+        }
+
+        // Assign certificate serial numbers for newly-finished schedules
+        if (update.status === 'finished') {
+          try {
+            const certRes = await assignCertificateSerials(update.id)
+            if (certRes.success) {
+              certResults.push({ scheduleId: update.id, assigned: certRes.assigned })
+            }
+          } catch (err) {
+            console.error(`Certificate assignment failed for schedule ${update.id}:`, err)
+          }
         }
       }
     }
@@ -134,7 +218,8 @@ export async function POST(request: Request) {
       success: true,
       message: `Updated ${updates.length} schedule(s)`,
       updated: updates.length,
-      updates: updates,
+      updates,
+      certificateAssignments: certResults,
       timestamp: new Date().toISOString()
     })
 
