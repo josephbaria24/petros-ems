@@ -11,7 +11,7 @@ export const maxDuration = 300;  // optional
 
 // Convert NextRequest → Node Request
 function toNodeRequest(req: NextRequest): any {
-  const readable = new Readable({ read() {} });
+  const readable = new Readable({ read() { } });
 
   req.arrayBuffer().then((buffer) => {
     readable.push(Buffer.from(buffer));
@@ -56,11 +56,19 @@ export async function POST(req: NextRequest) {
           secure: false,
         });
 
+        // Enable verbose FTP logging for debugging
+        client.ftp.verbose = true;
+
+        // Reset to FTP root, then navigate to the correct absolute directory.
+        // The FTP account home is /public_html/uploads/trainees on Hostinger,
+        // so "/" here means that directory from the FTP user's perspective.
+        await client.cd("/");
+
         // Generate unique filename
         const ext = imageFile.originalFilename?.split(".").pop()?.toLowerCase();
         const newFileName = `${randomUUID()}.${ext}`;
 
-        // Upload
+        // Upload to current directory (FTP root = uploads/trainees)
         await client.uploadFrom(imageFile.filepath, newFileName);
         client.close();
 
