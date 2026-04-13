@@ -49,13 +49,16 @@ export default function MaterialViewerPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(0)
   const [scale, setScale] = useState(0.75)
-  const [rotation, setRotation] = useState(0)
   const [rendering, setRendering] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
   const [isBlurred, setIsBlurred] = useState(false)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const renderTaskRef = useRef<any>(null)
+  const [isFullScreen, setIsFullScreen] = useState(false)
+  const [showOverlays, setShowOverlays] = useState(true)
+  const overlayTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // ===== ANTI-SCREENSHOT PROTECTIONS =====
   useEffect(() => {
@@ -141,12 +144,36 @@ export default function MaterialViewerPage() {
       return false
     }
 
+    const resetOverlayTimer = () => {
+      setShowOverlays(true)
+      if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current)
+      overlayTimerRef.current = setTimeout(() => {
+        if (document.fullscreenElement) {
+          setShowOverlays(false)
+        }
+      }, 3000)
+    }
+
+    const handleFullScreenChange = () => {
+      const full = !!document.fullscreenElement
+      setIsFullScreen(full)
+      if (full) {
+        resetOverlayTimer()
+      } else {
+        setShowOverlays(true)
+        if (overlayTimerRef.current) clearTimeout(overlayTimerRef.current)
+      }
+    }
+
     document.addEventListener("contextmenu", handleContextMenu)
     document.addEventListener("keydown", handleKeyDown)
     document.addEventListener("visibilitychange", handleVisibilityChange)
     window.addEventListener("blur", handleBlur)
     window.addEventListener("focus", handleFocus)
     document.addEventListener("dragstart", handleDragStart)
+    document.addEventListener("fullscreenchange", handleFullScreenChange)
+    window.addEventListener("mousemove", resetOverlayTimer)
+    window.addEventListener("touchstart", resetOverlayTimer)
 
     return () => {
       document.removeEventListener("contextmenu", handleContextMenu)
@@ -155,6 +182,9 @@ export default function MaterialViewerPage() {
       window.removeEventListener("blur", handleBlur)
       window.removeEventListener("focus", handleFocus)
       document.removeEventListener("dragstart", handleDragStart)
+      document.removeEventListener("fullscreenchange", handleFullScreenChange)
+      window.removeEventListener("mousemove", resetOverlayTimer)
+      window.removeEventListener("touchstart", resetOverlayTimer)
     }
   }, [isUnlocked, pdfDoc, currentPage, totalPages])
 
@@ -232,12 +262,19 @@ export default function MaterialViewerPage() {
   // ===== PAGE RENDERING =====
   const renderPage = useCallback(
     async (pageNum: number) => {
-      if (!pdfDoc || !canvasRef.current || rendering) return
+      if (!pdfDoc || !canvasRef.current) return
+
+      // Cancel any ongoing render task
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel()
+        } catch (e) { }
+      }
 
       setRendering(true)
       try {
         const page = await pdfDoc.getPage(pageNum)
-        const viewport = page.getViewport({ scale, rotation })
+        const viewport = page.getViewport({ scale })
 
         const canvas = canvasRef.current
         const ctx = canvas.getContext("2d")!
@@ -250,17 +287,25 @@ export default function MaterialViewerPage() {
           viewport: viewport,
         }
 
-        await page.render(renderContext).promise
+        const renderTask = page.render(renderContext)
+        renderTaskRef.current = renderTask
+        await renderTask.promise
+        renderTaskRef.current = null
 
         // Draw watermark overlay
-        ctx.globalAlpha = 0.06
-        ctx.font = "40px sans-serif"
+        const watermarkText = "PETROSPHERE • CONFIDENTIAL"
+        const isMobile = window.innerWidth < 768
+        const stepY = isMobile ? 150 : 200
+        const stepX = isMobile ? 300 : 400
+        const opacity = isMobile ? 0.08 : 0.06
+
+        ctx.globalAlpha = opacity
+        ctx.font = isMobile ? "30px sans-serif" : "40px sans-serif"
         ctx.fillStyle = "#ffffff"
         ctx.textAlign = "center"
 
-        const watermarkText = "PETROSPHERE • CONFIDENTIAL"
-        for (let y = 80; y < viewport.height; y += 200) {
-          for (let x = 0; x < viewport.width; x += 400) {
+        for (let y = 80; y < viewport.height; y += stepY) {
+          for (let x = 0; x < viewport.width; x += stepX) {
             ctx.save()
             ctx.translate(x, y)
             ctx.rotate(-0.3)
@@ -282,7 +327,7 @@ export default function MaterialViewerPage() {
     if (pdfDoc && currentPage) {
       renderPage(currentPage)
     }
-  }, [pdfDoc, currentPage, scale, rotation])
+  }, [pdfDoc, currentPage, scale])
 
   // ===== NAVIGATION =====
   const goToNextPage = () => {
@@ -299,7 +344,37 @@ export default function MaterialViewerPage() {
 
   const zoomIn = () => setScale((prev) => Math.min(prev + 0.25, 3.0))
   const zoomOut = () => setScale((prev) => Math.max(prev - 0.25, 0.5))
-  const rotate = () => setRotation((prev) => (prev + 90) % 360)  // ===== LOCKED STATE — PASSWORD GATE =====
+
+  const autoFit = useCallback(async () => {
+    if (!pdfDoc) return
+    const page = await pdfDoc.getPage(currentPage)
+    const viewport = page.getViewport({ scale: 1 })
+    const isMobile = window.innerWidth < 768
+
+    // Target 97% of device height
+    const targetHeight = window.innerHeight * 0.97
+    const heightScale = targetHeight / viewport.height
+
+    // Also check width to avoid horizontal overflow
+    const widthScale = (window.innerWidth * 0.97) / viewport.width
+
+    // Choose the best scale that fits height while respecting width
+    const bestScale = Math.min(widthScale, heightScale, 3.0)
+    setScale(parseFloat(bestScale.toFixed(2)))
+  }, [pdfDoc, currentPage])
+
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => {
+        // Wait for transition, then autofit
+        setTimeout(autoFit, 300)
+      }).catch((err) => {
+        console.error(`Error attempting to enable full-screen mode: ${err.message}`)
+      })
+    } else {
+      document.exitFullscreen()
+    }
+  }  // ===== LOCKED STATE — PASSWORD GATE =====
   if (!isUnlocked) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#141454] p-4 relative overflow-hidden">
@@ -404,8 +479,8 @@ export default function MaterialViewerPage() {
             {/* Brand Logo / Footer */}
             <div className="mt-12 flex flex-col items-center gap-4">
               <div className="px-4 py-1.5 rounded-full bg-slate-100 flex items-center gap-2">
-                 <div className="w-2 h-2 rounded-full bg-blue-700 animate-pulse" />
-                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Petrosphere Inc.</span>
+                <div className="w-2 h-2 rounded-full bg-blue-700 animate-pulse" />
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Petrosphere Inc.</span>
               </div>
             </div>
           </div>
@@ -417,108 +492,149 @@ export default function MaterialViewerPage() {
   // ===== UNLOCKED STATE — BOOK VIEWER =====
   return (
     <div
-      className={`min-h-screen bg-[#141454] flex flex-col transition-all duration-300 ${
-        isBlurred ? "blur-xl" : ""
-      }`}
+      className={`min-h-screen bg-[#141454] flex flex-col transition-all duration-300 ${isBlurred ? "blur-xl" : ""
+        }`}
     >
-      {/* Top Bar */}
-      <div className="sticky top-0 z-50 bg-[#16162a]/95 backdrop-blur-xl border-b border-white/[0.06]">
-        <div className="flex items-center justify-between px-6 py-3">
-          {/* Title */}
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
-            </div>
-            <div>
-              <h1 className="text-sm font-semibold text-white truncate max-w-[240px] sm:max-w-none">
-                {materialInfo?.title}
-              </h1>
-              <p className="text-xs text-white/40">Secure Viewer</p>
-            </div>
-          </div>
-
-          {/* Controls */}
-          <div className="flex items-center gap-2">
-            {/* Zoom */}
-            <div className="hidden sm:flex items-center gap-1 bg-white/[0.06] rounded-lg px-2 py-1">
-              <button
-                onClick={zoomOut}
-                className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors"
-                title="Zoom Out"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
+      {/* Top Bar — Hidden in Fullscreen */}
+      {!isFullScreen && (
+        <div className="sticky top-0 z-50 bg-[#16162a]/95 backdrop-blur-xl border-b border-white/[0.06]">
+          <div className="flex items-center justify-between px-6 py-3">
+            {/* Title */}
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                 </svg>
-              </button>
-              <span className="text-xs text-white/50 w-12 text-center font-mono">
-                {Math.round(scale * 100)}%
-              </span>
-              <button
-                onClick={zoomIn}
-                className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors"
-                title="Zoom In"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-              </button>
+              </div>
+              <div>
+                <h1 className="text-sm font-semibold text-white truncate max-w-[240px] sm:max-w-none">
+                  {materialInfo?.title}
+                </h1>
+                <p className="text-xs text-white/40">Secure Viewer</p>
+              </div>
             </div>
 
-            {/* Rotate */}
-            <button
-              onClick={rotate}
-              className="w-9 h-9 flex items-center justify-center bg-white/[0.06] rounded-lg text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors"
-              title="Rotate 90°"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
+            {/* Controls */}
+            <div className="flex items-center gap-2">
+              {/* Zoom */}
+              <div className="hidden sm:flex items-center gap-1 bg-white/[0.06] rounded-lg px-2 py-1">
+                <button
+                  onClick={zoomOut}
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors"
+                  title="Zoom Out"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
+                  </svg>
+                </button>
+                <span className="text-xs text-white/50 w-12 text-center font-mono">
+                  {Math.round(scale * 100)}%
+                </span>
+                <button
+                  onClick={zoomIn}
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors"
+                  title="Zoom In"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                </button>
+              </div>
 
-            {/* Page Navigation */}
-            <div className="flex items-center gap-1 bg-white/[0.06] rounded-lg px-2 py-1">
+              {/* Page Navigation */}
+              <div className="flex items-center gap-1 bg-white/[0.06] rounded-lg px-2 py-1">
+                <button
+                  onClick={goToPrevPage}
+                  disabled={currentPage <= 1}
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Previous Page"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <span className="text-xs text-white/50 font-mono px-2 min-w-[70px] text-center">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  onClick={goToNextPage}
+                  disabled={currentPage >= totalPages}
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  title="Next Page"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Full Screen */}
               <button
-                onClick={goToPrevPage}
-                disabled={currentPage <= 1}
-                className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Previous Page"
+                onClick={toggleFullScreen}
+                className="w-9 h-9 flex items-center justify-center bg-white/[0.06] rounded-lg text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors"
+                title="Full Screen"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              <span className="text-xs text-white/50 font-mono px-2 min-w-[70px] text-center">
-                {currentPage} / {totalPages}
-              </span>
-              <button
-                onClick={goToNextPage}
-                disabled={currentPage >= totalPages}
-                className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Next Page"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
                 </svg>
               </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Content Area */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-auto flex justify-center py-8 px-4"
+        className={`flex-1 overflow-auto flex justify-center items-center transition-all duration-300 ${isFullScreen ? "p-0" : "py-8 px-4"}`}
         style={{ background: "#141454" }}
       >
+        {isFullScreen && (
+          <>
+            {/* Side Navigation Overlays */}
+            <div
+              className={`fixed inset-y-0 left-0 w-32 z-40 bg-gradient-to-r from-black/20 to-transparent flex items-center justify-start pl-8 transition-all duration-500 cursor-pointer group ${showOverlays ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+              onClick={goToPrevPage}
+            >
+              <div className="w-14 h-14 rounded-full bg-white/5 backdrop-blur-md border border-white/10 flex items-center justify-center text-white scale-90 group-hover:scale-110 transition-transform">
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </div>
+            </div>
+            <div
+              className={`fixed inset-y-0 right-0 w-32 z-40 bg-gradient-to-l from-black/20 to-transparent flex items-center justify-end pr-8 transition-all duration-500 cursor-pointer group ${showOverlays ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+              onClick={goToNextPage}
+            >
+              <div className="w-14 h-14 rounded-full bg-white/5 backdrop-blur-md border border-white/10 flex items-center justify-center text-white scale-90 group-hover:scale-110 transition-transform">
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Floating Exit Button */}
+            <div
+              className={`fixed top-6 right-6 z-50 transition-opacity duration-500 ${showOverlays ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+            >
+              <button
+                onClick={toggleFullScreen}
+                className="w-12 h-12 rounded-full bg-[#141454]/80 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-red-500/80 transition-all shadow-2xl"
+                title="Exit Full Screen"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </>
+        )}
+
         {materialInfo?.file_type === "articulate" ? (
-          <div className="w-full h-full max-w-6xl mx-auto rounded-xl overflow-hidden shadow-2xl bg-white relative material-content">
-             <iframe
+          <div className={`w-full max-w-6xl mx-auto rounded-xl overflow-hidden shadow-2xl bg-white relative material-content ${isFullScreen ? "max-w-none rounded-none h-[97vh]" : "h-full"}`}>
+            <iframe
               src={materialInfo.file_url}
-              className="w-full h-full border-none transition-transform duration-300"
-              style={{ transform: `rotate(${rotation}deg)` }}
+              className="w-full h-full border-none"
               title={materialInfo.title}
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               sandbox="allow-same-origin allow-scripts allow-forms"
@@ -565,31 +681,33 @@ export default function MaterialViewerPage() {
         )}
       </div>
 
-      {/* Bottom Bar — Mobile Zoom */}
-      <div className="sm:hidden sticky bottom-0 bg-[#16162a]/95 backdrop-blur-xl border-t border-white/[0.06] p-2 flex justify-center gap-2">
-        <button
-          onClick={zoomOut}
-          className="px-4 py-2 rounded-lg bg-white/[0.06] text-white/60 text-xs hover:bg-white/[0.1] transition-colors"
-        >
-          Zoom Out
-        </button>
-        <span className="px-4 py-2 text-xs text-white/40 font-mono">{Math.round(scale * 100)}%</span>
-        <button
-          onClick={zoomIn}
-          className="px-4 py-2 rounded-lg bg-white/[0.06] text-white/60 text-xs hover:bg-white/[0.1] transition-colors"
-        >
-          Zoom In
-        </button>
-        <button
-          onClick={rotate}
-          className="px-4 py-2 rounded-lg bg-white/[0.06] text-white/60 text-xs hover:bg-white/[0.1] transition-colors flex items-center gap-2"
-        >
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          Rotate
-        </button>
-      </div>
+      {/* Bottom Bar — Static in normal (mobile) only */}
+      {!isFullScreen && (
+        <div className="sm:hidden sticky bottom-0 bg-[#16162a]/95 backdrop-blur-xl border-t border-white/[0.06] p-2 flex justify-center gap-2">
+          <button
+            onClick={zoomOut}
+            className="px-4 py-2 rounded-lg bg-white/[0.06] text-white/60 text-xs hover:bg-white/[0.1] transition-colors"
+          >
+            Zoom Out
+          </button>
+          <span className="px-4 py-2 text-xs text-white/40 font-mono">{Math.round(scale * 100)}%</span>
+          <button
+            onClick={zoomIn}
+            className="px-4 py-2 rounded-lg bg-white/[0.06] text-white/60 text-xs hover:bg-white/[0.1] transition-colors"
+          >
+            Zoom In
+          </button>
+          <button
+            onClick={toggleFullScreen}
+            className="px-4 py-2 rounded-lg bg-white/[0.06] text-white/60 text-xs hover:bg-white/[0.1] transition-colors flex items-center gap-2"
+          >
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+            </svg>
+            Full Screen
+          </button>
+        </div>
+      )}
 
       {/* Anti-screenshot blur overlay */}
       {isBlurred && (
