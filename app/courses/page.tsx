@@ -9,7 +9,7 @@ import {
   getPaginationRowModel,
   PaginationState,
 } from "@tanstack/react-table"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { useEffect, useState, useMemo } from "react"
 import { tmsDb } from "@/lib/supabase-client"
 
@@ -50,7 +50,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { MoreVertical, Edit, Trash2, ChevronLeft, ChevronRight, Plus, ExternalLink, Eye, Link as LinkIcon } from "lucide-react"
+import { MoreVertical, Edit, Trash2, ChevronLeft, ChevronRight, Plus, ExternalLink, Eye, Link as LinkIcon, ClipboardEdit, BookOpen } from "lucide-react"
 import { toast } from "sonner"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -95,6 +95,7 @@ type ExamLinkData = {
 }
 
 export default function CoursesPage() {
+  const router = useRouter()
   const [data, setData] = useState<Course[]>([])
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(true)
@@ -448,6 +449,14 @@ export default function CoursesPage() {
               <DropdownMenuItem onClick={() => handleManageExamLinks(row.original)}>
                 <LinkIcon className="mr-2 h-4 w-4" />
                 Manage Exam Links
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(`/courses/${row.original.id}/registration-form`)}>
+                <ClipboardEdit className="mr-2 h-4 w-4" />
+                Manage Registration Form
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(`/courses/${row.original.id}/materials`)}>
+                <BookOpen className="mr-2 h-4 w-4" />
+                Materials
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => handleDeleteClick(row.original)}

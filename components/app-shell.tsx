@@ -16,11 +16,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   // Define which routes are public (don't require auth)
-  const publicRoutes = ["/login", "/auth/callback", "/guest", "/reupload", "/upload-receipt", "/evaluation"]
+  const publicRoutes = ["/login", "/auth/callback", "/guest", "/reupload", "/upload-receipt", "/evaluation", "/view-material"]
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
 
   // Define which routes should hide sidebar and header
-  const isGuestPage = pathname.startsWith("/guest") || pathname === "/login" || pathname === "/auth/callback" || pathname.startsWith("/evaluation")
+  const isGuestPage = pathname.startsWith("/guest") || pathname === "/login" || pathname === "/auth/callback" || pathname.startsWith("/evaluation") || pathname.startsWith("/view-material")
 
   useEffect(() => {
     // Skip auth check for public routes (including guest pages)
@@ -81,7 +81,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (!isPublicRoute && !isAuthenticated) {
     return null
   }
-  const isFullBleed = pathname.startsWith("/upload-receipt") || pathname.startsWith("/guest-certificate-verifier") || pathname.startsWith("/evaluation") || pathname.startsWith("/trainer-repository")
+  const isFullBleed = pathname.startsWith("/upload-receipt") || pathname.startsWith("/guest-certificate-verifier") || pathname.startsWith("/evaluation") || pathname.startsWith("/trainer-repository") || pathname.startsWith("/view-material")
 
   return (
     <div className="flex h-screen overflow-hidden">

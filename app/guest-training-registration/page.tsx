@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Card, CardContent } from "@/components/ui/card"
-import { Check, User, Briefcase, Upload, ArrowLeft, CreditCard, Calendar, CheckCircle2, Crop, X, XCircle, AlertTriangle } from "lucide-react"
+import { Check, User, Briefcase, Upload, ArrowLeft, CreditCard, Calendar, CheckCircle2, Crop, X, XCircle, AlertTriangle, FileText } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -17,6 +17,7 @@ import { toast } from "sonner"
 import welcomeAnimation from '@/public/welcome.json';
 import Lottie from 'lottie-react';
 import { checkDuplicateRegistration, DuplicateRegistrationHandler } from "@/components/duplicate-registration-handler"
+import { CustomFormRenderer } from "@/components/custom-form-renderer"
 
 
 
@@ -445,6 +446,9 @@ export default function GuestTrainingRegistration() {
         } else if (formType === 'ivt_therapy') {
           window.location.href = `/guest-training-registration-ivt?schedule_id=${scheduleId}`
           return
+        } else if (formType === 'custom') {
+          // If it's custom, we stay on this page but render the custom component
+          // We'll handle this in the main render logic
         }
 
         // ✅ Set event type FIRST
@@ -895,10 +899,61 @@ export default function GuestTrainingRegistration() {
 
       if (feeError) console.error("Error fetching course fee:", feeError)
 
-      const trainingFee = courseData?.training_fee || 0
+      // Define standard columns to separate custom data
+      const STANDARD_COLUMNS = [
+        'id', 'schedule_id', 'first_name', 'last_name', 'certificate_number', 
+        'training_provider', 'training_type', 'status', 'uploaded_by', 
+        'created_at', 'updated_at', 'middle_initial', 'suffix', 'email', 
+        'phone_number', 'gender', 'age', 'mailing_street', 'mailing_city', 
+        'mailing_province', 'employment_status', 'company_name', 'company_position', 
+        'company_industry', 'company_email', 'company_landline', 'company_city', 
+        'company_region', 'id_picture_url', 'picture_2x2_url', 'total_workers', 
+        'course_id', 'payment_method', 'payment_status', 'receipt_link', 
+        'amount_paid', 'food_restriction', 'batch_number', 'courtesy_title', 
+        'physical_cert_status', 'e_id_status', 'discounted_fee', 'has_discount', 
+        'declined_photos', 'is_student', 'school_name', 'add_pvc_id', 
+        'picture_2x2_original', 'id_picture_original', 'pvc_fee', 
+        'training_program', 'training_status', 'professional_title', 'region'
+      ]
+
+      const mainData: any = {}
+      const customData: any = {}
+
+      // Map friendly form keys to database columns
+      // Supports mapping one form key to multiple DB columns (e.g. photo -> url + original)
+      const KEY_MAPPING: Record<string, string | string[]> = {
+        'phone': 'phone_number',
+        'address': 'mailing_street',
+        'govt_id': ['id_picture_url', 'id_picture_original'],
+        'photo': ['picture_2x2_url', 'picture_2x2_original'],
+        'prc_license': 'prc_license_url',
+        'signature': 'signature_url',
+        'dob': 'birthday',
+        'company': 'company_name',
+        'position': 'company_position',
+        'industry': 'company_industry'
+      }
+
+      Object.entries(form).forEach(([key, value]) => {
+        const mapping = KEY_MAPPING[key] || key
+        const dbKeys = Array.isArray(mapping) ? mapping : [mapping]
+        
+        let isMapped = false
+        dbKeys.forEach(dbKey => {
+          if (STANDARD_COLUMNS.includes(dbKey)) {
+            mainData[dbKey] = value
+            isMapped = true
+          }
+        })
+
+        if (!isMapped) {
+          customData[key] = value
+        }
+      })
 
       const trainingPayload = {
-        ...form,
+        ...mainData,
+        custom_data: customData,
         schedule_id: scheduleId,
         course_id: courseId,
         batch_number: batchNumber,
@@ -908,14 +963,14 @@ export default function GuestTrainingRegistration() {
           ? form.payment_status || (paymentMethod === "COUNTER" ? "pending" : "awaiting receipt")
           : (paymentMethod === "COUNTER" ? "pending" : "awaiting receipt"),
         amount_paid: isEditMode ? form.amount_paid || 0 : 0,
-        courtesy_title: form.courtesy_title || null,
-        discounted_fee: discount > 0 ? (getApplicableFee() || 0) - discount : null,
-        has_discount: discount > 0,
-        add_pvc_id: form.add_pvc_id || false,
-        pvc_fee: form.add_pvc_id ? getPvcFee() : null,
-        is_student: form.employment_status === "Unemployed" ? !!form.is_student : false,
-        school_name: form.employment_status === "Unemployed" && form.is_student ? form.school_name : null,
-        total_workers: form.employment_status === "Employed" && form.total_workers ? parseInt(form.total_workers) : null,
+        courtesy_title: form.courtesy_title || mainData.courtesy_title || null,
+        discounted_fee: discount > 0 ? (getApplicableFee() || 0) - discount : mainData.discounted_fee || null,
+        has_discount: discount > 0 || !!mainData.has_discount,
+        add_pvc_id: form.add_pvc_id || mainData.add_pvc_id || false,
+        pvc_fee: (form.add_pvc_id || mainData.add_pvc_id) ? getPvcFee() : null,
+        is_student: (form.employment_status || mainData.employment_status) === "Unemployed" ? !!(form.is_student || mainData.is_student) : false,
+        school_name: (form.employment_status || mainData.employment_status) === "Unemployed" && (form.is_student || mainData.is_student) ? (form.school_name || mainData.school_name) : null,
+        total_workers: (form.employment_status || mainData.employment_status) === "Employed" && (form.total_workers || mainData.total_workers) ? parseInt(String(form.total_workers || mainData.total_workers)) : null,
       }
 
       let trainingId: string
@@ -1127,12 +1182,17 @@ export default function GuestTrainingRegistration() {
   }
   const isEmployed = form.employment_status === "Employed"
 
-  const steps = [
-    { id: 1, title: "Personal Details", subtitle: "Tell us a bit about yourself", icon: User, completed: step > 1 },
-    ...(isEmployed ? [{ id: 2, title: "Employment Details", subtitle: "Share your employment information", icon: Briefcase, completed: step > 2 }] : []),
-    { id: 3, title: "Verification Details", subtitle: "Upload your identification documents", icon: Upload, completed: step > 3 },
-    { id: 4, title: "Confirmation", subtitle: "You're all set! Enjoy your journey.", icon: CheckCircle2, completed: step > 4 }
-  ]
+  const steps = course?.registration_form_type === 'custom' 
+    ? [
+        { id: 0, title: "Registration", subtitle: "Complete the form", icon: FileText, completed: isSubmitted },
+        { id: 4, title: "Confirmation", subtitle: "You're all set!", icon: CheckCircle2, completed: isSubmitted }
+      ]
+    : [
+        { id: 1, title: "Personal Details", subtitle: "Tell us a bit about yourself", icon: User, completed: step > 1 },
+        ...(isEmployed ? [{ id: 2, title: "Employment Details", subtitle: "Share your employment information", icon: Briefcase, completed: step > 2 }] : []),
+        { id: 3, title: "Verification Details", subtitle: "Upload your identification documents", icon: Upload, completed: step > 3 },
+        { id: 4, title: "Confirmation", subtitle: "You're all set! Enjoy your journey.", icon: CheckCircle2, completed: step > 4 }
+      ]
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-orange-50 via-white to-emerald-50 flex items-center justify-center p-2 sm:p-4 md:p-8">
       <div className="w-full max-w-7xl h-full flex gap-2 sm:gap-4 md:gap-8">
@@ -1263,8 +1323,24 @@ export default function GuestTrainingRegistration() {
 
           <div className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 lg:p-8 flex items-center justify-center">
             <div className="w-full max-w-2xl overflow-auto max-h-full px-1 sm:px-0">
-
-              {step === 0 && (
+               {course?.registration_form_type === 'custom' ? (
+                 <div className="space-y-6">
+                    {!isSubmitted ? (
+                      <CustomFormRenderer 
+                        config={course.registration_config || []} 
+                        isSubmitting={isSubmitted} 
+                        onSave={(data) => {
+                          setForm((prev: any) => ({ ...prev, ...data }))
+                          setShowConfirmDialog(true)
+                        }} 
+                      />
+                    ) : (
+                      null
+                    )}
+                 </div>
+               ) : (
+                  <>
+                    {step === 0 && (
                 <div className="text-center space-y-4 sm:space-y-6 md:space-y-8">
                   <div className="inline-flex px-4 py-2 from-slate-800 to-slate-700">
                     <img src="/trans-logo-dark.png" alt="logo" className="w-60 h-auto" />
@@ -2217,10 +2293,11 @@ export default function GuestTrainingRegistration() {
                         </div>
                       </CardContent>
                     </Card>
-
                   )}
-                </div>
-              )}
+                  </div>
+                )}
+              </>
+            )}
             </div>
           </div>
         </div>
