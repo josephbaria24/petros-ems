@@ -1305,6 +1305,7 @@ const filteredTrainees = trainees.filter((t) => {
           )}
           <TableHead>#</TableHead>
           <TableHead>Name</TableHead>
+          <TableHead>Email</TableHead>
           <TableHead>Phone</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Photo</TableHead>
@@ -1329,6 +1330,9 @@ const filteredTrainees = trainees.filter((t) => {
                 <Skeleton className="h-4 w-32" />
               </TableCell>
               <TableCell>
+                <Skeleton className="h-4 w-40" />
+              </TableCell>
+              <TableCell>
                 <Skeleton className="h-4 w-24" />
               </TableCell>
               <TableCell>
@@ -1351,7 +1355,7 @@ const filteredTrainees = trainees.filter((t) => {
           // Empty state
           <TableRow>
             <TableCell 
-                colSpan={bulkMode ? 7 : 8} 
+                colSpan={bulkMode ? 9 : 8} 
                 className="text-center py-8 text-muted-foreground"
               >
               No trainees found
@@ -1397,6 +1401,7 @@ const filteredTrainees = trainees.filter((t) => {
     <span>{trainee.first_name} {trainee.last_name}</span>
   </div>
 </TableCell>
+              <TableCell>{trainee.email || "N/A"}</TableCell>
               <TableCell>{trainee.phone_number || "N/A"}</TableCell>
               <TableCell>
                 {getStatusBadge(trainee.status || "Pending")}

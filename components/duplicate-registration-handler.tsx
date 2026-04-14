@@ -168,15 +168,17 @@ export async function checkDuplicateRegistration(
   phoneNumber: string
 ): Promise<{ isDuplicate: boolean; data: any | null; bookingRef: string | null }> {
   try {
-    // Normalize phone number for comparison (remove spaces and special chars)
-    const normalizedPhone = phoneNumber.replace(/\s+/g, "").replace(/\+/g, "")
+    // Normalize phone number for comparison and support local/international PH formats
+    const digits = phoneNumber.replace(/\D/g, "")
+    const localPhone = digits.startsWith("63") ? `0${digits.slice(2)}` : digits
+    const internationalPhone = digits.startsWith("0") ? `63${digits.slice(1)}` : digits
 
     // Check for duplicate by email OR phone number in the same schedule
     const { data: existingTrainings, error: trainingError } = await tmsDb
       .from("trainings")
       .select("*")
       .eq("schedule_id", scheduleId)
-      .or(`email.eq.${email},phone_number.ilike.%${normalizedPhone}%`)
+      .or(`email.eq.${email},phone_number.ilike.%${localPhone}%,phone_number.ilike.%${internationalPhone}%`)
       .limit(1)
 
     if (trainingError) {

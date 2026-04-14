@@ -191,6 +191,14 @@ export default function GuestTrainingRegistration() {
   const [isVerifyingVoucher, setIsVerifyingVoucher] = useState(false)
   const [voucherError, setVoucherError] = useState("")
 
+  const normalizeToLocalPhone = (phoneNumber: string) => {
+    const digits = phoneNumber.replace(/\D/g, "")
+    if (digits.startsWith("63") && digits.length >= 12) {
+      return `0${digits.slice(2, 12)}`
+    }
+    return digits.slice(0, 11)
+  }
+
   const requiredPersonalFields = [
     "first_name",
     "last_name",
@@ -248,10 +256,10 @@ export default function GuestTrainingRegistration() {
 
     if (form.phone_number) {
       const phoneDigits = form.phone_number.replace(/\D/g, "")
-      if (phoneDigits.length < 12) {
+      if (phoneDigits.length !== 11) {
         newErrors.phone_number = true
         if (!firstErrorField) firstErrorField = "phone_number"
-        toast.error("Please enter a complete mobile number.")
+        toast.error("Please enter a valid 11-digit mobile number.")
       }
     }
 
@@ -320,7 +328,7 @@ export default function GuestTrainingRegistration() {
       suffix: existingData.suffix || "",
       courtesy_title: existingData.courtesy_title || "",
       email: existingData.email || "",
-      phone_number: existingData.phone_number || "",
+      phone_number: normalizeToLocalPhone(existingData.phone_number || ""),
       gender: existingData.gender || "",
       age: existingData.age || "",
       mailing_street: existingData.mailing_street || "",
@@ -720,15 +728,8 @@ export default function GuestTrainingRegistration() {
     const { name, value } = e.target;
 
     if (name === "phone_number") {
-      let digits = value.replace(/\D/g, "");
-      if (!digits.startsWith("63")) digits = "63" + digits;
-      let formatted = "+" + digits.slice(0, 2);
-
-      if (digits.length > 2) formatted += " " + digits.slice(2, 5);
-      if (digits.length > 5) formatted += " " + digits.slice(5, 8);
-      if (digits.length > 8) formatted += " " + digits.slice(8, 12);
-
-      setForm((prev: any) => ({ ...prev, phone_number: formatted }));
+      const digits = value.replace(/\D/g, "").slice(0, 11);
+      setForm((prev: any) => ({ ...prev, phone_number: digits }));
       return;
     }
 
@@ -1296,6 +1297,11 @@ export default function GuestTrainingRegistration() {
                         }`}>
                         {getEventTypeLabel()}
                       </p>
+                      {scheduleRange && (
+                        <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-tight">
+                          {formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -1314,6 +1320,11 @@ export default function GuestTrainingRegistration() {
                         }`}>
                         {getEventTypeLabel()}
                       </p>
+                      {scheduleRange && (
+                        <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-tight">
+                          {formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1445,12 +1456,14 @@ export default function GuestTrainingRegistration() {
                           name="phone_number"
                           value={form.phone_number || ""}
                           onChange={handleChange}
-                          placeholder="+63 912 345 6789"
+                          placeholder="09XXXXXXXXX"
+                          inputMode="numeric"
+                          maxLength={11}
                           className={errors.phone_number ? "border-red-500 focus:ring-red-500" : ""}
                           required
                         />
                         {errors.phone_number && (
-                          <p className="text-red-500 text-xs">Complete mobile number is required</p>
+                          <p className="text-red-500 text-xs">A valid 11-digit mobile number is required</p>
                         )}
                       </div>
 

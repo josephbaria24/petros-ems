@@ -59,13 +59,8 @@ export default function BLSRegistrationForm() {
         const { name, value } = e.target
 
         if (name === "phone_number") {
-            let digits = value.replace(/\D/g, "")
-            if (!digits.startsWith("63")) digits = "63" + digits
-            let formatted = "+" + digits.slice(0, 2)
-            if (digits.length > 2) formatted += " " + digits.slice(2, 5)
-            if (digits.length > 5) formatted += " " + digits.slice(5, 8)
-            if (digits.length > 8) formatted += " " + digits.slice(8, 12)
-            setForm(prev => ({ ...prev, phone_number: formatted }))
+            const digits = value.replace(/\D/g, "").slice(0, 11)
+            setForm(prev => ({ ...prev, phone_number: digits }))
             return
         }
 
@@ -106,6 +101,11 @@ export default function BLSRegistrationForm() {
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
             if (!emailRegex.test(form.email)) {
                 toast.error("Please enter a valid email address")
+                return false
+            }
+            const phoneDigits = form.phone_number.replace(/\D/g, "")
+            if (phoneDigits.length !== 11) {
+                toast.error("Please enter a valid 11-digit mobile number")
                 return false
             }
         }
@@ -447,7 +447,9 @@ export default function BLSRegistrationForm() {
                                                 name="phone_number"
                                                 value={form.phone_number}
                                                 onChange={handleChange}
-                                                placeholder="+63 XXX XXX XXXX"
+                                                placeholder="09XXXXXXXXX"
+                                                inputMode="numeric"
+                                                maxLength={11}
                                                 className="mt-2"
                                             />
                                         </div>
