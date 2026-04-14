@@ -57,7 +57,7 @@ function generateCertificateEmailHTML(
       <div class="container">
         <div class="header"><h1>🎓 Certificate of Completion</h1></div>
         <div class="content">
-          <p>Dear ${trainee.first_name} ${trainee.last_name},</p>
+          <p>Dear ${trainee.first_name} ${trainee.last_name}${trainee.suffix?.trim() ? " " + (trainee.suffix.trim().endsWith(".") ? trainee.suffix.trim() : trainee.suffix.trim() + ".") : ""},</p>
           <p>Congratulations on successfully completing your training!</p>
           <div class="certificate-info">
             <strong>Course:</strong> ${courseTitle}<br>
@@ -82,7 +82,7 @@ function personalizeEmail(template: string, trainee: any, certificateNumber: str
   return template
     .replace(/\{\{first_name\}\}/g, trainee.first_name || "")
     .replace(/\{\{last_name\}\}/g, trainee.last_name || "")
-    .replace(/\{\{full_name\}\}/g, `${trainee.first_name} ${trainee.last_name}`)
+    .replace(/\{\{full_name\}\}/g, `${trainee.first_name} ${trainee.last_name}${trainee.suffix?.trim() ? " " + (trainee.suffix.trim().endsWith(".") ? trainee.suffix.trim() : trainee.suffix.trim() + ".") : ""}`)
     .replace(/\{\{certificate_number\}\}/g, certificateNumber || "");
 }
 

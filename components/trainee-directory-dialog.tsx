@@ -99,6 +99,7 @@ interface Trainee {
   first_name: string
   last_name: string
   middle_initial?: string
+  suffix?: string
   picture_2x2_url?: string
   schedule_id: string
   status?: string
@@ -445,7 +446,8 @@ export default function ParticipantDirectoryDialog({
       year: "numeric",
     })
 
-    const fullName = `${trainee.first_name || ""} ${trainee.middle_initial ? trainee.middle_initial + ". " : ""}${trainee.last_name || ""}`.trim()
+    const sfx = trainee.suffix?.trim()
+    const fullName = `${trainee.first_name || ""} ${trainee.middle_initial ? trainee.middle_initial + ". " : ""}${trainee.last_name || ""}${sfx ? " " + (sfx.endsWith(".") ? sfx : sfx + ".") : ""}`.trim()
     return raw
       .replace(/\{\{trainee_name\}\}/g, fullName || "Trainee Name")
       .replace(/\{\{course_name\}\}/g, courseName)
@@ -1361,7 +1363,7 @@ export default function ParticipantDirectoryDialog({
       }
       const { data, error } = await tmsDb
         .from("trainings")
-        .select("id, first_name, last_name, middle_initial, schedule_id, picture_2x2_url, status, email, certificate_number, course_id, batch_number")
+        .select("id, first_name, last_name, middle_initial, suffix, schedule_id, picture_2x2_url, status, email, certificate_number, course_id, batch_number")
         .eq("schedule_id", scheduleId)
         .order("last_name", { ascending: true })
 
@@ -1492,6 +1494,7 @@ export default function ParticipantDirectoryDialog({
               first_name: genData.first_name,
               last_name: genData.last_name,
               middle_initial: genData.middle_initial,
+              suffix: genData.suffix,
               picture_2x2_url: genData.picture_2x2_url,
               certificate_number: genData.certificate_number,
               batch_number: genData.batch_number,
@@ -2108,6 +2111,7 @@ export default function ParticipantDirectoryDialog({
       first_name: selectedTrainee.first_name,
       last_name: selectedTrainee.last_name,
       middle_initial: selectedTrainee.middle_initial,
+      suffix: selectedTrainee.suffix || null,
       email: selectedTrainee.email || null,
       certificate_number: selectedTrainee.certificate_number || null,
     }
@@ -2497,6 +2501,14 @@ export default function ParticipantDirectoryDialog({
                 <div className="space-y-2">
                   <Label>Middle Initial</Label>
                   <Input value={selectedTrainee.middle_initial || ""} onChange={(e) => setSelectedTrainee({ ...selectedTrainee, middle_initial: e.target.value })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Suffix</Label>
+                  <Input
+                    placeholder="e.g. Jr., Sr., III"
+                    value={selectedTrainee.suffix || ""}
+                    onChange={(e) => setSelectedTrainee({ ...selectedTrainee, suffix: e.target.value })}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>

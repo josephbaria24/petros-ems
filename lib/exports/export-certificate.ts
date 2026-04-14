@@ -124,7 +124,9 @@ async function generateSingleCertificate(
   const first = capitalize(trainee.first_name)
   const middle = trainee.middle_initial ? capitalize(trainee.middle_initial) + ". " : ""
   const last = capitalize(trainee.last_name)
-  const fullName = `${first} ${middle}${last}`
+  const rawSuffix = trainee.suffix?.trim()
+  const suffix = rawSuffix ? " " + (rawSuffix.endsWith(".") ? rawSuffix : rawSuffix + ".") : ""
+  const fullName = `${first} ${middle}${last}${suffix}`
 
   const today = new Date().toLocaleDateString("en-US", {
     month: "long",
