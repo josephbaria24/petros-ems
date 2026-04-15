@@ -45,6 +45,7 @@ interface DownloadTrainee {
   first_name: string
   last_name: string
   middle_initial?: string
+  suffix?: string
   picture_2x2_url?: string
   schedule_id: string
   status?: string
@@ -52,6 +53,7 @@ interface DownloadTrainee {
   certificate_number?: string
   course_id: string
   batch_number?: number
+  custom_data?: Record<string, any>
 }
 
 interface CertificateGenerationData {
@@ -107,6 +109,7 @@ interface Trainee {
   certificate_number?: string
   course_id: string
   batch_number?: number
+  custom_data?: Record<string, any>
 }
 
 type TemplateType = "participation" | "completion" | "excellence"
@@ -250,6 +253,8 @@ export default function ParticipantDirectoryDialog({
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSendingEmails, setIsSendingEmails] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [sentCertificateIds, setSentCertificateIds] = useState<Set<string>>(new Set())
+  const [failedCertificateIds, setFailedCertificateIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [databaseStats, setDatabaseStats] = useState<any>(null)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
@@ -1363,7 +1368,7 @@ export default function ParticipantDirectoryDialog({
       }
       const { data, error } = await tmsDb
         .from("trainings")
-        .select("id, first_name, last_name, middle_initial, suffix, schedule_id, picture_2x2_url, status, email, certificate_number, course_id, batch_number")
+        .select("id, first_name, last_name, middle_initial, suffix, schedule_id, picture_2x2_url, status, email, certificate_number, course_id, batch_number, custom_data")
         .eq("schedule_id", scheduleId)
         .order("last_name", { ascending: true })
 
@@ -1377,6 +1382,17 @@ export default function ParticipantDirectoryDialog({
       } else {
         console.log("✅ Fetched trainees:", data)
         setTrainees(data || [])
+
+        // Restore persisted certificate email send statuses after refresh/reopen.
+        const sentIds = new Set<string>()
+        const failedIds = new Set<string>()
+        ;(data || []).forEach((trainee: Trainee) => {
+          const status = trainee.custom_data?.__certificate_email_status
+          if (status === "sent") sentIds.add(trainee.id)
+          if (status === "failed") failedIds.add(trainee.id)
+        })
+        setSentCertificateIds(sentIds)
+        setFailedCertificateIds(failedIds)
       }
     } catch (err) {
       console.error("Unexpected error:", err)
@@ -1698,6 +1714,8 @@ export default function ParticipantDirectoryDialog({
     setEmailComposeOpen(false)
     setIsSendingEmails(true)
     setProgress(0)
+    setSentCertificateIds(new Set())
+    setFailedCertificateIds(new Set())
 
     startLongOperation(
       "Sending Certificates",
@@ -1751,9 +1769,29 @@ export default function ParticipantDirectoryDialog({
               if (data.type === "progress") {
                 const progressPercent = Math.floor((data.current / data.total) * 100)
                 setProgress(progressPercent)
+                if (typeof data.lastSentId === "string") {
+                  setSentCertificateIds((prev) => {
+                    const next = new Set(prev)
+                    next.add(data.lastSentId)
+                    return next
+                  })
+                }
+                if (typeof data.lastErrorId === "string") {
+                  setFailedCertificateIds((prev) => {
+                    const next = new Set(prev)
+                    next.add(data.lastErrorId)
+                    return next
+                  })
+                }
                 // Removed alertMessage update to avoid toast spam
               } else if (data.type === "complete") {
                 setProgress(100)
+                if (Array.isArray(data.sentTraineeIds)) {
+                  setSentCertificateIds(new Set(data.sentTraineeIds))
+                }
+                if (Array.isArray(data.failedTraineeIds)) {
+                  setFailedCertificateIds(new Set(data.failedTraineeIds))
+                }
                 toast({
                   title: "Done",
                   description: `Successfully sent ${data.successCount} certificate(s). ${data.failCount > 0 ? `${data.failCount} failed.` : ""}`,
@@ -2397,6 +2435,7 @@ export default function ParticipantDirectoryDialog({
                   <TableHead className="text-sm font-medium">First Name</TableHead>
                   <TableHead className="text-sm font-medium">Middle Initial</TableHead>
                   <TableHead className="text-sm font-medium">Status</TableHead>
+                  <TableHead className="text-sm font-medium">Email Send</TableHead>
                   <TableHead className="text-sm font-medium">ID Picture</TableHead>
                 </TableRow>
               </TableHeader>
@@ -2423,6 +2462,19 @@ export default function ParticipantDirectoryDialog({
                       <Badge variant={getStatusBadgeVariant(trainee.status || "pending")}>
                         {trainee.status ?? "pending"}
                       </Badge>
+                    </TableCell>
+                    <TableCell onClick={() => { setSelectedTrainee(trainee); setIsTraineeDialogOpen(true) }}>
+                      {sentCertificateIds.has(trainee.id) ? (
+                        <Badge className="h-5 rounded-full bg-emerald-600 px-2 text-[10px] text-white hover:bg-emerald-600">
+                          Sent
+                        </Badge>
+                      ) : failedCertificateIds.has(trainee.id) ? (
+                        <Badge variant="destructive" className="h-5 rounded-full px-2 text-[10px]">
+                          Failed
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Not sent</span>
+                      )}
                     </TableCell>
                     <TableCell onClick={() => { setSelectedTrainee(trainee); setIsTraineeDialogOpen(true) }}>
                       <Avatar className="h-10 w-10">
@@ -2761,6 +2813,18 @@ export default function ParticipantDirectoryDialog({
                     <div className="text-[10px] text-muted-foreground truncate">
                       {selectedTemplateType.charAt(0).toUpperCase() + selectedTemplateType.slice(1)} Template
                     </div>
+                    <div className="mt-1 flex items-center gap-1">
+                      {sentCertificateIds.has(certificatePreviews[activePreviewIndex]?.trainee.id || "") && (
+                        <Badge className="h-5 rounded-full bg-emerald-600 px-2 text-[10px] text-white hover:bg-emerald-600">
+                          Sent
+                        </Badge>
+                      )}
+                      {failedCertificateIds.has(certificatePreviews[activePreviewIndex]?.trainee.id || "") && (
+                        <Badge variant="destructive" className="h-5 rounded-full px-2 text-[10px]">
+                          Failed
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -3020,6 +3084,16 @@ export default function ParticipantDirectoryDialog({
                       <span>
                         {item.trainee.last_name}, {item.trainee.first_name}
                       </span>
+                      {sentCertificateIds.has(item.trainee.id) && (
+                        <Badge className="h-5 rounded-full bg-emerald-600 px-2 text-[10px] text-white hover:bg-emerald-600">
+                          Sent
+                        </Badge>
+                      )}
+                      {failedCertificateIds.has(item.trainee.id) && (
+                        <Badge variant="destructive" className="h-5 rounded-full px-2 text-[10px]">
+                          Failed
+                        </Badge>
+                      )}
                     </button>
                     <div className="absolute right-2 top-1/2 -translate-y-1/2 z-30">
                       <Checkbox 

@@ -243,6 +243,8 @@ export async function POST(req: NextRequest) {
     const encoder = new TextEncoder();
     let successCount = 0;
     let failCount = 0;
+    const sentTraineeIds: string[] = [];
+    const failedTraineeIds: string[] = [];
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -349,7 +351,24 @@ export async function POST(req: NextRequest) {
               throw new Error(`Email send failed: ${errTxt.substring(0, 300)}`);
             }
 
+            // Persist email-send result so UI status survives refresh.
+            const successCustomData = {
+              ...(trainee.custom_data || {}),
+              __certificate_email_status: "sent",
+              __certificate_email_sent_at: new Date().toISOString(),
+              __certificate_email_error: null,
+              __certificate_email_template_type: templateType,
+            };
+            const { error: updateSuccessStatusError } = await supabase
+              .from("trainings")
+              .update({ custom_data: successCustomData })
+              .eq("id", trainee.id);
+            if (updateSuccessStatusError) {
+              console.error("⚠️ Failed to persist sent status:", updateSuccessStatusError);
+            }
+
             successCount++;
+            sentTraineeIds.push(trainee.id);
             console.log(`✅ Email sent to ${trainee.email}`);
 
             controller.enqueue(
@@ -362,11 +381,28 @@ export async function POST(req: NextRequest) {
                   failCount,
                   message: `Sent ${successCount} of ${updatedTrainees.length}...`,
                   lastSent: `${trainee.first_name} ${trainee.last_name}`,
+                  lastSentId: trainee.id,
                 })}\n\n`
               )
             );
           } catch (err: any) {
+            const failureCustomData = {
+              ...(trainee.custom_data || {}),
+              __certificate_email_status: "failed",
+              __certificate_email_sent_at: new Date().toISOString(),
+              __certificate_email_error: err?.message || "Unknown send error",
+              __certificate_email_template_type: templateType,
+            };
+            const { error: updateFailureStatusError } = await supabase
+              .from("trainings")
+              .update({ custom_data: failureCustomData })
+              .eq("id", trainee.id);
+            if (updateFailureStatusError) {
+              console.error("⚠️ Failed to persist failed status:", updateFailureStatusError);
+            }
+
             failCount++;
+            failedTraineeIds.push(trainee.id);
             console.error(`❌ Failed for ${trainee.first_name} ${trainee.last_name}:`, err);
 
             controller.enqueue(
@@ -379,6 +415,7 @@ export async function POST(req: NextRequest) {
                   failCount,
                   message: `Sent ${successCount} of ${updatedTrainees.length}... (${failCount} failed)`,
                   lastError: `${trainee.first_name} ${trainee.last_name}: ${err.message}`,
+                  lastErrorId: trainee.id,
                 })}\n\n`
               )
             );
@@ -392,6 +429,8 @@ export async function POST(req: NextRequest) {
               successCount,
               failCount,
               total: updatedTrainees.length,
+              sentTraineeIds,
+              failedTraineeIds,
               message: `Completed! ${successCount} sent, ${failCount} failed`,
             })}\n\n`
           )

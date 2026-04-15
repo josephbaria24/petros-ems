@@ -274,7 +274,7 @@ export default function PublicEvaluationPage() {
                             )}
                         </Button>
                         <p className="text-center text-muted-foreground text-sm mt-6">
-                            Powered by Petrosphere EMS Repository
+                            Powered by PetroCoreX
                         </p>
                     </div>
                 </form>

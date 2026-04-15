@@ -76,6 +76,7 @@ interface FormComponent {
   fields?: string[]
   methods?: string[]
   description?: string
+  linkUrl?: string
   fileUrl?: string
   fileName?: string
   content?: string
@@ -607,6 +608,7 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
       placeholder: '',
       fields: type === 'course_information' ? ['course_name', 'schedule_date', 'price'] : undefined,
       description: '',
+      linkUrl: '',
       fileUrl: '',
       fileName: '',
       content: ''

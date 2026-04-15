@@ -2,6 +2,7 @@
 import type { Metadata } from "next"
 import { Geist, Dancing_Script } from "next/font/google"
 import "./globals.css"
+import "sileo/styles.css"
 import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "sonner"
@@ -36,7 +37,7 @@ export default function RootLayout({
       <body className={`${poppins.className}`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AppShell>{children}</AppShell>
-          <Toaster richColors position="top-right" />
+          <Toaster />
         </ThemeProvider>
         <Analytics />
       </body>

@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { User, Briefcase, Upload, CreditCard, ChevronRight, ChevronLeft, Loader2, CheckCircle2, Download, FileText } from "lucide-react"
+import Link from "next/link"
 import { toast } from "sonner"
 
 // These would normally be imported from the actual registration page
@@ -46,6 +47,7 @@ export function CustomFormRenderer({
   const [formData, setFormData] = useState<any>({})
   const [uploading, setUploading] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({})
+  const [agreedToPrivacy, setAgreedToPrivacy] = useState(false)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const currentUploadField = useRef<string | null>(null)
@@ -732,7 +734,31 @@ export function CustomFormRenderer({
         <CardContent className="p-8">
           {pages[currentPage].map(renderComponent)}
           
-          <div className="flex justify-between items-center pt-6 border-t">
+          <div className="pt-6 border-t">
+            <div className="mb-4 rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+              By continuing, you acknowledge that you have read our{" "}
+              <Link href="/privacy-policy" className="font-medium text-primary underline">
+                Privacy Policy
+              </Link>
+              .
+            </div>
+            <div className="mb-4 flex items-start gap-3 rounded-md border bg-background p-3">
+              <Checkbox
+                id="privacy-policy-agreement-custom"
+                checked={agreedToPrivacy}
+                onCheckedChange={(checked) => setAgreedToPrivacy(Boolean(checked))}
+                className="mt-0.5 h-5 w-5 border-2 border-slate-700 data-[state=checked]:border-slate-900 data-[state=checked]:bg-slate-900 dark:border-slate-300 dark:data-[state=checked]:border-slate-100 dark:data-[state=checked]:bg-slate-100"
+              />
+              <Label
+                htmlFor="privacy-policy-agreement-custom"
+                className="cursor-pointer text-xs leading-relaxed text-foreground font-medium"
+              >
+                I have read and agree to the Privacy Policy.
+              </Label>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center">
             <Button 
               variant="outline" 
               onClick={() => setCurrentPage(cp => Math.max(0, cp - 1))}
@@ -746,9 +772,13 @@ export function CustomFormRenderer({
               <Button 
                 onClick={() => {
                   if (!validateBeforeSubmit()) return
+                  if (!agreedToPrivacy) {
+                    toast.error("Please agree to the Privacy Policy before completing registration.")
+                    return
+                  }
                   onSave(formData)
                 }} 
-                disabled={isSubmitting}
+                disabled={isSubmitting || !agreedToPrivacy}
                 className="bg-primary hover:bg-primary/90"
               >
                 {isSubmitting ? 'Submitting...' : 'Complete Registration'}

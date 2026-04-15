@@ -137,6 +137,7 @@ export default function GuestTrainingRegistration() {
   const [form, setForm] = useState<any>({})
   const [uploading, setUploading] = useState(false)
   const [agreed, setAgreed] = useState(false)
+  const [agreedPrivacyPolicy, setAgreedPrivacyPolicy] = useState(false)
   const [idPreview, setIdPreview] = useState<string | null>(null)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [scheduleRange, setScheduleRange] = useState<{ start_date: string; end_date: string } | null>(null)
@@ -1380,7 +1381,14 @@ export default function GuestTrainingRegistration() {
                         <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-tight">
                           {formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}
                         </p>
-                      )}
+                )}
+                <div className="mt-6 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  By continuing, you acknowledge that you have read our{" "}
+                  <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline">
+                    Privacy Policy
+                  </a>
+                  .
+                </div>
                     </div>
                   </div>
                 </div>
@@ -1707,8 +1715,9 @@ export default function GuestTrainingRegistration() {
 
                   <div className="flex justify-end pt-4">
                     <Button
-                      onClick={() => {
-                        if (!validateStep1()) return
+                      onClick={async () => {
+                        const isStepValid = await validateStep1()
+                        if (!isStepValid) return
 
                         if (form.employment_status === "Unemployed") {
                           setStep(3)
@@ -2302,10 +2311,26 @@ export default function GuestTrainingRegistration() {
                               id="terms"
                               checked={agreed}
                               onCheckedChange={() => setAgreed(!agreed)}
-                              className="mt-1"
+                              className="mt-1 h-5 w-5 border-2 border-slate-700 data-[state=checked]:border-slate-900 data-[state=checked]:bg-slate-900 dark:border-slate-300 dark:data-[state=checked]:border-slate-100 dark:data-[state=checked]:bg-slate-100"
                             />
-                            <Label htmlFor="terms" className="cursor-pointer text-sm leading-relaxed text-gray-700">
+                            <Label htmlFor="terms" className="cursor-pointer text-sm leading-relaxed text-gray-900 dark:text-gray-100 font-medium">
                               I have read and agree to the terms and conditions stated above. *
+                            </Label>
+                          </div>
+
+                          <div className="flex items-start space-x-3 pt-2">
+                            <Checkbox
+                              id="privacy-policy-agreement-default"
+                              checked={agreedPrivacyPolicy}
+                              onCheckedChange={(checked) => setAgreedPrivacyPolicy(Boolean(checked))}
+                              className="mt-1 h-5 w-5 border-2 border-slate-700 data-[state=checked]:border-slate-900 data-[state=checked]:bg-slate-900 dark:border-slate-300 dark:data-[state=checked]:border-slate-100 dark:data-[state=checked]:bg-slate-100"
+                            />
+                            <Label htmlFor="privacy-policy-agreement-default" className="cursor-pointer text-sm leading-relaxed text-gray-900 dark:text-gray-100 font-medium">
+                              I have read and agree to the{" "}
+                              <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                                Privacy Policy
+                              </a>
+                              . *
                             </Label>
                           </div>
                         </CardContent>
@@ -2314,7 +2339,7 @@ export default function GuestTrainingRegistration() {
                       <div className="flex justify-end pt-4">
                         <Button
                           onClick={() => setShowConfirmDialog(true)}
-                          disabled={!agreed}
+                          disabled={!agreed || !agreedPrivacyPolicy}
                           size="lg"
                           className="bg-slate-900 hover:bg-slate-700 cursor-pointer"
                         >

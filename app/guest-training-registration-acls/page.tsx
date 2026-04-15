@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Card, CardContent } from "@/components/ui/card"
 import { ArrowLeft, CheckCircle2 } from "lucide-react"
@@ -20,6 +21,7 @@ export default function ACLSRegistrationForm() {
     const [step, setStep] = useState(1)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isSubmitted, setIsSubmitted] = useState(false)
+    const [agreedPrivacyPolicy, setAgreedPrivacyPolicy] = useState(false)
     const [bookingReference, setBookingReference] = useState("")
     const [regions, setRegions] = useState<{ code: string; name: string }[]>([])
 
@@ -166,6 +168,10 @@ export default function ACLSRegistrationForm() {
     }
 
     const handleSubmit = async () => {
+        if (!agreedPrivacyPolicy) {
+            toast.error("Please agree to the Privacy Policy before submitting.")
+            return
+        }
         if (!validateStep()) return
 
         setIsSubmitting(true)
@@ -555,7 +561,7 @@ export default function ACLSRegistrationForm() {
                                     </Button>
                                     <Button
                                         onClick={handleSubmit}
-                                        disabled={isSubmitting}
+                                        disabled={isSubmitting || !agreedPrivacyPolicy}
                                         className="bg-[#1a1f71] hover:bg-[#151859]"
                                     >
                                         {isSubmitting ? "Submitting..." : "Submit"}
@@ -563,6 +569,27 @@ export default function ACLSRegistrationForm() {
                                 </div>
                             </div>
                         )}
+
+                        <div className="mt-6 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground space-y-3">
+                            <p>
+                                By continuing, you acknowledge that you have read our{" "}
+                                <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline">
+                                    Privacy Policy
+                                </a>
+                                .
+                            </p>
+                            <div className="flex items-start gap-3 rounded-md border bg-background p-3">
+                                <Checkbox
+                                    id="privacy-policy-agreement-acls"
+                                    checked={agreedPrivacyPolicy}
+                                    onCheckedChange={(checked) => setAgreedPrivacyPolicy(Boolean(checked))}
+                                    className="mt-0.5 h-5 w-5 border-2 border-slate-700 data-[state=checked]:border-slate-900 data-[state=checked]:bg-slate-900 dark:border-slate-300 dark:data-[state=checked]:border-slate-100 dark:data-[state=checked]:bg-slate-100"
+                                />
+                                <Label htmlFor="privacy-policy-agreement-acls" className="cursor-pointer text-xs leading-relaxed text-foreground font-medium">
+                                    I have read and agree to the Privacy Policy.
+                                </Label>
+                            </div>
+                        </div>
 
                         {/* Progress indicator */}
                         <div className="mt-8 pt-6 border-t">
