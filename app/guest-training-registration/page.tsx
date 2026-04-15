@@ -185,6 +185,8 @@ export default function GuestTrainingRegistration() {
 
   // Add state for schedule event type
   const [scheduleEventType, setScheduleEventType] = useState<string>("")
+  const [scheduleType, setScheduleType] = useState<string>("")
+  const [scheduleBranch, setScheduleBranch] = useState<string>("")
 
   const [voucherCode, setVoucherCode] = useState("")
   const [voucherDetails, setVoucherDetails] = useState<any>(null)
@@ -469,6 +471,7 @@ export default function GuestTrainingRegistration() {
           .select(`
           course_id,
           schedule_type,
+          branch,
           event_type,
           registration_form_type,
           schedule_ranges (start_date, end_date),
@@ -508,6 +511,12 @@ export default function GuestTrainingRegistration() {
         // ✅ Set event type FIRST
         if (scheduleData?.event_type) {
           setScheduleEventType(scheduleData.event_type)
+        }
+        if (scheduleData?.schedule_type) {
+          setScheduleType(scheduleData.schedule_type)
+        }
+        if (scheduleData?.branch) {
+          setScheduleBranch(scheduleData.branch)
         }
 
         if (scheduleData.course_id) {
@@ -1387,6 +1396,26 @@ export default function GuestTrainingRegistration() {
                       <CustomFormRenderer 
                         config={course.registration_config || []} 
                         isSubmitting={isSubmitted} 
+                        courseInformation={{
+                          courseName: course?.name || "",
+                          courseTitle: course?.title || "",
+                          courseDescription: course?.description || "",
+                          scheduleDate: scheduleRange
+                            ? formatDateRange(scheduleRange.start_date, scheduleRange.end_date)
+                            : "",
+                          scheduleType: scheduleType || "",
+                          branch: scheduleBranch || "",
+                          eventType: getEventTypeLabel(),
+                          price: getApplicableFee(),
+                          trainingFee: course?.training_fee ?? null,
+                          onlineFee: course?.online_fee ?? null,
+                          faceToFaceFee: course?.face_to_face_fee ?? null,
+                          elearningFee: course?.elearning_fee ?? null,
+                          hasPvcId: !!course?.has_pvc_id,
+                          pvcIdType: course?.pvc_id_type || "",
+                          pvcStudentPrice: course?.pvc_student_price ?? null,
+                          pvcProfessionalPrice: course?.pvc_professional_price ?? null,
+                        }}
                         onSave={(data) => {
                           setForm((prev: any) => ({ ...prev, ...data }))
                           setShowConfirmDialog(true)

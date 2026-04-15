@@ -56,6 +56,8 @@ type FormComponentType =
   | 'employment_info'
   | 'id_upload'
   | 'payment_section'
+  | 'course_information'
+  | 'course_price'
   | 'custom_input'
   | 'custom_select'
   | 'custom_radio'
@@ -90,6 +92,7 @@ const AVAILABLE_COMPONENTS: { type: FormComponentType; label: string; icon: any;
   { type: 'personal_info', label: 'Personal Info Block', icon: User, description: 'Collects name, email, phone, and address' },
   { type: 'employment_info', label: 'Employment Block', icon: Briefcase, description: 'Collects company, position, and industry' },
   { type: 'id_upload', label: 'ID Picture Upload', icon: Upload, description: 'Upload area for ID and 2x2 photo' },
+  { type: 'course_information', label: 'Course Information Block', icon: CreditCard, description: 'Show selected course details (name, date, prices, etc.)' },
   { type: 'payment_section', label: 'Payment Section', icon: CreditCard, description: 'Displays course fees and payment methods' },
   { type: 'custom_input', label: 'Custom Text Input', icon: Type, description: 'A single text input field' },
   { type: 'custom_select', label: 'Custom Select', icon: Layout, description: 'A dropdown selection field' },
@@ -445,6 +448,20 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
     }))
   }
 
+  const toggleCourseInfoField = (compId: string, field: string) => {
+    const defaults = ['course_name', 'schedule_date', 'price']
+    setConfig(config.map(c => {
+      if (c.id === compId) {
+        const currentFields = (c as any).fields || defaults
+        const newFields = currentFields.includes(field)
+          ? currentFields.filter((f: string) => f !== field)
+          : [...currentFields, field]
+        return { ...c, fields: newFields }
+      }
+      return c
+    }))
+  }
+
   const triggerDownloadableFileUpload = (compId: string) => {
     currentDownloadableComponentId.current = compId
     downloadableFileInputRef.current?.click()
@@ -585,9 +602,10 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
       id: Math.random().toString(36).substr(2, 9),
       type,
       label: AVAILABLE_COMPONENTS.find(c => c.type === type)?.label || 'New Component',
-      required: !['downloadable_file', 'rich_text', 'page_break'].includes(type),
+      required: !['downloadable_file', 'rich_text', 'page_break', 'course_information', 'course_price'].includes(type),
       options: ['Option 1', 'Option 2'],
       placeholder: '',
+      fields: type === 'course_information' ? ['course_name', 'schedule_date', 'price'] : undefined,
       description: '',
       fileUrl: '',
       fileName: '',
@@ -687,6 +705,23 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                   <CustomFormRenderer
                     config={config}
                     isSubmitting={false}
+                    courseInformation={{
+                      courseName: course?.name || "",
+                      courseTitle: course?.title || "",
+                      courseDescription: course?.description || "",
+                      scheduleDate: "Preview schedule",
+                      scheduleType: "Preview schedule type",
+                      branch: "Preview branch",
+                      price: course?.training_fee ?? null,
+                      trainingFee: course?.training_fee ?? null,
+                      onlineFee: course?.online_fee ?? null,
+                      faceToFaceFee: course?.face_to_face_fee ?? null,
+                      elearningFee: course?.elearning_fee ?? null,
+                      hasPvcId: !!course?.has_pvc_id,
+                      pvcIdType: course?.pvc_id_type || "",
+                      pvcStudentPrice: course?.pvc_student_price ?? null,
+                      pvcProfessionalPrice: course?.pvc_professional_price ?? null,
+                    }}
                     onSave={(data) => console.log("Preview Save:", data)}
                   />
                 </div>
@@ -903,6 +938,9 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                       return "bg-purple-50/40 border-purple-200 dark:bg-purple-950/20 dark:border-purple-900"
                     case 'payment_section':
                       return "bg-emerald-50/40 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900"
+                    case 'course_information':
+                    case 'course_price':
+                      return "bg-amber-50/40 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900"
                     case 'downloadable_file':
                       return "bg-cyan-50/40 border-cyan-200 dark:bg-cyan-950/20 dark:border-cyan-900"
                     case 'rich_text':
@@ -975,7 +1013,7 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                               placeholder="Component Title..."
                             />
 
-                            {!['downloadable_file', 'rich_text'].includes(comp.type) && (
+                            {!['downloadable_file', 'rich_text', 'course_information', 'course_price'].includes(comp.type) && (
                               <div className="flex items-center gap-2 px-2 border-l border-border whitespace-nowrap">
                                 <Checkbox
                                   id={`req-${comp.id}`}
@@ -1062,6 +1100,41 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                                     <img src={pm.icon} alt={pm.label} className="w-5 h-5 rounded-sm object-contain" />
                                     {pm.label}
                                   </Label>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {(comp.type === 'course_information' || comp.type === 'course_price') && (
+                          <div className="flex flex-col gap-2 pl-[135px] mt-1 pb-1 border-t border-border pt-2">
+                            <p className="text-[9px] font-bold text-muted-foreground uppercase">Show Course Information</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2 gap-x-4 mt-1">
+                              {[
+                                { id: 'course_name', label: 'Course Name' },
+                                { id: 'course_title', label: 'Course Title' },
+                                { id: 'course_description', label: 'Course Description' },
+                                { id: 'schedule_date', label: 'Schedule Date' },
+                                { id: 'schedule_type', label: 'Schedule Type' },
+                                { id: 'branch', label: 'Branch' },
+                                { id: 'event_type', label: 'Event Type' },
+                                { id: 'price', label: 'Price (Current)' },
+                                { id: 'training_fee', label: 'Training Fee' },
+                                { id: 'online_fee', label: 'Online Fee' },
+                                { id: 'face_to_face_fee', label: 'Face-to-Face Fee' },
+                                { id: 'elearning_fee', label: 'E-learning Fee' },
+                                { id: 'has_pvc_id', label: 'Has PVC ID' },
+                                { id: 'pvc_id_type', label: 'PVC ID Type' },
+                                { id: 'pvc_student_price', label: 'PVC Student Price' },
+                                { id: 'pvc_professional_price', label: 'PVC Professional Price' },
+                              ].map(field => (
+                                <div key={field.id} className="flex items-center gap-2">
+                                  <Checkbox
+                                    id={`${comp.id}-${field.id}`}
+                                    checked={((comp as any).fields || ['course_name', 'schedule_date', 'price']).includes(field.id)}
+                                    onCheckedChange={() => toggleCourseInfoField(comp.id, field.id)}
+                                  />
+                                  <Label htmlFor={`${comp.id}-${field.id}`} className="text-[10px] cursor-pointer text-muted-foreground">{field.label}</Label>
                                 </div>
                               ))}
                             </div>

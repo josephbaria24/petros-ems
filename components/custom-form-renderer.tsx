@@ -17,11 +17,30 @@ import { toast } from "sonner"
 export function CustomFormRenderer({ 
   config, 
   onSave, 
-  isSubmitting 
+  isSubmitting,
+  courseInformation
 }: { 
   config: any[], 
   onSave: (data: any) => void,
-  isSubmitting: boolean
+  isSubmitting: boolean,
+  courseInformation?: {
+    courseName?: string
+    courseTitle?: string
+    courseDescription?: string
+    scheduleDate?: string
+    scheduleType?: string
+    branch?: string
+    eventType?: string
+    price?: number | null
+    trainingFee?: number | null
+    onlineFee?: number | null
+    faceToFaceFee?: number | null
+    elearningFee?: number | null
+    hasPvcId?: boolean
+    pvcIdType?: string
+    pvcStudentPrice?: number | null
+    pvcProfessionalPrice?: number | null
+  }
 }) {
   const [currentPage, setCurrentPage] = useState(0)
   const [formData, setFormData] = useState<any>({})
@@ -496,6 +515,65 @@ export function CustomFormRenderer({
             </div>
           </div>
         )
+
+      case 'course_information':
+      case 'course_price': {
+        const selectedFields = comp.fields || ['course_name', 'schedule_date', 'price']
+        const infoMap: Record<string, { label: string; value?: string | number | null }> = {
+          course_name: { label: 'Course Name', value: courseInformation?.courseName },
+          course_title: { label: 'Course Title', value: courseInformation?.courseTitle },
+          course_description: { label: 'Course Description', value: courseInformation?.courseDescription },
+          schedule_date: { label: 'Schedule Date', value: courseInformation?.scheduleDate },
+          schedule_type: { label: 'Schedule Type', value: courseInformation?.scheduleType },
+          branch: { label: 'Branch', value: courseInformation?.branch },
+          event_type: { label: 'Event Type', value: courseInformation?.eventType },
+          price: { label: 'Price', value: courseInformation?.price },
+          training_fee: { label: 'Training Fee', value: courseInformation?.trainingFee },
+          online_fee: { label: 'Online Fee', value: courseInformation?.onlineFee },
+          face_to_face_fee: { label: 'Face-to-Face Fee', value: courseInformation?.faceToFaceFee },
+          elearning_fee: { label: 'E-learning Fee', value: courseInformation?.elearningFee },
+          has_pvc_id: { label: 'Has PVC ID', value: courseInformation?.hasPvcId ? 'Yes' : 'No' },
+          pvc_id_type: { label: 'PVC ID Type', value: courseInformation?.pvcIdType },
+          pvc_student_price: { label: 'PVC Student Price', value: courseInformation?.pvcStudentPrice },
+          pvc_professional_price: { label: 'PVC Professional Price', value: courseInformation?.pvcProfessionalPrice },
+        }
+
+        const rows = selectedFields
+          .filter((field: string) => infoMap[field])
+          .map((field: string) => ({
+            key: field,
+            label: infoMap[field].label,
+            value: infoMap[field].value,
+          }))
+          .filter((row: any) => row.value !== null && row.value !== undefined && row.value !== "")
+
+        return (
+          <div className="space-y-4 border-b pb-6 mb-6" key={comp.id}>
+            <div className="flex items-center gap-2 mb-2">
+              <CreditCard className="h-5 w-5 text-primary" />
+              <h3 className="font-bold text-lg">{comp.label || "Course Information"}</h3>
+            </div>
+            <div className="rounded-lg border bg-amber-50/50 p-4 space-y-2">
+              {rows.length > 0 ? (
+                <>
+                  {rows.map((item: any) => (
+                    <div key={item.key} className="flex items-center justify-between text-sm gap-4">
+                      <span className="text-muted-foreground">{item.label}</span>
+                      <span className="font-semibold">
+                        {typeof item.value === "number"
+                          ? `PHP ${Number(item.value).toLocaleString()}`
+                          : String(item.value)}
+                      </span>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No course information is configured yet.</p>
+              )}
+            </div>
+          </div>
+        )
+      }
 
       case 'custom_input':
         return (
