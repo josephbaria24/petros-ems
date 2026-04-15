@@ -193,10 +193,45 @@ export default function GuestTrainingRegistration() {
 
   const normalizeToLocalPhone = (phoneNumber: string) => {
     const digits = phoneNumber.replace(/\D/g, "")
-    if (digits.startsWith("63") && digits.length >= 12) {
-      return `0${digits.slice(2, 12)}`
+    const localDigits = digits.startsWith("63") && digits.length >= 12
+      ? `0${digits.slice(2, 12)}`
+      : digits.slice(0, 11)
+    return formatPhoneInput(localDigits)
+  }
+
+  const formatPhoneInput = (input: string) => {
+    const digits = input.replace(/\D/g, "")
+
+    if (!digits) return ""
+
+    if (digits.startsWith("63")) {
+      if (digits.length <= 4) return digits
+      if (digits.length <= 7) return `${digits.slice(0, 4)} ${digits.slice(4)}`
+      return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`
     }
-    return digits.slice(0, 11)
+
+    if (digits.length <= 4) return digits
+    if (digits.length <= 7) return `${digits.slice(0, 4)} ${digits.slice(4)}`
+    return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`
+  }
+
+  const getPhoneWarning = (phoneNumber: string) => {
+    const digits = phoneNumber.replace(/\D/g, "")
+    if (!digits) return ""
+    if (digits.startsWith("0") && digits.length > 11) {
+      return "Mobile numbers starting with 0 should not exceed 11 digits."
+    }
+    if (digits.startsWith("63") && digits.length > 12) {
+      return "Mobile numbers starting with 63 should not exceed 12 digits."
+    }
+    return ""
+  }
+
+  const isValidPhoneNumber = (phoneNumber: string) => {
+    const digits = phoneNumber.replace(/\D/g, "")
+    if (digits.startsWith("0")) return digits.length === 11
+    if (digits.startsWith("63")) return digits.length === 12
+    return false
   }
 
   const requiredPersonalFields = [
@@ -221,6 +256,18 @@ export default function GuestTrainingRegistration() {
     "company_region",
     "total_workers",
   ]
+
+  useEffect(() => {
+    const root = document.documentElement
+    const hadDarkClass = root.classList.contains("dark")
+    if (hadDarkClass) root.classList.remove("dark")
+    root.classList.add("light")
+
+    return () => {
+      root.classList.remove("light")
+      if (hadDarkClass) root.classList.add("dark")
+    }
+  }, [])
 
   const validateStep3 = () => {
     if (!form.id_picture_url) {
@@ -255,11 +302,10 @@ export default function GuestTrainingRegistration() {
     }
 
     if (form.phone_number) {
-      const phoneDigits = form.phone_number.replace(/\D/g, "")
-      if (phoneDigits.length !== 11) {
+      if (!isValidPhoneNumber(form.phone_number)) {
         newErrors.phone_number = true
         if (!firstErrorField) firstErrorField = "phone_number"
-        toast.error("Please enter a valid 11-digit mobile number.")
+        toast.error("Enter a valid mobile number (11 digits if starts with 0, 12 digits if starts with 63).")
       }
     }
 
@@ -728,8 +774,8 @@ export default function GuestTrainingRegistration() {
     const { name, value } = e.target;
 
     if (name === "phone_number") {
-      const digits = value.replace(/\D/g, "").slice(0, 11);
-      setForm((prev: any) => ({ ...prev, phone_number: digits }));
+      const digits = value.replace(/\D/g, "");
+      setForm((prev: any) => ({ ...prev, phone_number: formatPhoneInput(digits) }));
       return;
     }
 
@@ -1133,6 +1179,7 @@ export default function GuestTrainingRegistration() {
             body: JSON.stringify({
               to: form.email,
               bookingReference,
+              courseId,
               courseName: courseData?.name || course?.name || "N/A",
               scheduleRange: scheduleRange
                 ? {
@@ -1346,7 +1393,36 @@ export default function GuestTrainingRegistration() {
                         }} 
                       />
                     ) : (
-                      null
+                      <div className="max-w-xl mx-auto">
+                        <Card className="border border-emerald-200 bg-emerald-50/40 shadow-sm">
+                          <CardContent className="p-8 text-center space-y-4">
+                            <div className="flex justify-center">
+                              <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
+                                <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                              </div>
+                            </div>
+                            <h2 className="text-2xl font-bold text-emerald-800">Registration Complete</h2>
+                            <p className="text-sm text-emerald-700">
+                              Your custom registration form has been submitted successfully.
+                            </p>
+                            {bookingReference && (
+                              <p className="text-sm">
+                                <span className="font-semibold text-emerald-800">Booking Reference:</span>{" "}
+                                <span className="font-mono font-bold text-emerald-900">{bookingReference}</span>
+                              </p>
+                            )}
+                            <div className="pt-2">
+                              <Button
+                                type="button"
+                                onClick={() => window.location.href = "https://tms.petros-global.com/guest-training-calendar"}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                              >
+                                Go to Training Calendar
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
                     )}
                  </div>
                ) : (
@@ -1456,14 +1532,16 @@ export default function GuestTrainingRegistration() {
                           name="phone_number"
                           value={form.phone_number || ""}
                           onChange={handleChange}
-                          placeholder="09XXXXXXXXX"
+                          placeholder="09XX XXX XXXX"
                           inputMode="numeric"
-                          maxLength={11}
                           className={errors.phone_number ? "border-red-500 focus:ring-red-500" : ""}
                           required
                         />
+                        {getPhoneWarning(form.phone_number || "") && (
+                          <p className="text-amber-600 text-xs">{getPhoneWarning(form.phone_number || "")}</p>
+                        )}
                         {errors.phone_number && (
-                          <p className="text-red-500 text-xs">A valid 11-digit mobile number is required</p>
+                          <p className="text-red-500 text-xs">Use 11 digits when starting with 0, or 12 digits when starting with 63</p>
                         )}
                       </div>
 

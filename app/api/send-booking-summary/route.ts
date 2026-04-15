@@ -1,6 +1,12 @@
 // app/api/send-booking-summary/route.ts
 import nodemailer from "nodemailer";
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+).schema("tms");
 
 
 
@@ -30,12 +36,168 @@ function formatDateRange(start: string, end: string) {
 }
 
 
+function buildCustomEmailHtml(
+  emailConfig: any[],
+  vars: Record<string, string>,
+  paymentInstructions: string,
+  employmentInfo: any
+) {
+  const enabledBlocks = emailConfig.filter((b: any) => b.enabled)
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+  <body style="margin:0;padding:0;font-family:Arial,sans-serif;background-color:#f3f4f6;">
+  <div style="max-width:600px;margin:0 auto;background-color:#ffffff;">`
+
+  const r = (text: string) => {
+    let result = text || ''
+    for (const [tag, value] of Object.entries(vars)) {
+      result = result.replace(new RegExp(tag.replace(/[{}]/g, '\\$&'), 'g'), value)
+    }
+    return result
+  }
+
+  for (const block of enabledBlocks) {
+    switch (block.type) {
+      case 'header':
+        html += `<div style="background:linear-gradient(135deg,#1e293b 0%,#334155 100%);padding:2rem;text-align:center;">
+          <img src="https://petrosphere.com.ph/trans-logo-dark.png" alt="Petrosphere" style="max-width:200px;height:auto;margin-bottom:1rem;">
+          <h1 style="color:#ffffff;margin:0;font-size:1.5rem;">${r(block.content || 'Registration Confirmed!')}</h1>
+          <p style="color:#cbd5e1;margin:0.5rem 0 0 0;">Thank you for registering with us</p>
+        </div>`
+        break
+      case 'success_banner':
+        html += `<div style="padding:0 2rem;"><div style="background-color:#ecfdf5;border-left:4px solid #10b981;padding:1rem;margin:1.5rem 0 1.5rem 0;border-radius:0.5rem;">
+          <p style="margin:0;color:#065f46;font-weight:600;">${r(block.content || 'Your training registration has been successfully submitted!')}</p>
+        </div></div>`
+        break
+      case 'greeting':
+        html += `<div style="padding:0 2rem;">
+          <p style="color:#374151;line-height:1.6;">Dear ${vars['{{trainee_name}}']},</p>
+          <p style="color:#374151;line-height:1.6;">${r(block.content || 'We are pleased to confirm your registration for the training program. Please keep this email for your records.')}</p>
+        </div>`
+        break
+      case 'booking_reference':
+        html += `<div style="padding:0 2rem;"><div style="background-color:#fef3c7;border:2px dashed #f59e0b;padding:1rem;margin:1.5rem 0;text-align:center;border-radius:0.5rem;">
+          <p style="margin:0 0 0.5rem 0;color:#92400e;font-size:0.875rem;font-weight:600;">BOOKING REFERENCE</p>
+          <p style="margin:0;color:#b45309;font-size:1.75rem;font-weight:bold;letter-spacing:0.05em;">${vars['{{booking_reference}}']}</p>
+          <p style="margin:0.5rem 0 0 0;color:#92400e;font-size:0.75rem;">${r(block.content || 'Please save this reference number for future inquiries')}</p>
+        </div></div>`
+        break
+      case 'training_details':
+        html += `<div style="padding:0 2rem;"><div style="border:1px solid #e5e7eb;border-radius:0.5rem;padding:1.5rem;margin-bottom:1.5rem;">
+          <h2 style="color:#1e3a8a;margin:0 0 1rem 0;font-size:1.125rem;border-bottom:2px solid #3b82f6;padding-bottom:0.5rem;">Training Details</h2>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;width:35%;">Course:</td><td style="padding:0.5rem 0;color:#111827;">${vars['{{course_name}}']}</td></tr>
+            <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;">Schedule:</td><td style="padding:0.5rem 0;color:#111827;">${vars['{{schedule}}']}</td></tr>
+            <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;">Booking Date:</td><td style="padding:0.5rem 0;color:#111827;">${new Date().toLocaleDateString()}</td></tr>
+          </table>
+        </div></div>`
+        break
+      case 'attendee_info':
+        html += `<div style="padding:0 2rem;"><div style="border:1px solid #e5e7eb;border-radius:0.5rem;padding:1.5rem;margin-bottom:1.5rem;">
+          <h2 style="color:#1e3a8a;margin:0 0 1rem 0;font-size:1.125rem;border-bottom:2px solid #3b82f6;padding-bottom:0.5rem;">Attendee Information</h2>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;width:35%;">Name:</td><td style="padding:0.5rem 0;color:#111827;">${vars['{{trainee_name}}']}</td></tr>
+            <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;">Email:</td><td style="padding:0.5rem 0;color:#111827;">${vars['{{email}}']}</td></tr>
+            <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;">Phone:</td><td style="padding:0.5rem 0;color:#111827;">${vars['{{phone}}']}</td></tr>
+          </table>
+        </div></div>`
+        break
+      case 'employment_info':
+        if (employmentInfo) {
+          html += `<div style="padding:0 2rem;"><div style="border:1px solid #e5e7eb;border-radius:0.5rem;padding:1.5rem;margin-bottom:1.5rem;">
+            <h2 style="color:#1e3a8a;margin:0 0 1rem 0;font-size:1.125rem;border-bottom:2px solid #3b82f6;padding-bottom:0.5rem;">Employment Information</h2>
+            <table style="width:100%;border-collapse:collapse;">
+              <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;width:35%;">Company:</td><td style="padding:0.5rem 0;color:#111827;">${employmentInfo.companyName || 'N/A'}</td></tr>
+              <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;">Position:</td><td style="padding:0.5rem 0;color:#111827;">${employmentInfo.position || 'N/A'}</td></tr>
+              <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;">Industry:</td><td style="padding:0.5rem 0;color:#111827;">${employmentInfo.industry || 'N/A'}</td></tr>
+            </table>
+          </div></div>`
+        }
+        break
+      case 'payment_summary':
+        html += `<div style="padding:0 2rem;"><div style="border:1px solid #e5e7eb;border-radius:0.5rem;padding:1.5rem;margin-bottom:1.5rem;">
+          <h2 style="color:#1e3a8a;margin:0 0 1rem 0;font-size:1.125rem;border-bottom:2px solid #3b82f6;padding-bottom:0.5rem;">Payment Summary</h2>
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;width:50%;">Training Fee:</td><td style="padding:0.5rem 0;color:#111827;text-align:right;">${vars['{{training_fee}}']}</td></tr>
+            <tr style="border-top:2px solid #e5e7eb;"><td style="padding:0.75rem 0;color:#111827;font-weight:700;font-size:1.125rem;">Total Amount:</td><td style="padding:0.75rem 0;color:#111827;font-weight:700;font-size:1.125rem;text-align:right;">${vars['{{total_amount}}']}</td></tr>
+            <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;">Payment Method:</td><td style="padding:0.5rem 0;color:#111827;text-align:right;">${vars['{{payment_method}}']}</td></tr>
+            <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;">Payment Status:</td><td style="padding:0.5rem 0;text-align:right;"><span style="background-color:#dbeafe;color:#1e3a8a;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.875rem;font-weight:600;">${vars['{{payment_status}}']}</span></td></tr>
+          </table>
+          ${paymentInstructions}
+        </div></div>`
+        break
+      case 'payment_instructions':
+        html += `<div style="padding:0 2rem;">${paymentInstructions}</div>`
+        break
+      case 'upload_receipt_link':
+        html += `<div style="padding:0 2rem;"><div style="padding:1rem;background-color:#dbeafe;border-radius:0.5rem;border:2px solid #3b82f6;margin-bottom:1.5rem;">
+          <p style="font-weight:600;color:#1e3a8a;margin-bottom:0.5rem;">📤 ${block.description || 'Upload your payment receipt for faster verification'}</p>
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/upload-receipt" style="display:inline-block;margin-top:0.5rem;padding:0.75rem 1.5rem;background-color:#3b82f6;color:white;text-decoration:none;border-radius:0.5rem;font-weight:600;">
+            ${block.buttonText || 'Upload Receipt Now'}
+          </a>
+          <p style="margin-top:0.5rem;font-size:0.875rem;color:#4b5563;">Use your booking reference: <strong style="color:#1e3a8a;">${vars['{{booking_reference}}']}</strong></p>
+        </div></div>`
+        break
+      case 'next_steps':
+        html += `<div style="padding:0 2rem;"><div style="background-color:#eff6ff;border-left:4px solid #3b82f6;padding:1rem;margin-bottom:1.5rem;border-radius:0.5rem;">
+          <h3 style="color:#1e3a8a;margin:0 0 0.75rem 0;font-size:1rem;">📋 Next Steps:</h3>
+          <ol style="margin:0;padding-left:1.25rem;color:#374151;line-height:1.6;">
+            ${(block.items || []).map((item: string) => `<li>${r(item)}</li>`).join('')}
+          </ol>
+        </div></div>`
+        break
+      case 'contact_info':
+        html += `<div style="padding:0 2rem;"><div style="background-color:#f9fafb;padding:1rem;border-radius:0.5rem;margin-bottom:1.5rem;">
+          <h3 style="color:#111827;margin:0 0 0.75rem 0;font-size:1rem;">📞 Need Help?</h3>
+          <p style="margin:0.25rem 0;color:#4b5563;font-size:0.875rem;"><strong>Phone:</strong> Globe/TM 0917-708-7994</p>
+          <p style="margin:0.25rem 0;color:#4b5563;font-size:0.875rem;"><strong>Email:</strong> training@petrosphere.com.ph</p>
+          <p style="margin:0.25rem 0;color:#4b5563;font-size:0.875rem;"><strong>Address:</strong> Unit 305 3F, Trigold Business Park, Barangay San Pedro National Highway, Puerto Princesa City, 5300 Palawan, Philippines</p>
+        </div></div>`
+        break
+      case 'footer':
+        html += `<div style="background-color:#f9fafb;padding:1.5rem;text-align:center;border-top:1px solid #e5e7eb;">
+          <p style="margin:0;color:#6b7280;font-size:0.875rem;">This is an automated message. Please do not reply to this email.</p>
+          <p style="margin:0.5rem 0 0 0;color:#6b7280;font-size:0.75rem;">© ${new Date().getFullYear()} Petrosphere Inc. All rights reserved.</p>
+        </div>`
+        break
+      case 'custom_text':
+        html += `<div style="padding:0 2rem;"><div style="margin-bottom:1.5rem;color:#374151;line-height:1.6;">${r(block.content || '')}</div></div>`
+        break
+      case 'custom_button':
+        html += `<div style="padding:0 2rem;text-align:center;margin-bottom:1.5rem;">
+          <a href="${r(block.buttonUrl || '#')}" style="display:inline-block;padding:0.75rem 2rem;background-color:#3b82f6;color:white;text-decoration:none;border-radius:0.5rem;font-weight:600;">
+            ${r(block.buttonText || 'Click Here')}
+          </a>
+        </div>`
+        break
+      case 'custom_upload_link': {
+        const uploadUrl = `${process.env.NEXT_PUBLIC_APP_URL}/client-upload?courseId=${block._courseId || ''}&blockId=${block.id}&ref=${vars['{{booking_reference}}']}`
+        html += `<div style="padding:0 2rem;"><div style="padding:1rem;background-color:#ecfeff;border-radius:0.5rem;border:2px solid #06b6d4;margin-bottom:1.5rem;">
+          <p style="font-weight:600;color:#155e75;margin-bottom:0.5rem;">📎 ${r(block.uploadPageTitle || 'Upload Files')}</p>
+          <p style="color:#0e7490;font-size:0.875rem;margin-bottom:0.75rem;">${r(block.uploadPageDescription || '')}</p>
+          <a href="${uploadUrl}" style="display:inline-block;padding:0.75rem 1.5rem;background-color:#0891b2;color:white;text-decoration:none;border-radius:0.5rem;font-weight:600;">
+            ${r(block.buttonText || 'Upload Files')}
+          </a>
+        </div></div>`
+        break
+      }
+      case 'divider':
+        html += `<div style="padding:1rem 2rem;"><hr style="border:none;border-top:1px solid #e5e7eb;margin:0;"></div>`
+        break
+    }
+  }
+
+  html += `</div></body></html>`
+  return html
+}
+
 export async function POST(req: Request) {
   try {
     const {
       to,
       bookingReference,
       courseName,
+      courseId,
       scheduleRange,
       traineeInfo,
       employmentInfo,
@@ -353,11 +515,53 @@ export async function POST(req: Request) {
       </html>
     `;
 
+    // Check for custom email config on the course
+    let finalHtml = htmlContent;
+
+    if (courseId) {
+      try {
+        const { data: courseData } = await supabase
+          .from("courses")
+          .select("email_template_type, email_template_config")
+          .eq("id", courseId)
+          .single();
+
+        if (courseData?.email_template_type === 'custom' && courseData?.email_template_config?.length > 0) {
+          const paymentMethodLabel = paymentInfo.paymentMethod === 'BPI' ? 'BPI Bank Transfer'
+            : paymentInfo.paymentMethod === 'GCASH' ? 'GCash' : 'Over the Counter';
+
+          const vars: Record<string, string> = {
+            '{{trainee_name}}': traineeInfo.name,
+            '{{first_name}}': traineeInfo.name?.split(' ')[0] || '',
+            '{{last_name}}': traineeInfo.name?.split(' ').slice(-1)[0] || '',
+            '{{email}}': traineeInfo.email,
+            '{{phone}}': traineeInfo.phone,
+            '{{booking_reference}}': bookingReference,
+            '{{course_name}}': courseName,
+            '{{schedule}}': formattedSchedule,
+            '{{training_fee}}': `₱${paymentInfo.trainingFee.toLocaleString()}`,
+            '{{total_amount}}': `₱${paymentInfo.totalAmount.toLocaleString()}`,
+            '{{payment_method}}': paymentMethodLabel,
+            '{{payment_status}}': paymentInfo.paymentStatus,
+          };
+
+          const configWithCourseId = courseData.email_template_config.map((b: any) => ({
+            ...b,
+            _courseId: courseId,
+          }));
+
+          finalHtml = buildCustomEmailHtml(configWithCourseId, vars, paymentInstructions, employmentInfo);
+        }
+      } catch (configErr) {
+        console.error("Failed to load custom email config, using default:", configErr);
+      }
+    }
+
     const mailOptions = {
       from: `"${process.env.SMTP_FROM_NAME || 'Petrosphere Training'}" <${process.env.SMTP_USER}>`,
       to,
       subject: `Training Registration Confirmed - ${bookingReference}`,
-      html: htmlContent,
+      html: finalHtml,
     };
 
     await transporter.sendMail(mailOptions);

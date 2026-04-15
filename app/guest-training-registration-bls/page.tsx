@@ -38,6 +38,38 @@ export default function BLSRegistrationForm() {
         email: "",
     })
 
+    const formatPhoneInput = (input: string) => {
+        const digits = input.replace(/\D/g, "")
+        if (!digits) return ""
+        if (digits.startsWith("63")) {
+            if (digits.length <= 4) return digits
+            if (digits.length <= 7) return `${digits.slice(0, 4)} ${digits.slice(4)}`
+            return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`
+        }
+        if (digits.length <= 4) return digits
+        if (digits.length <= 7) return `${digits.slice(0, 4)} ${digits.slice(4)}`
+        return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`
+    }
+
+    const getPhoneWarning = (phoneNumber: string) => {
+        const digits = phoneNumber.replace(/\D/g, "")
+        if (!digits) return ""
+        if (digits.startsWith("0") && digits.length > 11) {
+            return "Mobile numbers starting with 0 should not exceed 11 digits."
+        }
+        if (digits.startsWith("63") && digits.length > 12) {
+            return "Mobile numbers starting with 63 should not exceed 12 digits."
+        }
+        return ""
+    }
+
+    const isValidPhoneNumber = (phoneNumber: string) => {
+        const digits = phoneNumber.replace(/\D/g, "")
+        if (digits.startsWith("0")) return digits.length === 11
+        if (digits.startsWith("63")) return digits.length === 12
+        return false
+    }
+
     useEffect(() => {
         if (!scheduleId) {
             toast.error("Invalid registration link")
@@ -55,12 +87,24 @@ export default function BLSRegistrationForm() {
             .catch(err => console.error("Failed to load regions", err))
     }, [scheduleId])
 
+    useEffect(() => {
+        const root = document.documentElement
+        const hadDarkClass = root.classList.contains("dark")
+        if (hadDarkClass) root.classList.remove("dark")
+        root.classList.add("light")
+
+        return () => {
+            root.classList.remove("light")
+            if (hadDarkClass) root.classList.add("dark")
+        }
+    }, [])
+
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target
 
         if (name === "phone_number") {
-            const digits = value.replace(/\D/g, "").slice(0, 11)
-            setForm(prev => ({ ...prev, phone_number: digits }))
+            const digits = value.replace(/\D/g, "")
+            setForm(prev => ({ ...prev, phone_number: formatPhoneInput(digits) }))
             return
         }
 
@@ -103,9 +147,8 @@ export default function BLSRegistrationForm() {
                 toast.error("Please enter a valid email address")
                 return false
             }
-            const phoneDigits = form.phone_number.replace(/\D/g, "")
-            if (phoneDigits.length !== 11) {
-                toast.error("Please enter a valid 11-digit mobile number")
+            if (!isValidPhoneNumber(form.phone_number)) {
+                toast.error("Enter a valid mobile number (11 digits if starts with 0, 12 digits if starts with 63)")
                 return false
             }
         }
@@ -447,11 +490,13 @@ export default function BLSRegistrationForm() {
                                                 name="phone_number"
                                                 value={form.phone_number}
                                                 onChange={handleChange}
-                                                placeholder="09XXXXXXXXX"
+                                                placeholder="09XX XXX XXXX"
                                                 inputMode="numeric"
-                                                maxLength={11}
                                                 className="mt-2"
                                             />
+                                            {getPhoneWarning(form.phone_number) && (
+                                                <p className="text-amber-600 text-xs mt-1">{getPhoneWarning(form.phone_number)}</p>
+                                            )}
                                         </div>
 
                                         <div>

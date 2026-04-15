@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
-import { User, Briefcase, Upload, CreditCard, ChevronRight, ChevronLeft, Loader2, CheckCircle2 } from "lucide-react"
+import { User, Briefcase, Upload, CreditCard, ChevronRight, ChevronLeft, Loader2, CheckCircle2, Download, FileText } from "lucide-react"
 import { toast } from "sonner"
 
 // These would normally be imported from the actual registration page
@@ -26,12 +26,162 @@ export function CustomFormRenderer({
   const [currentPage, setCurrentPage] = useState(0)
   const [formData, setFormData] = useState<any>({})
   const [uploading, setUploading] = useState<string | null>(null)
+  const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({})
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const currentUploadField = useRef<string | null>(null)
 
+  const formatPhoneInput = (input: string) => {
+    const digits = input.replace(/\D/g, "")
+    if (!digits) return ""
+    if (digits.startsWith("63")) {
+      if (digits.length <= 4) return digits
+      if (digits.length <= 7) return `${digits.slice(0, 4)} ${digits.slice(4)}`
+      return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`
+    }
+    if (digits.length <= 4) return digits
+    if (digits.length <= 7) return `${digits.slice(0, 4)} ${digits.slice(4)}`
+    return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`
+  }
+
   const handleChange = (id: string, value: any) => {
-    setFormData((prev: any) => ({ ...prev, [id]: value }))
+    const nextValue =
+      id === "phone" || id === "phone_number"
+        ? formatPhoneInput(String(value ?? ""))
+        : value
+
+    setFormData((prev: any) => ({ ...prev, [id]: nextValue }))
+    setValidationErrors((prev) => {
+      if (!prev[id]) return prev
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+  }
+
+  const getDownloadAckKey = (compId: string) => `download_ack_${compId}`
+
+  const getPhoneWarning = (phoneNumber: string) => {
+    const digits = phoneNumber.replace(/\D/g, "")
+    if (!digits) return ""
+    if (digits.startsWith("0") && digits.length > 11) {
+      return "Mobile numbers starting with 0 should not exceed 11 digits."
+    }
+    if (digits.startsWith("63") && digits.length > 12) {
+      return "Mobile numbers starting with 63 should not exceed 12 digits."
+    }
+    return ""
+  }
+
+  const isValidPhoneNumber = (phoneNumber: string) => {
+    const digits = phoneNumber.replace(/\D/g, "")
+    if (digits.startsWith("0")) return digits.length === 11
+    if (digits.startsWith("63")) return digits.length === 12
+    return false
+  }
+
+  const hasValue = (value: any) => {
+    if (typeof value === "string") return value.trim().length > 0
+    return value !== null && value !== undefined && value !== ""
+  }
+
+  const validateBeforeSubmit = () => {
+    const nextErrors: Record<string, boolean> = {}
+    const missingLabels: string[] = []
+
+    const pushMissing = (key: string, label: string) => {
+      nextErrors[key] = true
+      missingLabels.push(label)
+    }
+
+    config.forEach((comp: any) => {
+      if (!comp.required) return
+
+      switch (comp.type) {
+        case "personal_info": {
+          const enabledFields = comp.fields || ["first_name", "last_name", "email", "phone"]
+          const labels: Record<string, string> = {
+            first_name: "First Name",
+            last_name: "Last Name",
+            email: "Email",
+            phone: "Phone Number",
+            address: "Address",
+            gender: "Gender",
+            dob: "Date of Birth",
+            nationality: "Nationality",
+            religion: "Religion",
+            civil_status: "Civil Status",
+          }
+
+          enabledFields.forEach((field: string) => {
+            if (!hasValue(formData[field])) pushMissing(field, labels[field] || field)
+            if (field === "phone" && hasValue(formData[field]) && !isValidPhoneNumber(formData[field])) {
+              pushMissing(field, "Phone Number")
+            }
+          })
+          break
+        }
+
+        case "employment_info": {
+          const empFields = comp.fields || ["company", "position", "industry"]
+          const labels: Record<string, string> = {
+            company: "Company Name",
+            position: "Position",
+            industry: "Industry",
+            company_address: "Company Address",
+            years_experience: "Years of Experience",
+          }
+
+          empFields.forEach((field: string) => {
+            if (!hasValue(formData[field])) pushMissing(field, labels[field] || field)
+          })
+          break
+        }
+
+        case "id_upload": {
+          const uploadFields = comp.fields || ["govt_id", "photo"]
+          const labels: Record<string, string> = {
+            govt_id: "Government ID",
+            photo: "2x2 Picture",
+            prc_license: "PRC License",
+            signature: "E-Signature",
+          }
+
+          uploadFields.forEach((field: string) => {
+            if (!hasValue(formData[field])) pushMissing(field, labels[field] || field)
+          })
+          break
+        }
+
+        case "payment_section":
+          if (!hasValue(formData.payment_method)) pushMissing("payment_method", "Payment Method")
+          break
+
+        case "custom_input":
+        case "custom_select":
+        case "custom_radio":
+        case "custom_file_upload":
+          if (!hasValue(formData[comp.id])) pushMissing(comp.id, comp.label || "Required field")
+          break
+
+        case "downloadable_file": {
+          const ackKey = getDownloadAckKey(comp.id)
+          if (comp.fileUrl && !hasValue(formData[ackKey])) {
+            pushMissing(ackKey, comp.label || "Downloadable file")
+          }
+          break
+        }
+      }
+    })
+
+    setValidationErrors(nextErrors)
+
+    if (missingLabels.length > 0) {
+      toast.error(`Please complete required fields before submitting.`)
+      return false
+    }
+
+    return true
   }
 
   const triggerUpload = (field: string) => {
@@ -98,38 +248,47 @@ export function CustomFormRenderer({
               {enabledFields.includes('first_name') && (
                 <div className="space-y-2">
                   <Label>First Name {comp.required && "*"}</Label>
-                  <Input required={comp.required} onChange={(e) => handleChange('first_name', e.target.value)} />
+                  <Input required={comp.required} className={validationErrors.first_name ? "border-red-500" : ""} onChange={(e) => handleChange('first_name', e.target.value)} />
                 </div>
               )}
               {enabledFields.includes('last_name') && (
                 <div className="space-y-2">
                   <Label>Last Name {comp.required && "*"}</Label>
-                  <Input required={comp.required} onChange={(e) => handleChange('last_name', e.target.value)} />
+                  <Input required={comp.required} className={validationErrors.last_name ? "border-red-500" : ""} onChange={(e) => handleChange('last_name', e.target.value)} />
                 </div>
               )}
               {enabledFields.includes('email') && (
                 <div className="space-y-2">
                   <Label>Email {comp.required && "*"}</Label>
-                  <Input type="email" required={comp.required} onChange={(e) => handleChange('email', e.target.value)} />
+                  <Input type="email" required={comp.required} className={validationErrors.email ? "border-red-500" : ""} onChange={(e) => handleChange('email', e.target.value)} />
                 </div>
               )}
               {enabledFields.includes('phone') && (
                 <div className="space-y-2">
                   <Label>Phone Number {comp.required && "*"}</Label>
-                  <Input required={comp.required} onChange={(e) => handleChange('phone', e.target.value)} />
+                  <Input
+                    required={comp.required}
+                    inputMode="numeric"
+                    value={formData.phone || ""}
+                    className={validationErrors.phone ? "border-red-500" : ""}
+                    onChange={(e) => handleChange('phone', e.target.value)}
+                  />
+                  {getPhoneWarning(formData.phone || "") && (
+                    <p className="text-amber-600 text-xs">{getPhoneWarning(formData.phone || "")}</p>
+                  )}
                 </div>
               )}
               {enabledFields.includes('address') && (
                 <div className="space-y-2 md:col-span-2">
                   <Label>Address {comp.required && "*"}</Label>
-                  <Input required={comp.required} onChange={(e) => handleChange('address', e.target.value)} />
+                  <Input required={comp.required} className={validationErrors.address ? "border-red-500" : ""} onChange={(e) => handleChange('address', e.target.value)} />
                 </div>
               )}
               {enabledFields.includes('gender') && (
                 <div className="space-y-2">
                   <Label>Gender {comp.required && "*"}</Label>
                   <select 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={`flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${validationErrors.gender ? "border-red-500" : "border-input"}`}
                     required={comp.required} 
                     onChange={(e) => handleChange('gender', e.target.value)}
                   >
@@ -142,26 +301,26 @@ export function CustomFormRenderer({
               {enabledFields.includes('dob') && (
                 <div className="space-y-2">
                   <Label>Date of Birth {comp.required && "*"}</Label>
-                  <Input type="date" required={comp.required} onChange={(e) => handleChange('dob', e.target.value)} />
+                  <Input type="date" required={comp.required} className={validationErrors.dob ? "border-red-500" : ""} onChange={(e) => handleChange('dob', e.target.value)} />
                 </div>
               )}
               {enabledFields.includes('nationality') && (
                 <div className="space-y-2">
                   <Label>Nationality {comp.required && "*"}</Label>
-                  <Input required={comp.required} onChange={(e) => handleChange('nationality', e.target.value)} />
+                  <Input required={comp.required} className={validationErrors.nationality ? "border-red-500" : ""} onChange={(e) => handleChange('nationality', e.target.value)} />
                 </div>
               )}
               {enabledFields.includes('religion') && (
                 <div className="space-y-2">
                   <Label>Religion {comp.required && "*"}</Label>
-                  <Input required={comp.required} onChange={(e) => handleChange('religion', e.target.value)} />
+                  <Input required={comp.required} className={validationErrors.religion ? "border-red-500" : ""} onChange={(e) => handleChange('religion', e.target.value)} />
                 </div>
               )}
               {enabledFields.includes('civil_status') && (
                 <div className="space-y-2">
                   <Label>Civil Status {comp.required && "*"}</Label>
                   <select 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={`flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${validationErrors.civil_status ? "border-red-500" : "border-input"}`}
                     required={comp.required} 
                     onChange={(e) => handleChange('civil_status', e.target.value)}
                   >
@@ -189,31 +348,31 @@ export function CustomFormRenderer({
               {empFields.includes('company') && (
                 <div className="space-y-2">
                   <Label>Company Name {comp.required && "*"}</Label>
-                  <Input required={comp.required} onChange={(e) => handleChange('company', e.target.value)} />
+                  <Input required={comp.required} className={validationErrors.company ? "border-red-500" : ""} onChange={(e) => handleChange('company', e.target.value)} />
                 </div>
               )}
               {empFields.includes('position') && (
                 <div className="space-y-2">
                   <Label>Position {comp.required && "*"}</Label>
-                  <Input required={comp.required} onChange={(e) => handleChange('position', e.target.value)} />
+                  <Input required={comp.required} className={validationErrors.position ? "border-red-500" : ""} onChange={(e) => handleChange('position', e.target.value)} />
                 </div>
               )}
               {empFields.includes('industry') && (
                 <div className="space-y-2">
                   <Label>Industry {comp.required && "*"}</Label>
-                  <Input required={comp.required} onChange={(e) => handleChange('industry', e.target.value)} />
+                  <Input required={comp.required} className={validationErrors.industry ? "border-red-500" : ""} onChange={(e) => handleChange('industry', e.target.value)} />
                 </div>
               )}
               {empFields.includes('company_address') && (
                 <div className="space-y-2 md:col-span-2">
                   <Label>Company Address {comp.required && "*"}</Label>
-                  <Input required={comp.required} onChange={(e) => handleChange('company_address', e.target.value)} />
+                  <Input required={comp.required} className={validationErrors.company_address ? "border-red-500" : ""} onChange={(e) => handleChange('company_address', e.target.value)} />
                 </div>
               )}
               {empFields.includes('years_experience') && (
                 <div className="space-y-2">
                   <Label>Years of Experience {comp.required && "*"}</Label>
-                  <Input type="number" required={comp.required} onChange={(e) => handleChange('years_experience', e.target.value)} />
+                  <Input type="number" required={comp.required} className={validationErrors.years_experience ? "border-red-500" : ""} onChange={(e) => handleChange('years_experience', e.target.value)} />
                 </div>
               )}
             </div>
@@ -230,7 +389,7 @@ export function CustomFormRenderer({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {uploadFields.includes('govt_id') && (
-                <div className="border-2 border-dashed rounded-lg p-6 text-center bg-muted/30">
+                <div className={`border-2 border-dashed rounded-lg p-6 text-center bg-muted/30 ${validationErrors.govt_id ? "border-red-500" : ""}`}>
                   <p className="text-sm font-bold">Government Issued ID</p>
                   <p className="text-[10px] text-muted-foreground mb-3 italic">Upload clear image/PDF</p>
                   <Button 
@@ -246,7 +405,7 @@ export function CustomFormRenderer({
                 </div>
               )}
               {uploadFields.includes('photo') && (
-                <div className="border-2 border-dashed rounded-lg p-6 text-center bg-muted/30">
+                <div className={`border-2 border-dashed rounded-lg p-6 text-center bg-muted/30 ${validationErrors.photo ? "border-red-500" : ""}`}>
                   <p className="text-sm font-bold">2x2 Picture</p>
                   <p className="text-[10px] text-muted-foreground mb-3 italic">White background preferred</p>
                   <Button 
@@ -262,7 +421,7 @@ export function CustomFormRenderer({
                 </div>
               )}
               {uploadFields.includes('prc_license') && (
-                <div className="border-2 border-dashed rounded-lg p-6 text-center bg-muted/30">
+                <div className={`border-2 border-dashed rounded-lg p-6 text-center bg-muted/30 ${validationErrors.prc_license ? "border-red-500" : ""}`}>
                   <p className="text-sm font-bold">PRC License</p>
                   <p className="text-[10px] text-muted-foreground mb-3 italic">For clinical courses</p>
                   <Button 
@@ -278,7 +437,7 @@ export function CustomFormRenderer({
                 </div>
               )}
               {uploadFields.includes('signature') && (
-                <div className="border-2 border-dashed rounded-lg p-6 text-center bg-muted/30">
+                <div className={`border-2 border-dashed rounded-lg p-6 text-center bg-muted/30 ${validationErrors.signature ? "border-red-500" : ""}`}>
                   <p className="text-sm font-bold">E-Signature</p>
                   <p className="text-[10px] text-muted-foreground mb-3 italic">Upload or Use Pad</p>
                   <Button 
@@ -315,7 +474,7 @@ export function CustomFormRenderer({
               <RadioGroup 
                 value={formData.payment_method} 
                 onValueChange={(val) => handleChange('payment_method', val)}
-                className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+                className={`grid grid-cols-1 sm:grid-cols-3 gap-3 ${validationErrors.payment_method ? "rounded-md border border-red-500 p-2" : ""}`}
               >
                 {ALL_METHODS.filter(m => activeMethods.includes(m.id)).map(pm => (
                   <div key={pm.id} className="relative">
@@ -345,6 +504,7 @@ export function CustomFormRenderer({
             <Input 
               required={comp.required} 
               placeholder={comp.placeholder} 
+              className={validationErrors[comp.id] ? "border-red-500" : ""}
               onChange={(e) => handleChange(comp.id, e.target.value)}
             />
           </div>
@@ -355,7 +515,7 @@ export function CustomFormRenderer({
           <div className="space-y-2 mb-6" key={comp.id}>
             <Label>{comp.label} {comp.required && "*"}</Label>
             <Select onValueChange={(val) => handleChange(comp.id, val)}>
-              <SelectTrigger>
+              <SelectTrigger className={validationErrors[comp.id] ? "border-red-500" : ""}>
                 <SelectValue placeholder="Select an option" />
               </SelectTrigger>
               <SelectContent>
@@ -371,7 +531,10 @@ export function CustomFormRenderer({
         return (
           <div className="space-y-2 mb-6" key={comp.id}>
             <Label>{comp.label} {comp.required && "*"}</Label>
-            <RadioGroup onValueChange={(val) => handleChange(comp.id, val)}>
+            <RadioGroup
+              onValueChange={(val) => handleChange(comp.id, val)}
+              className={validationErrors[comp.id] ? "rounded-md border border-red-500 p-2" : ""}
+            >
               {comp.options?.map((opt: string) => (
                 <div className="flex items-center space-x-2" key={opt}>
                   <RadioGroupItem value={opt} id={`${comp.id}-${opt}`} />
@@ -379,6 +542,102 @@ export function CustomFormRenderer({
                 </div>
               ))}
             </RadioGroup>
+          </div>
+        )
+
+      case 'custom_file_upload':
+        return (
+          <div className="space-y-2 mb-6" key={comp.id}>
+            <Label>{comp.label} {comp.required && "*"}</Label>
+            {comp.placeholder && (
+              <p className="text-xs text-muted-foreground">{comp.placeholder}</p>
+            )}
+            <div className={`border-2 border-dashed rounded-lg p-4 bg-muted/20 ${validationErrors[comp.id] ? "border-red-500" : ""}`}>
+              <Button
+                variant={formData[comp.id] ? "secondary" : "outline"}
+                size="sm"
+                className="h-8 text-xs gap-2"
+                onClick={() => triggerUpload(comp.id)}
+                disabled={!!uploading}
+              >
+                {uploading === comp.id ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : formData[comp.id] ? (
+                  <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                ) : (
+                  <Upload className="h-3 w-3" />
+                )}
+                {formData[comp.id] ? "Change File" : "Upload File"}
+              </Button>
+              {formData[comp.id] && (
+                <a
+                  href={formData[comp.id]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block mt-2 text-xs text-primary underline break-all"
+                >
+                  View uploaded file
+                </a>
+              )}
+            </div>
+          </div>
+        )
+
+      case 'downloadable_file':
+        const downloadAckKey = getDownloadAckKey(comp.id)
+        const isDownloaded = !!formData[downloadAckKey]
+        return (
+          <div
+            className={`space-y-3 mb-6 border rounded-lg p-4 bg-blue-50/40 ${validationErrors[downloadAckKey] ? "border-red-500" : ""}`}
+            key={comp.id}
+          >
+            <div className="flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" />
+              <Label className="font-semibold">{comp.label || "Downloadable File"}</Label>
+            </div>
+            {comp.description && (
+              <p className="text-sm text-muted-foreground">{comp.description}</p>
+            )}
+            {comp.fileUrl ? (
+              <div className="space-y-2">
+                <a
+                  href={comp.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download={comp.fileName || true}
+                  onClick={() => handleChange(downloadAckKey, true)}
+                  className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm hover:bg-muted transition-colors"
+                >
+                  <Download className="h-4 w-4" />
+                  {comp.fileName || "Download File"}
+                </a>
+                <p className={`text-xs ${isDownloaded ? "text-green-600" : "text-muted-foreground"}`}>
+                  {isDownloaded
+                    ? "Download acknowledged. You can proceed."
+                    : "Please click download before completing registration."}
+                </p>
+                {validationErrors[downloadAckKey] && (
+                  <p className="text-xs text-red-500">
+                    You must click and download this file before submitting.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">No file attached yet.</p>
+            )}
+          </div>
+        )
+
+      case 'rich_text':
+        return (
+          <div className="space-y-3 mb-6" key={comp.id}>
+            {comp.label && <Label className="font-semibold">{comp.label}</Label>}
+            <div
+              className="rounded-lg border bg-muted/20 p-4 text-sm leading-relaxed [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_strong]:font-semibold [&_em]:italic"
+              dangerouslySetInnerHTML={{
+                __html: comp.content || "",
+              }}
+            />
           </div>
         )
 
@@ -407,7 +666,10 @@ export function CustomFormRenderer({
             
             {isLastPage ? (
               <Button 
-                onClick={() => onSave(formData)} 
+                onClick={() => {
+                  if (!validateBeforeSubmit()) return
+                  onSave(formData)
+                }} 
                 disabled={isSubmitting}
                 className="bg-primary hover:bg-primary/90"
               >
@@ -440,7 +702,7 @@ export function CustomFormRenderer({
         ref={fileInputRef} 
         className="hidden" 
         onChange={handleFileUpload}
-        accept="image/*,.pdf"
+        accept="*/*"
       />
     </div>
   )

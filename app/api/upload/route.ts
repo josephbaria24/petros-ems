@@ -27,7 +27,11 @@ function toNodeRequest(req: NextRequest): any {
 
 export async function POST(req: NextRequest) {
   return new Promise<NextResponse>((resolve) => {
-    const form = new IncomingForm({ multiples: false });
+    const form = new IncomingForm({
+      multiples: false,
+      maxFileSize: 1024 * 1024 * 1024, // 1GB app-level limit
+      maxTotalFileSize: 1024 * 1024 * 1024,
+    });
     const nodeReq = toNodeRequest(req);
 
     form.parse(nodeReq, async (err, fields: Fields, files: Files) => {

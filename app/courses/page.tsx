@@ -50,7 +50,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { MoreVertical, Edit, Trash2, ChevronLeft, ChevronRight, Plus, ExternalLink, Eye, Link as LinkIcon, ClipboardEdit, BookOpen } from "lucide-react"
+import { MoreVertical, Edit, Trash2, ChevronLeft, ChevronRight, Plus, ExternalLink, Eye, Link as LinkIcon, ClipboardEdit, BookOpen, Mail } from "lucide-react"
 import { toast } from "sonner"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -453,6 +453,10 @@ export default function CoursesPage() {
               <DropdownMenuItem onClick={() => router.push(`/courses/${row.original.id}/registration-form`)}>
                 <ClipboardEdit className="mr-2 h-4 w-4" />
                 Manage Registration Form
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(`/courses/${row.original.id}/email-template`)}>
+                <Mail className="mr-2 h-4 w-4" />
+                Manage Email Template
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => router.push(`/courses/${row.original.id}/materials`)}>
                 <BookOpen className="mr-2 h-4 w-4" />

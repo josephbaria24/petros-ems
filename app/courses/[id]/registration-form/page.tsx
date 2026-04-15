@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, use } from "react"
+import { useEffect, useRef, useState, use } from "react"
 import { useRouter } from "next/navigation"
 import { tmsDb } from "@/lib/supabase-client"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -38,8 +38,17 @@ import {
   Eye,
   Settings,
   Copy,
-  FolderOpen,
-  Edit2
+  Edit2,
+  Download,
+  Bold,
+  Italic,
+  List,
+  ListOrdered,
+  Heading,
+  Heading1,
+  Heading2,
+  Heading3,
+  Palette
 } from "lucide-react"
 
 type FormComponentType =
@@ -50,6 +59,9 @@ type FormComponentType =
   | 'custom_input'
   | 'custom_select'
   | 'custom_radio'
+  | 'custom_file_upload'
+  | 'downloadable_file'
+  | 'rich_text'
   | 'page_break'
 
 interface FormComponent {
@@ -59,6 +71,12 @@ interface FormComponent {
   required: boolean
   options?: string[] // For select and radio
   placeholder?: string
+  fields?: string[]
+  methods?: string[]
+  description?: string
+  fileUrl?: string
+  fileName?: string
+  content?: string
 }
 
 interface Template {
@@ -76,6 +94,9 @@ const AVAILABLE_COMPONENTS: { type: FormComponentType; label: string; icon: any;
   { type: 'custom_input', label: 'Custom Text Input', icon: Type, description: 'A single text input field' },
   { type: 'custom_select', label: 'Custom Select', icon: Layout, description: 'A dropdown selection field' },
   { type: 'custom_radio', label: 'Custom Radio', icon: CircleDot, description: 'Radio button selection' },
+  { type: 'custom_file_upload', label: 'Registrant File Upload', icon: Upload, description: 'Allow registrants to upload any file type' },
+  { type: 'downloadable_file', label: 'Downloadable File', icon: Download, description: 'Upload a file registrants can download' },
+  { type: 'rich_text', label: 'Instruction Text', icon: FileText, description: 'Formatted instruction block with rich text' },
   { type: 'page_break', label: 'Page Break', icon: FileText, description: 'Splits the form into multiple pages' },
 ]
 
@@ -93,9 +114,20 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
   const [templates, setTemplates] = useState<Template[]>([])
   const [templateName, setTemplateName] = useState("")
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
-  const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false)
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
+  const downloadableFileInputRef = useRef<HTMLInputElement | null>(null)
+  const currentDownloadableComponentId = useRef<string | null>(null)
+  const [uploadingDownloadableId, setUploadingDownloadableId] = useState<string | null>(null)
+  const [richTextDrafts, setRichTextDrafts] = useState<Record<string, string>>({})
+  const richTextEditorRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const richTextSelections = useRef<Record<string, Range | null>>({})
+  const [floatingToolbar, setFloatingToolbar] = useState<{
+    compId: string | null
+    top: number
+    left: number
+    visible: boolean
+  }>({ compId: null, top: 0, left: 0, visible: false })
 
   useEffect(() => {
     fetchCourseDetails()
@@ -191,9 +223,17 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
   const loadTemplate = (template: Template) => {
     if (config.length > 0 && !confirm("Loading a template will overwrite your current configuration. Proceed?")) return
     setConfig(template.config)
+    setFormType("custom")
     toast.success(`Loaded template: ${template.name}`)
-    setIsTemplateDialogOpen(false)
   }
+
+  const selectedTemplateId =
+    formType === "custom"
+      ? templates.find(
+          (template) =>
+            JSON.stringify(template.config || []) === JSON.stringify(config || [])
+        )?.id || null
+      : null
 
   const addOption = (compId: string) => {
     setConfig(config.map(c => {
@@ -252,14 +292,153 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
     }))
   }
 
+  const triggerDownloadableFileUpload = (compId: string) => {
+    currentDownloadableComponentId.current = compId
+    downloadableFileInputRef.current?.click()
+  }
+
+  const handleDownloadableFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    const compId = currentDownloadableComponentId.current
+
+    if (!file || !compId) return
+
+    setUploadingDownloadableId(compId)
+    const toastId = toast.loading("Uploading downloadable file...")
+
+    try {
+      const data = new FormData()
+      data.append("image", file)
+
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        body: data,
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "Upload failed")
+      }
+
+      updateComponent(compId, {
+        fileUrl: result.url,
+        fileName: file.name,
+      })
+
+      toast.success("File uploaded successfully", { id: toastId })
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to upload file", { id: toastId })
+    } finally {
+      setUploadingDownloadableId(null)
+      currentDownloadableComponentId.current = null
+      if (downloadableFileInputRef.current) {
+        downloadableFileInputRef.current.value = ""
+      }
+    }
+  }
+
+  const getRichTextValue = (comp: FormComponent) =>
+    richTextDrafts[comp.id] ?? comp.content ?? ""
+
+  const captureRichTextSelection = (compId: string) => {
+    const editor = richTextEditorRefs.current[compId]
+    const selection = window.getSelection()
+    if (!editor || !selection || selection.rangeCount === 0) return
+
+    const range = selection.getRangeAt(0)
+    if (editor.contains(range.commonAncestorContainer)) {
+      richTextSelections.current[compId] = range.cloneRange()
+    }
+  }
+
+  const restoreRichTextSelection = (compId: string) => {
+    const savedRange = richTextSelections.current[compId]
+    if (!savedRange) return
+
+    const selection = window.getSelection()
+    if (!selection) return
+
+    selection.removeAllRanges()
+    selection.addRange(savedRange)
+  }
+
+  const hideFloatingToolbar = () => {
+    setFloatingToolbar({ compId: null, top: 0, left: 0, visible: false })
+  }
+
+  const handleRichTextSelectionChange = (compId: string) => {
+    const editor = richTextEditorRefs.current[compId]
+    const selection = window.getSelection()
+
+    if (!editor || !selection || selection.rangeCount === 0) {
+      hideFloatingToolbar()
+      return
+    }
+
+    const range = selection.getRangeAt(0)
+    if (!editor.contains(range.commonAncestorContainer) || range.collapsed) {
+      hideFloatingToolbar()
+      return
+    }
+
+    captureRichTextSelection(compId)
+
+    const selectionRect = range.getBoundingClientRect()
+    const editorRect = editor.getBoundingClientRect()
+    const toolbarWidth = 280
+    const rawLeft = selectionRect.left - editorRect.left + selectionRect.width / 2 - toolbarWidth / 2
+    const clampedLeft = Math.max(8, Math.min(rawLeft, Math.max(8, editorRect.width - toolbarWidth - 8)))
+    const top = Math.max(8, selectionRect.top - editorRect.top - 44)
+
+    setFloatingToolbar({
+      compId,
+      top,
+      left: clampedLeft,
+      visible: true,
+    })
+  }
+
+  const applyRichTextCommand = (
+    compId: string,
+    command: string,
+    value?: string
+  ) => {
+    const editor = richTextEditorRefs.current[compId]
+    if (!editor) return
+
+    editor.focus()
+    restoreRichTextSelection(compId)
+    if (command === "foreColor") {
+      document.execCommand("styleWithCSS", false, "true")
+    }
+    document.execCommand(command, false, value)
+    const html = editor.innerHTML
+    setRichTextDrafts((prev) => ({ ...prev, [compId]: html }))
+    updateComponent(compId, { content: html })
+  }
+
+  const handleRichTextInput = (compId: string, html: string) => {
+    setRichTextDrafts((prev) => ({ ...prev, [compId]: html }))
+  }
+
+  const handleRichTextBlur = (compId: string) => {
+    const html = richTextEditorRefs.current[compId]?.innerHTML ?? richTextDrafts[compId] ?? ""
+    updateComponent(compId, { content: html })
+  }
+
   const addComponent = (type: FormComponentType) => {
     const newComponent: FormComponent = {
       id: Math.random().toString(36).substr(2, 9),
       type,
       label: AVAILABLE_COMPONENTS.find(c => c.type === type)?.label || 'New Component',
-      required: true,
+      required: !['downloadable_file', 'rich_text', 'page_break'].includes(type),
       options: ['Option 1', 'Option 2'],
-      placeholder: ''
+      placeholder: '',
+      description: '',
+      fileUrl: '',
+      fileName: '',
+      content: ''
     }
     setConfig([...config, newComponent])
   }
@@ -307,6 +486,25 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-8">
+      <style jsx global>{`
+        .dark [data-rich-text-builder='true'],
+        .dark [data-rich-text-builder='true'] *,
+        [data-theme='dark'] [data-rich-text-builder='true'],
+        [data-theme='dark'] [data-rich-text-builder='true'] * {
+          color: #e5e7eb !important;
+          -webkit-text-fill-color: #e5e7eb !important;
+        }
+
+        .dark [data-rich-text-builder='true'] [style*='color'],
+        .dark [data-rich-text-builder='true'] [color],
+        .dark [data-rich-text-builder='true'] font,
+        [data-theme='dark'] [data-rich-text-builder='true'] [style*='color'],
+        [data-theme='dark'] [data-rich-text-builder='true'] [color],
+        [data-theme='dark'] [data-rich-text-builder='true'] font {
+          color: #e5e7eb !important;
+          -webkit-text-fill-color: #e5e7eb !important;
+        }
+      `}</style>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => router.back()}>
@@ -360,7 +558,12 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
           <CardContent>
             <RadioGroup value={formType} onValueChange={setFormType} className="space-y-4">
               {['default', 'ivt', 'bls', 'acls', 'custom'].map((t) => (
-                <div key={t} className="flex items-center space-x-2 border p-3 rounded-lg cursor-pointer hover:bg-muted/50">
+                <div
+                  key={t}
+                  className={`flex items-center space-x-2 border p-3 rounded-lg cursor-pointer hover:bg-muted/50 ${
+                    formType === t ? "border-primary/60 bg-primary/5" : ""
+                  }`}
+                >
                   <RadioGroupItem value={t} id={t} />
                   <Label htmlFor={t} className="flex-1 cursor-pointer">
                     <span className="font-semibold block capitalize">{t} Registration</span>
@@ -368,9 +571,76 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                       {t === 'custom' ? 'Build your own form from components' : `Standard ${t.toUpperCase()} form`}
                     </span>
                   </Label>
+                  {formType === t && (
+                    <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-primary text-primary-foreground">
+                      Selected
+                    </span>
+                  )}
                 </div>
               ))}
             </RadioGroup>
+
+            <div className="mt-5 pt-4 border-t space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Saved Templates
+              </p>
+              {templates.length === 0 ? (
+                <p className="text-xs text-muted-foreground">No templates saved yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {templates.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between gap-2 border rounded-lg px-3 py-2 hover:bg-muted/50"
+                    >
+                      <button
+                        type="button"
+                        className="flex-1 text-left"
+                        onClick={() => loadTemplate(t)}
+                      >
+                        <p className="text-sm font-medium leading-tight">{t.name}</p>
+                        <p className="text-[11px] text-muted-foreground">{t.config.length} components</p>
+                      </button>
+                      <div className="flex items-center gap-1">
+                        {selectedTemplateId === t.id && formType === "custom" ? (
+                          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-primary text-primary-foreground">
+                            Selected
+                          </span>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-7 text-[11px]"
+                            onClick={() => loadTemplate(t)}
+                          >
+                            Use
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => {
+                            setEditingTemplate(t)
+                            setTemplateName(t.name)
+                          }}
+                        >
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => handleDeleteTemplate(t.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -380,43 +650,6 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-lg">Custom Form Builder</h3>
               <div className="flex gap-2">
-                <Dialog open={isTemplateDialogOpen} onOpenChange={setIsTemplateDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-2">
-                      <FolderOpen className="h-4 w-4" />
-                      Saved Templates
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="lg:w-[50vw] w-[90vw]">
-                    <DialogHeader>
-                      <DialogTitle>Registration Templates</DialogTitle>
-                      <DialogDescription>Manage and load your saved registration form layouts.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-3 mt-4">
-                      {templates.length === 0 && <p className="text-center text-muted-foreground py-4">No templates saved yet.</p>}
-                      {templates.map(t => (
-                        <div key={t.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
-                          <div className="flex-1 cursor-pointer" onClick={() => loadTemplate(t)}>
-                            <p className="font-medium">{t.name}</p>
-                            <p className="text-xs text-muted-foreground">{t.config.length} components</p>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-                              setEditingTemplate(t)
-                              setTemplateName(t.name)
-                            }}>
-                              <Edit2 className="h-3 w-3" />
-                            </Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteTemplate(t.id)}>
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
                 <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm" className="gap-2" disabled={config.length === 0}>
@@ -488,15 +721,19 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                   switch (type) {
                     case 'personal_info':
                     case 'employment_info':
-                      return "bg-blue-50/30 border-blue-200"
+                      return "bg-blue-50/40 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900"
                     case 'id_upload':
-                      return "bg-purple-50/30 border-purple-200"
+                      return "bg-purple-50/40 border-purple-200 dark:bg-purple-950/20 dark:border-purple-900"
                     case 'payment_section':
-                      return "bg-emerald-50/30 border-emerald-200"
+                      return "bg-emerald-50/40 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900"
+                    case 'downloadable_file':
+                      return "bg-cyan-50/40 border-cyan-200 dark:bg-cyan-950/20 dark:border-cyan-900"
+                    case 'rich_text':
+                      return "bg-slate-50 border-slate-200 dark:bg-slate-900/30 dark:border-slate-800"
                     case 'page_break':
                       return "bg-orange-100 border-orange-300 py-1"
                     default:
-                      return "bg-slate-50 border-slate-200"
+                      return "bg-slate-50 border-slate-200 dark:bg-slate-900/30 dark:border-slate-800"
                   }
                 }
 
@@ -555,21 +792,23 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                           {/* Main Label - Inlined */}
                           <div className="flex-1 flex items-center gap-3">
                             <Input
-                              className="h-7 text-xs bg-white/50 border-transparent hover:border-muted focus:bg-white transition-all py-1 px-2"
+                              className="h-7 text-xs bg-background border-border hover:border-muted-foreground/30 focus:bg-background transition-all py-1 px-2"
                               value={comp.label}
                               onChange={(e) => updateComponent(comp.id, { label: e.target.value })}
                               placeholder="Component Title..."
                             />
 
-                            <div className="flex items-center gap-2 px-2 border-l border-black/5 whitespace-nowrap">
-                              <Checkbox
-                                id={`req-${comp.id}`}
-                                checked={comp.required}
-                                className="h-3.5 w-3.5"
-                                onCheckedChange={(checked) => updateComponent(comp.id, { required: !!checked })}
-                              />
-                              <Label htmlFor={`req-${comp.id}`} className="text-[10px] font-medium cursor-pointer select-none text-muted-foreground">Required</Label>
-                            </div>
+                            {!['downloadable_file', 'rich_text'].includes(comp.type) && (
+                              <div className="flex items-center gap-2 px-2 border-l border-border whitespace-nowrap">
+                                <Checkbox
+                                  id={`req-${comp.id}`}
+                                  checked={comp.required}
+                                  className="h-3.5 w-3.5"
+                                  onCheckedChange={(checked) => updateComponent(comp.id, { required: !!checked })}
+                                />
+                                <Label htmlFor={`req-${comp.id}`} className="text-[10px] font-medium cursor-pointer select-none text-muted-foreground">Required</Label>
+                              </div>
+                            )}
                           </div>
 
                           {/* Quick Delete */}
@@ -579,11 +818,11 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                         </div>
 
                         {/* Secondary Config - Only if needed */}
-                        {['custom_input', 'custom_select', 'custom_radio'].includes(comp.type) && (
+                        {['custom_input', 'custom_select', 'custom_radio', 'custom_file_upload'].includes(comp.type) && (
                           <div className="flex flex-col gap-2 pl-[135px] mt-1 pb-1">
                             {comp.type === 'custom_input' && (
                               <Input
-                                className="h-6 text-[10px] bg-white/30 border-transparent hover:border-muted focus:bg-white transition-all py-0 px-2 flex-1"
+                                className="h-6 text-[10px] bg-background border-border hover:border-muted-foreground/30 focus:bg-background transition-all py-0 px-2 flex-1"
                                 value={comp.placeholder}
                                 onChange={(e) => updateComponent(comp.id, { placeholder: e.target.value })}
                                 placeholder="Add placeholder text..."
@@ -595,7 +834,7 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                                 {comp.options?.map((opt, i) => (
                                   <div key={i} className="flex gap-1 items-center">
                                     <Input
-                                      className="h-6 text-[10px] bg-white/30 border-transparent hover:border-muted focus:bg-white transition-all py-0 px-2 flex-1"
+                                      className="h-6 text-[10px] bg-background border-border hover:border-muted-foreground/30 focus:bg-background transition-all py-0 px-2 flex-1"
                                       value={opt}
                                       onChange={(e) => updateOption(comp.id, i, e.target.value)}
                                       placeholder={`Option ${i + 1}`}
@@ -616,11 +855,19 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                                 </Button>
                               </div>
                             )}
+                            {comp.type === 'custom_file_upload' && (
+                              <Input
+                                className="h-6 text-[10px] bg-background border-border hover:border-muted-foreground/30 focus:bg-background transition-all py-0 px-2 flex-1"
+                                value={comp.placeholder}
+                                onChange={(e) => updateComponent(comp.id, { placeholder: e.target.value })}
+                                placeholder="Optional upload help text..."
+                              />
+                            )}
                           </div>
                         )}
 
                         {comp.type === 'payment_section' && (
-                          <div className="flex flex-col gap-2 pl-[135px] mt-1 pb-1 border-t border-black/5 pt-2">
+                          <div className="flex flex-col gap-2 pl-[135px] mt-1 pb-1 border-t border-border pt-2">
                             <p className="text-[9px] font-bold text-muted-foreground uppercase">Active Payment Methods</p>
                             <div className="flex flex-wrap gap-4 mt-1">
                               {[
@@ -645,7 +892,7 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                         )}
 
                         {comp.type === 'personal_info' && (
-                          <div className="flex flex-col gap-2 pl-[135px] mt-1 pb-1 border-t border-black/5 pt-2">
+                          <div className="flex flex-col gap-2 pl-[135px] mt-1 pb-1 border-t border-border pt-2">
                             <p className="text-[9px] font-bold text-muted-foreground uppercase">Included Fields</p>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-2 gap-x-4 mt-1">
                               {[
@@ -674,7 +921,7 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                         )}
 
                         {comp.type === 'employment_info' && (
-                          <div className="flex flex-col gap-2 pl-[135px] mt-1 pb-1 border-t border-black/5 pt-2">
+                          <div className="flex flex-col gap-2 pl-[135px] mt-1 pb-1 border-t border-border pt-2">
                             <p className="text-[9px] font-bold text-muted-foreground uppercase">Included Fields</p>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-2 gap-x-4 mt-1">
                               {[
@@ -698,7 +945,7 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                         )}
 
                         {comp.type === 'id_upload' && (
-                          <div className="flex flex-col gap-2 pl-[135px] mt-1 pb-1 border-t border-black/5 pt-2">
+                          <div className="flex flex-col gap-2 pl-[135px] mt-1 pb-1 border-t border-border pt-2">
                             <p className="text-[9px] font-bold text-muted-foreground uppercase">Required Uploads</p>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-2 gap-x-4 mt-1">
                               {[
@@ -716,6 +963,171 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                                   <Label htmlFor={`${comp.id}-${field.id}`} className="text-[10px] cursor-pointer text-muted-foreground">{field.label}</Label>
                                 </div>
                               ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {comp.type === 'downloadable_file' && (
+                          <div className="flex flex-col gap-2 pl-[135px] mt-1 pb-1 border-t border-border pt-2">
+                            <Input
+                              className="h-6 text-[10px] bg-background border-border hover:border-muted-foreground/30 focus:bg-background transition-all py-0 px-2"
+                              value={comp.description || ""}
+                              onChange={(e) => updateComponent(comp.id, { description: e.target.value })}
+                              placeholder="Optional description/instructions for this file..."
+                            />
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 px-2 text-[9px] gap-1"
+                                onClick={() => triggerDownloadableFileUpload(comp.id)}
+                                disabled={uploadingDownloadableId === comp.id}
+                              >
+                                {uploadingDownloadableId === comp.id ? "Uploading..." : comp.fileUrl ? "Replace File" : "Upload File"}
+                              </Button>
+                              {comp.fileUrl && (
+                                <a
+                                  href={comp.fileUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] text-primary underline truncate max-w-[280px]"
+                                >
+                                  {comp.fileName || "View uploaded file"}
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {comp.type === 'rich_text' && (
+                          <div className="flex flex-col gap-2 pl-[135px] mt-1 pb-1 border-t border-border pt-2">
+                            <div className="flex flex-wrap items-center gap-1">
+                              <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "bold")} title="Bold">
+                                <Bold className="h-3 w-3" />
+                              </Button>
+                              <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "italic")} title="Italic">
+                                <Italic className="h-3 w-3" />
+                              </Button>
+                              <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "insertUnorderedList")} title="Bullet List">
+                                <List className="h-3 w-3" />
+                              </Button>
+                              <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "insertOrderedList")} title="Numbered List">
+                                <ListOrdered className="h-3 w-3" />
+                              </Button>
+                              <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "formatBlock", "h1")} title="Heading 1">
+                                <Heading1 className="h-3 w-3" />
+                              </Button>
+                              <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "formatBlock", "h2")} title="Heading 2">
+                                <Heading2 className="h-3 w-3" />
+                              </Button>
+                              <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "formatBlock", "h3")} title="Heading 3">
+                                <Heading3 className="h-3 w-3" />
+                              </Button>
+                              <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "formatBlock", "p")} title="Paragraph">
+                                <Heading className="h-3 w-3" />
+                              </Button>
+                              <select
+                                className="h-6 text-[10px] rounded-md border border-border bg-background px-2 text-foreground"
+                                onChange={(e) => applyRichTextCommand(comp.id, "fontSize", e.target.value)}
+                                defaultValue=""
+                              >
+                                <option value="" disabled>Font size</option>
+                                <option value="2">Small</option>
+                                <option value="3">Normal</option>
+                                <option value="4">Large</option>
+                                <option value="5">X-Large</option>
+                              </select>
+                              <label className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-border bg-background text-[10px] text-muted-foreground">
+                                <Palette className="h-3 w-3" />
+                                <span>Text Color</span>
+                                <input
+                                  type="color"
+                                  className="h-4 w-4 border-0 bg-transparent p-0 cursor-pointer"
+                                  defaultValue="#111827"
+                                  onMouseDown={() => captureRichTextSelection(comp.id)}
+                                  onChange={(e) => applyRichTextCommand(comp.id, "foreColor", e.target.value)}
+                                  title="Set text color"
+                                />
+                              </label>
+                            </div>
+                            <div className="relative">
+                              {floatingToolbar.visible && floatingToolbar.compId === comp.id && (
+                                <div
+                                  className="absolute z-20 flex flex-wrap items-center gap-1 rounded-md border border-border bg-background/95 shadow-md p-1"
+                                  style={{ top: floatingToolbar.top, left: floatingToolbar.left, width: 280 }}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                >
+                                  <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "bold")} title="Bold">
+                                    <Bold className="h-3 w-3" />
+                                  </Button>
+                                  <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "italic")} title="Italic">
+                                    <Italic className="h-3 w-3" />
+                                  </Button>
+                                  <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "insertUnorderedList")} title="Bullet List">
+                                    <List className="h-3 w-3" />
+                                  </Button>
+                                  <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "insertOrderedList")} title="Numbered List">
+                                    <ListOrdered className="h-3 w-3" />
+                                  </Button>
+                                  <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "formatBlock", "h1")} title="Heading 1">
+                                    <Heading1 className="h-3 w-3" />
+                                  </Button>
+                                  <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "formatBlock", "h2")} title="Heading 2">
+                                    <Heading2 className="h-3 w-3" />
+                                  </Button>
+                                  <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "formatBlock", "h3")} title="Heading 3">
+                                    <Heading3 className="h-3 w-3" />
+                                  </Button>
+                                  <Button type="button" variant="outline" size="icon" className="h-6 w-6" onClick={() => applyRichTextCommand(comp.id, "formatBlock", "p")} title="Paragraph">
+                                    <Heading className="h-3 w-3" />
+                                  </Button>
+                                  <select
+                                    className="h-6 text-[10px] rounded-md border border-border bg-background px-2 text-foreground"
+                                    onChange={(e) => applyRichTextCommand(comp.id, "fontSize", e.target.value)}
+                                    defaultValue=""
+                                  >
+                                    <option value="" disabled>Size</option>
+                                    <option value="2">S</option>
+                                    <option value="3">M</option>
+                                    <option value="4">L</option>
+                                    <option value="5">XL</option>
+                                  </select>
+                                  <label className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-border bg-background text-[10px] text-muted-foreground">
+                                    <Palette className="h-3 w-3" />
+                                    <input
+                                      type="color"
+                                      className="h-4 w-4 border-0 bg-transparent p-0 cursor-pointer"
+                                      defaultValue="#111827"
+                                      onMouseDown={() => captureRichTextSelection(comp.id)}
+                                      onChange={(e) => applyRichTextCommand(comp.id, "foreColor", e.target.value)}
+                                      title="Set text color"
+                                    />
+                                  </label>
+                                </div>
+                              )}
+                              <div
+                                id={`rich-text-editor-${comp.id}`}
+                                data-rich-text-builder="true"
+                                ref={(el) => {
+                                  richTextEditorRefs.current[comp.id] = el
+                                  if (el) {
+                                    const currentValue = getRichTextValue(comp)
+                                    if (el.innerHTML !== currentValue) {
+                                      el.innerHTML = currentValue
+                                    }
+                                  }
+                                }}
+                                contentEditable
+                                suppressContentEditableWarning
+                                className="min-h-[120px] rounded-md border border-border bg-background p-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                                onInput={(e) => handleRichTextInput(comp.id, (e.currentTarget as HTMLDivElement).innerHTML)}
+                                onMouseUp={() => handleRichTextSelectionChange(comp.id)}
+                                onKeyUp={() => handleRichTextSelectionChange(comp.id)}
+                                onBlur={() => {
+                                  handleRichTextBlur(comp.id)
+                                  setTimeout(() => hideFloatingToolbar(), 0)
+                                }}
+                              />
                             </div>
                           </div>
                         )}
@@ -743,6 +1155,13 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
           </Card>
         )}
       </div>
+      <input
+        type="file"
+        ref={downloadableFileInputRef}
+        className="hidden"
+        onChange={handleDownloadableFileUpload}
+        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png"
+      />
     </div>
   )
 }

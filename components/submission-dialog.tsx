@@ -1,7 +1,7 @@
 //components/submission-dialog.tsx - FIXED FLOW (Part 1 - Replace entire component)
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ImageCropDialog } from '@/components/image-crop-dialog';
 import {
   Dialog,
@@ -172,6 +172,12 @@ useEffect(() => {
   const [show2x2ViewModal, setShow2x2ViewModal] = useState(false);
   const [showIdViewModal, setShowIdViewModal] = useState(false);
   const [sendingFollowUp, setSendingFollowUp] = useState(false);
+  const [customFieldLabels, setCustomFieldLabels] = useState<Record<string, string>>({});
+  const [fileReviewStatuses, setFileReviewStatuses] = useState<Record<string, "approved" | "declined" | "pending">>({});
+  const [fileUrlOverrides, setFileUrlOverrides] = useState<Record<string, string>>({});
+  const [updatingFileKey, setUpdatingFileKey] = useState<string | null>(null);
+  const replaceFileInputRef = useRef<HTMLInputElement | null>(null);
+  const replacingFileKeyRef = useRef<string | null>(null);
 
 
   const [cropExisting2x2, setCropExisting2x2] = useState(false);
@@ -182,6 +188,187 @@ const [cropExistingId, setCropExistingId] = useState(false);
     mailing_city: trainee?.mailing_city || "",
     mailing_province: trainee?.mailing_province || "",
   });
+
+  useEffect(() => {
+    const loadCustomFieldLabels = async () => {
+      if (!trainee?.course_id) {
+        setCustomFieldLabels({});
+        return;
+      }
+
+      const { data, error } = await tmsDb
+        .from("courses")
+        .select("registration_config")
+        .eq("id", trainee.course_id)
+        .single();
+
+      if (error || !data?.registration_config) {
+        setCustomFieldLabels({});
+        return;
+      }
+
+      const labelMap: Record<string, string> = {};
+      (data.registration_config as any[]).forEach((component: any) => {
+        if (component?.id && component?.label) {
+          labelMap[component.id] = component.label;
+        }
+      });
+
+      setCustomFieldLabels(labelMap);
+    };
+
+    if (open) {
+      loadCustomFieldLabels();
+    }
+  }, [open, trainee?.course_id]);
+
+  useEffect(() => {
+    if (!open) return;
+    setFileUrlOverrides({});
+    const reviewStatuses = trainee?.custom_data?.__file_review_statuses || {};
+    setFileReviewStatuses(reviewStatuses);
+  }, [open, trainee?.id, trainee?.custom_data]);
+
+  const isFileUrl = (value: unknown) =>
+    typeof value === "string" && /^https?:\/\//i.test(value);
+
+  const formatFileLabel = (key: string) =>
+    key
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const getUploadedFiles = () => {
+    const files: Array<{
+      key: string;
+      label: string;
+      url: string;
+      status: "approved" | "declined" | "pending";
+      source: "standard" | "custom";
+    }> = [];
+
+    const pushFile = (key: string, label: string, rawUrl: any, source: "standard" | "custom") => {
+      const url = fileUrlOverrides[key] || rawUrl;
+      if (isFileUrl(url)) {
+        files.push({
+          key,
+          label,
+          url,
+          status: fileReviewStatuses[key] || "pending",
+          source,
+        });
+      }
+    };
+
+    pushFile("id_picture_url", "Government ID", trainee?.id_picture_url, "standard");
+    pushFile("picture_2x2_url", "2x2 Picture", trainee?.picture_2x2_url, "standard");
+    pushFile("prc_license_url", "PRC License", trainee?.prc_license_url, "standard");
+    pushFile("signature_url", "Signature", trainee?.signature_url, "standard");
+
+    const customData = trainee?.custom_data || {};
+    Object.entries(customData).forEach(([key, value]) => {
+      if (key === "__file_review_statuses") return;
+      pushFile(key, customFieldLabels[key] || formatFileLabel(key), value, "custom");
+    });
+
+    const unique = new Map<string, typeof files[number]>();
+    files.forEach((f) => {
+      if (!unique.has(f.key)) unique.set(f.key, f);
+    });
+
+    return Array.from(unique.values());
+  };
+
+  const updateFileReviewStatus = async (fileKey: string, status: "approved" | "declined") => {
+    if (!trainee?.id) return;
+    setUpdatingFileKey(fileKey);
+    const currentCustomData = { ...(trainee?.custom_data || {}) };
+    const reviewStatuses = {
+      ...(currentCustomData.__file_review_statuses || {}),
+      [fileKey]: status,
+    };
+    currentCustomData.__file_review_statuses = reviewStatuses;
+
+    const { error } = await tmsDb
+      .from("trainings")
+      .update({ custom_data: currentCustomData })
+      .eq("id", trainee.id);
+
+    if (error) {
+      console.error("Failed to update file review status:", error);
+      setUpdatingFileKey(null);
+      return;
+    }
+
+    setFileReviewStatuses(reviewStatuses);
+    setUpdatingFileKey(null);
+  };
+
+  const triggerReplaceFile = (fileKey: string) => {
+    replacingFileKeyRef.current = fileKey;
+    replaceFileInputRef.current?.click();
+  };
+
+  const handleReplaceFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const fileKey = replacingFileKeyRef.current;
+    if (!file || !fileKey || !trainee?.id) return;
+
+    setUpdatingFileKey(fileKey);
+    const data = new FormData();
+    data.append("image", file);
+
+    try {
+      const uploadRes = await fetch("/api/upload", {
+        method: "POST",
+        body: data,
+      });
+      const uploadResult = await uploadRes.json();
+      if (!uploadRes.ok || !uploadResult?.url) {
+        throw new Error(uploadResult?.error || "Upload failed");
+      }
+
+      const uploadedUrl = uploadResult.url as string;
+      const standardKeys = ["id_picture_url", "picture_2x2_url", "prc_license_url", "signature_url"];
+      const currentCustomData = { ...(trainee?.custom_data || {}) };
+      const reviewStatuses = {
+        ...(currentCustomData.__file_review_statuses || {}),
+        [fileKey]: "pending",
+      };
+      currentCustomData.__file_review_statuses = reviewStatuses;
+
+      let payload: any = { custom_data: currentCustomData };
+      if (standardKeys.includes(fileKey)) {
+        payload[fileKey] = uploadedUrl;
+      } else {
+        payload = {
+          ...payload,
+          custom_data: {
+            ...currentCustomData,
+            [fileKey]: uploadedUrl,
+            __file_review_statuses: reviewStatuses,
+          },
+        };
+      }
+
+      const { error } = await tmsDb
+        .from("trainings")
+        .update(payload)
+        .eq("id", trainee.id);
+
+      if (error) throw error;
+
+      setFileUrlOverrides((prev) => ({ ...prev, [fileKey]: uploadedUrl }));
+      setFileReviewStatuses(reviewStatuses);
+    } catch (error) {
+      console.error("Failed to replace file:", error);
+    } finally {
+      setUpdatingFileKey(null);
+      replacingFileKeyRef.current = null;
+      if (replaceFileInputRef.current) {
+        replaceFileInputRef.current.value = "";
+      }
+    }
+  };
 
 const fetchPayments = async () => {
   if (!trainee?.id) return;
@@ -2526,6 +2713,87 @@ const handleRestoreIdOriginal = async () => {
           </div>
         </div>
       )}
+
+      {/* Uploaded Files from Registration */}
+      <div className="p-3 bg-card border border-slate-200 rounded space-y-3">
+        <div className="font-semibold text-sm flex items-center gap-2">
+          <Download className="h-4 w-4" />
+          Uploaded Files
+        </div>
+        {getUploadedFiles().length === 0 ? (
+          <div className="text-xs text-muted-foreground">No uploaded files found.</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {getUploadedFiles().map((file, index) => (
+              <div key={`${file.url}-${index}`} className="border rounded px-3 py-2">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div>
+                    <div className="text-xs text-muted-foreground">{file.label}</div>
+                    <a
+                      href={file.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-blue-600 hover:underline break-all"
+                    >
+                      Open File
+                    </a>
+                  </div>
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                      file.status === "approved"
+                        ? "bg-green-100 text-green-700"
+                        : file.status === "declined"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {file.status === "approved" ? "Approved" : file.status === "declined" ? "Declined" : "Pending"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-end gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-[10px]"
+                    disabled={updatingFileKey === file.key}
+                    onClick={() => updateFileReviewStatus(file.key, "approved")}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 mr-1 text-green-600" />
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-[10px]"
+                    disabled={updatingFileKey === file.key}
+                    onClick={() => updateFileReviewStatus(file.key, "declined")}
+                  >
+                    <XCircle className="h-3.5 w-3.5 mr-1 text-red-600" />
+                    Decline
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-[10px]"
+                    disabled={updatingFileKey === file.key}
+                    onClick={() => triggerReplaceFile(file.key)}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                    Replace
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <input
+          ref={replaceFileInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleReplaceFileUpload}
+          accept="*/*"
+        />
+      </div>
     </div>
   )}
 </section>
