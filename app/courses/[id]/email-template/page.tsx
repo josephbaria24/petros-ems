@@ -825,19 +825,6 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
                 </div>
               </div>
 
-              {/* Template Rename Dialog */}
-              <Dialog open={!!editingTemplate} onOpenChange={(open) => !open && setEditingTemplate(null)}>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Rename Template</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4 pt-4">
-                    <Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
-                    <Button className="w-full" onClick={handleRenameTemplate}>Update Name</Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-
               <TabsContent value="builder" className="space-y-4 mt-4">
                 {/* Add Custom Blocks */}
                 <div className="flex flex-wrap gap-2">
@@ -1290,6 +1277,19 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
           </Card>
         )}
       </div>
+
+      <Dialog open={!!editingTemplate} onOpenChange={(open) => { if (!open) setEditingTemplate(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Template</DialogTitle>
+            <DialogDescription>Change the display name of this saved template.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" />
+            <Button className="w-full" onClick={handleRenameTemplate}>Update Name</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

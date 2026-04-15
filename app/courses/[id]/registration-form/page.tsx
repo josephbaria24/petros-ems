@@ -115,7 +115,18 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
   const [templateName, setTemplateName] = useState("")
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false)
-  const [editingTemplate, setEditingTemplate] = useState<Template | null>(null)
+  /** Editing a global saved template in the builder (not the same as course form only). */
+  const [libraryTemplateBeingEdited, setLibraryTemplateBeingEdited] = useState<Template | null>(null)
+  const [libraryTemplateDisplayName, setLibraryTemplateDisplayName] = useState("")
+  const [builderSnapshotBeforeLibraryEdit, setBuilderSnapshotBeforeLibraryEdit] = useState<{
+    formType: string
+    config: FormComponent[]
+  } | null>(null)
+  const [isSavingLibraryTemplate, setIsSavingLibraryTemplate] = useState(false)
+  /** Shown only after user explicitly applies a template, or once synced from saved course — not when saving a new template that happens to match. */
+  const [appliedTemplateId, setAppliedTemplateId] = useState<string | null>(null)
+  const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
+  const hasSyncedAppliedFromCourse = useRef(false)
   const downloadableFileInputRef = useRef<HTMLInputElement | null>(null)
   const currentDownloadableComponentId = useRef<string | null>(null)
   const [uploadingDownloadableId, setUploadingDownloadableId] = useState<string | null>(null)
@@ -130,6 +141,10 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
   }>({ compId: null, top: 0, left: 0, visible: false })
 
   useEffect(() => {
+    hasSyncedAppliedFromCourse.current = false
+    setAppliedTemplateId(null)
+    setLibraryTemplateBeingEdited(null)
+    setBuilderSnapshotBeforeLibraryEdit(null)
     fetchCourseDetails()
     fetchTemplates()
   }, [id])
@@ -188,21 +203,73 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
     }
   }
 
-  const handleRenameTemplate = async () => {
-    if (!editingTemplate || !templateName.trim()) return
+  const cloneComponents = (c: FormComponent[]) =>
+    JSON.parse(JSON.stringify(c || [])) as FormComponent[]
+
+  const openLibraryTemplateForEditing = (t: Template) => {
+    if (libraryTemplateBeingEdited?.id === t.id) {
+      setFormType("custom")
+      return
+    }
+    if (
+      formType === "custom" &&
+      config.length > 0 &&
+      JSON.stringify(config) !== JSON.stringify(t.config || [])
+    ) {
+      if (
+        !confirm(
+          "Replace the current builder with this template? Unsaved builder changes will be lost."
+        )
+      )
+        return
+    }
+    setBuilderSnapshotBeforeLibraryEdit({ formType, config: cloneComponents(config) })
+    setLibraryTemplateBeingEdited(t)
+    setLibraryTemplateDisplayName(t.name)
+    setFormType("custom")
+    setConfig(cloneComponents(t.config || []))
+    setAppliedTemplateId(null)
+    setRichTextDrafts({})
+    setFloatingToolbar({ compId: null, top: 0, left: 0, visible: false })
+    toast.success(`Editing saved template “${t.name}”. Save template when you are done, or discard to undo.`)
+  }
+
+  const discardLibraryTemplateEdit = () => {
+    if (!builderSnapshotBeforeLibraryEdit) {
+      setLibraryTemplateBeingEdited(null)
+      return
+    }
+    setFormType(builderSnapshotBeforeLibraryEdit.formType)
+    setConfig(builderSnapshotBeforeLibraryEdit.config)
+    setLibraryTemplateBeingEdited(null)
+    setBuilderSnapshotBeforeLibraryEdit(null)
+    setRichTextDrafts({})
+    setFloatingToolbar({ compId: null, top: 0, left: 0, visible: false })
+    toast.info("Closed template editor — builder restored.")
+  }
+
+  const saveLibraryTemplateEdits = async () => {
+    if (!libraryTemplateBeingEdited || !libraryTemplateDisplayName.trim()) return
+    setIsSavingLibraryTemplate(true)
     try {
       const response = await fetch("/api/registration-templates", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: editingTemplate.id, name: templateName })
+        body: JSON.stringify({
+          id: libraryTemplateBeingEdited.id,
+          name: libraryTemplateDisplayName.trim(),
+          config,
+        }),
       })
-      if (!response.ok) throw new Error("Failed to rename template")
-      toast.success("Template renamed")
-      setEditingTemplate(null)
-      setTemplateName("")
-      fetchTemplates()
+      if (!response.ok) throw new Error("Failed to update template")
+      toast.success("Saved template")
+      setLibraryTemplateBeingEdited(null)
+      setBuilderSnapshotBeforeLibraryEdit(null)
+      await fetchTemplates()
     } catch (err) {
-      toast.error("Failed to rename template")
+      toast.error("Failed to save template")
+    } finally {
+      setIsSavingLibraryTemplate(false)
     }
   }
 
@@ -213,6 +280,10 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
         method: "DELETE"
       })
       if (!response.ok) throw new Error("Failed to delete")
+      if (libraryTemplateBeingEdited?.id === templateId) {
+        setLibraryTemplateBeingEdited(null)
+        setBuilderSnapshotBeforeLibraryEdit(null)
+      }
       toast.success("Template deleted")
       fetchTemplates()
     } catch (err) {
@@ -220,20 +291,62 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
     }
   }
 
-  const loadTemplate = (template: Template) => {
-    if (config.length > 0 && !confirm("Loading a template will overwrite your current configuration. Proceed?")) return
-    setConfig(template.config)
-    setFormType("custom")
-    toast.success(`Loaded template: ${template.name}`)
+  const handleFormTypeChange = (next: string) => {
+    if (libraryTemplateBeingEdited) {
+      if (
+        !confirm(
+          "Discard template editing and change base form type? Unsaved template changes will be lost."
+        )
+      )
+        return
+      setLibraryTemplateBeingEdited(null)
+      setBuilderSnapshotBeforeLibraryEdit(null)
+      setRichTextDrafts({})
+      setFloatingToolbar({ compId: null, top: 0, left: 0, visible: false })
+    }
+    setFormType(next)
+    if (next !== "custom" && course) {
+      setConfig(cloneComponents(course?.registration_config || []))
+    }
   }
 
-  const selectedTemplateId =
-    formType === "custom"
-      ? templates.find(
-          (template) =>
-            JSON.stringify(template.config || []) === JSON.stringify(config || [])
-        )?.id || null
-      : null
+  const applyTemplateAsCourseForm = (template: Template): boolean => {
+    if (config.length > 0 && !confirm("This will replace your current form with this template. Continue?")) return false
+    setLibraryTemplateBeingEdited(null)
+    setBuilderSnapshotBeforeLibraryEdit(null)
+    setConfig(cloneComponents(template.config || []))
+    setFormType("custom")
+    setAppliedTemplateId(template.id)
+    setRichTextDrafts({})
+    setFloatingToolbar({ compId: null, top: 0, left: 0, visible: false })
+    toast.success(`Form set from template: ${template.name}`)
+    return true
+  }
+
+  /** One-time after load: if the course already uses custom config matching a saved template, show Applied (saving a new template does not steal this). */
+  useEffect(() => {
+    if (loading || hasSyncedAppliedFromCourse.current || !course || templates.length === 0) return
+    hasSyncedAppliedFromCourse.current = true
+    if (course.registration_form_type !== "custom") return
+    const saved = course.registration_config || []
+    const match = templates.find(
+      (t) => JSON.stringify(t.config || []) === JSON.stringify(saved)
+    )
+    if (match) setAppliedTemplateId(match.id)
+  }, [loading, course, templates])
+
+  /** Clear “applied” badge if the live config no longer matches that template. */
+  useEffect(() => {
+    if (!appliedTemplateId) return
+    const t = templates.find((x) => x.id === appliedTemplateId)
+    if (!t) {
+      setAppliedTemplateId(null)
+      return
+    }
+    if (JSON.stringify(t.config || []) !== JSON.stringify(config || [])) {
+      setAppliedTemplateId(null)
+    }
+  }, [config, templates, appliedTemplateId])
 
   const addOption = (compId: string) => {
     setConfig(config.map(c => {
@@ -548,6 +661,41 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
         </div>
       </div>
 
+      {libraryTemplateBeingEdited && (
+        <Card className="border-primary/50 bg-primary/5">
+          <CardContent className="py-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-2 flex-1 min-w-0">
+              <p className="text-sm font-semibold">Editing saved template</p>
+              <Label htmlFor="library-template-name" className="text-xs text-muted-foreground">
+                Template name
+              </Label>
+              <Input
+                id="library-template-name"
+                value={libraryTemplateDisplayName}
+                onChange={(e) => setLibraryTemplateDisplayName(e.target.value)}
+                className="max-w-md"
+                placeholder="Template name"
+              />
+              <p className="text-xs text-muted-foreground">
+                The custom builder below updates this saved template. Use Save template to write changes to the library, or Discard to restore what you had before opening the editor.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <Button type="button" variant="outline" onClick={discardLibraryTemplateEdit}>
+                Discard
+              </Button>
+              <Button
+                type="button"
+                onClick={saveLibraryTemplateEdits}
+                disabled={isSavingLibraryTemplate || !libraryTemplateDisplayName.trim()}
+              >
+                {isSavingLibraryTemplate ? "Saving…" : "Save template"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         {/* Step 1: Form Type Selection */}
         <Card className="md:col-span-1 h-fit">
@@ -556,7 +704,7 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
             <CardDescription>Select a standard template or build a custom one</CardDescription>
           </CardHeader>
           <CardContent>
-            <RadioGroup value={formType} onValueChange={setFormType} className="space-y-4">
+            <RadioGroup value={formType} onValueChange={handleFormTypeChange} className="space-y-4">
               {['default', 'ivt', 'bls', 'acls', 'custom'].map((t) => (
                 <div
                   key={t}
@@ -595,35 +743,34 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                     >
                       <button
                         type="button"
-                        className="flex-1 text-left"
-                        onClick={() => loadTemplate(t)}
+                        className="flex-1 text-left min-w-0 rounded-md outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => setPreviewTemplate(t)}
+                        title="Preview template"
                       >
                         <p className="text-sm font-medium leading-tight">{t.name}</p>
-                        <p className="text-[11px] text-muted-foreground">{t.config.length} components</p>
+                        <p className="text-[11px] text-muted-foreground">{t.config.length} components · click to preview</p>
                       </button>
-                      <div className="flex items-center gap-1">
-                        {selectedTemplateId === t.id && formType === "custom" ? (
-                          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-primary text-primary-foreground">
-                            Selected
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {appliedTemplateId === t.id && formType === "custom" ? (
+                          <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-primary text-primary-foreground whitespace-nowrap">
+                            Applied
                           </span>
                         ) : (
                           <Button
                             variant="secondary"
                             size="sm"
                             className="h-7 text-[11px]"
-                            onClick={() => loadTemplate(t)}
+                            onClick={() => applyTemplateAsCourseForm(t)}
                           >
-                            Use
+                            Select
                           </Button>
                         )}
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
-                          onClick={() => {
-                            setEditingTemplate(t)
-                            setTemplateName(t.name)
-                          }}
+                          onClick={() => openLibraryTemplateForEditing(t)}
+                          title="Edit template in builder"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
                         </Button>
@@ -679,19 +826,6 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                 </Dialog>
               </div>
             </div>
-
-            {/* Template Rename Dialog */}
-            <Dialog open={!!editingTemplate} onOpenChange={(open) => !open && setEditingTemplate(null)}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Rename Template</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 pt-4">
-                  <Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} />
-                  <Button className="w-full" onClick={handleRenameTemplate}>Update Name</Button>
-                </div>
-              </DialogContent>
-            </Dialog>
 
             <div className="flex flex-wrap gap-2">
               {AVAILABLE_COMPONENTS.map((item) => (
@@ -1155,6 +1289,41 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
           </Card>
         )}
       </div>
+
+      <Dialog open={!!previewTemplate} onOpenChange={(open) => { if (!open) setPreviewTemplate(null) }}>
+        <DialogContent className="lg:w-[60vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Preview: {previewTemplate?.name}</DialogTitle>
+            <DialogDescription>
+              Review this saved template. Close when done, or use Select as course form to apply it to this course.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="p-4 bg-muted/30 rounded-lg max-h-[60vh] overflow-y-auto">
+            {previewTemplate && (
+              <CustomFormRenderer
+                config={previewTemplate.config}
+                isSubmitting={false}
+                onSave={() => {}}
+              />
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setPreviewTemplate(null)}>
+              Close
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!previewTemplate) return
+                if (applyTemplateAsCourseForm(previewTemplate)) setPreviewTemplate(null)
+              }}
+            >
+              Select as course form
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <input
         type="file"
         ref={downloadableFileInputRef}
