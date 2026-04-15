@@ -310,17 +310,57 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
     }
   }
 
-  const applyTemplateAsCourseForm = (template: Template): boolean => {
+  const applyTemplateAsCourseForm = async (template: Template): Promise<boolean> => {
     if (config.length > 0 && !confirm("This will replace your current form with this template. Continue?")) return false
+
+    const nextConfig = cloneComponents(template.config || [])
+    const prevState = {
+      formType,
+      config: cloneComponents(config),
+      appliedTemplateId,
+      richTextDrafts,
+      floatingToolbar,
+    }
+
     setLibraryTemplateBeingEdited(null)
     setBuilderSnapshotBeforeLibraryEdit(null)
-    setConfig(cloneComponents(template.config || []))
+    setConfig(nextConfig)
     setFormType("custom")
     setAppliedTemplateId(template.id)
     setRichTextDrafts({})
     setFloatingToolbar({ compId: null, top: 0, left: 0, visible: false })
-    toast.success(`Form set from template: ${template.name}`)
-    return true
+
+    setSaving(true)
+    try {
+      const { error } = await tmsDb
+        .from("courses")
+        .update({
+          registration_form_type: "custom",
+          registration_config: nextConfig,
+        })
+        .eq("id", id)
+
+      if (error) throw error
+
+      setCourse((prev: any) =>
+        prev
+          ? { ...prev, registration_form_type: "custom", registration_config: nextConfig }
+          : prev
+      )
+
+      toast.success(`Template selected for this course: ${template.name}`)
+      return true
+    } catch (err) {
+      setConfig(prevState.config)
+      setFormType(prevState.formType)
+      setAppliedTemplateId(prevState.appliedTemplateId)
+      setRichTextDrafts(prevState.richTextDrafts)
+      setFloatingToolbar(prevState.floatingToolbar)
+      toast.error("Failed to apply template to course")
+      return false
+    } finally {
+      setSaving(false)
+    }
   }
 
   /** One-time after load: if the course already uses custom config matching a saved template, show Applied (saving a new template does not steal this). */
@@ -760,9 +800,12 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
                             variant="secondary"
                             size="sm"
                             className="h-7 text-[11px]"
-                            onClick={() => applyTemplateAsCourseForm(t)}
+                            onClick={async () => {
+                              await applyTemplateAsCourseForm(t)
+                            }}
+                            disabled={saving}
                           >
-                            Select
+                            {saving ? "Selecting..." : "Select"}
                           </Button>
                         )}
                         <Button
@@ -1313,12 +1356,14 @@ export default function ManageRegistrationForm({ params }: { params: Promise<{ i
             </Button>
             <Button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 if (!previewTemplate) return
-                if (applyTemplateAsCourseForm(previewTemplate)) setPreviewTemplate(null)
+                const ok = await applyTemplateAsCourseForm(previewTemplate)
+                if (ok) setPreviewTemplate(null)
               }}
+              disabled={saving}
             >
-              Select as course form
+              {saving ? "Selecting..." : "Select as course form"}
             </Button>
           </DialogFooter>
         </DialogContent>
