@@ -1106,7 +1106,10 @@ const handleBulkMoveSchedule = async () => {
 
 const filteredTrainees = trainees.filter((t) => {
   const fullName = `${t.first_name} ${t.last_name}`.toLowerCase()
-  const matchesSearch = fullName.includes(searchTerm.toLowerCase())
+  const email = (t.email || "").toLowerCase()
+  const searchLower = searchTerm.toLowerCase()
+  
+  const matchesSearch = fullName.includes(searchLower) || email.includes(searchLower)
   
   if (!matchesSearch) return false
   

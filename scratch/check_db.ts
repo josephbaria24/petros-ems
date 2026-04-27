@@ -1,4 +1,7 @@
-import { createClient } from '@supabase/supabase-client'
+import { createClient } from '@supabase/supabase-js'
+
+// Using process.env directly. 
+// Run with: npx tsx --env-file=.env.local scratch/check_db.ts
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
