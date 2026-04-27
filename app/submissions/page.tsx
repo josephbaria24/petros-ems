@@ -28,8 +28,10 @@ import {
   ArrowLeft,
   AlertCircle,
   Upload,
-  MoveRight
+  MoveRight,
+  Settings2
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -98,6 +100,7 @@ const [currentCourseId, setCurrentCourseId] = useState<string>("")
 //duplication
 const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false)
 const [duplicateGroups, setDuplicateGroups] = useState<Map<string, any[]>>(new Map())
+const [duplicateBasis, setDuplicateBasis] = useState<string[]>(['email'])
 
 
 // ADD THIS FUNCTION to detect duplicates (around line 400, before filteredTrainees)
@@ -105,20 +108,21 @@ const detectDuplicates = () => {
   const groups = new Map<string, any[]>()
   
   trainees.forEach((trainee) => {
-    // Create potential duplicate keys
-    const keys = [
-      // Exact email match
-      trainee.email?.toLowerCase().trim(),
-      // Exact phone match (normalized)
-      trainee.phone_number?.replace(/\s+/g, '').replace(/\+/g, ''),
-      // First name + Last name + Age
-      `${trainee.first_name?.toLowerCase()}_${trainee.last_name?.toLowerCase()}_${trainee.age}`,
-      // Last name + Email
-      `${trainee.last_name?.toLowerCase()}_${trainee.email?.toLowerCase()}`,
-    ].filter(Boolean)
+    const keys: string[] = []
+    
+    if (duplicateBasis.includes('email') && trainee.email) {
+      keys.push(`email_${trainee.email.toLowerCase().trim()}`)
+    }
+    
+    if (duplicateBasis.includes('phone') && trainee.phone_number) {
+      keys.push(`phone_${trainee.phone_number.replace(/\s+/g, '').replace(/\+/g, '')}`)
+    }
+    
+    if (duplicateBasis.includes('name') && trainee.first_name && trainee.last_name) {
+      keys.push(`name_${trainee.first_name.toLowerCase().trim()}_${trainee.last_name.toLowerCase().trim()}`)
+    }
     
     keys.forEach((key) => {
-      if (!key) return
       if (!groups.has(key)) {
         groups.set(key, [])
       }
@@ -150,7 +154,7 @@ useEffect(() => {
   if (trainees.length > 0) {
     detectDuplicates()
   }
-}, [trainees])
+}, [trainees, duplicateBasis])
 
 const hasPendingReceipt = (trainee: any) => {
   return trainee.payments?.some(
@@ -1214,51 +1218,107 @@ const filteredTrainees = trainees.filter((t) => {
           </Button>
           </div>
         ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline" className="cursor-pointer bg-primary hover:bg-primary/20 text-primary-foreground">
-                <Zap className="h-4 w-4 mr-2" />
-                Quick Actions
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleQuickAction("paid")} className="cursor-pointer">
-                Quick Mark as Paid
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleQuickAction("room")} className="cursor-pointer">
-                Quick Send Room Link
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleQuickAction("move")} className="cursor-pointer">
-                Move to Another Schedule
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => {
-                  setShowDuplicatesOnly(!showDuplicatesOnly)
-                  if (!showDuplicatesOnly) {
-                    detectDuplicates()
-                  }
-                }} 
-                className="cursor-pointer"
-              >
-                {showDuplicatesOnly ? (
-                  <>
-                    <XCircle className="h-4 w-4 mr-2" />
-                    Show All Entries
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle className="h-4 w-4 mr-2" />
-                    View Duplicate Entries
-                    {duplicateGroups.size > 0 && (
-                      <Badge variant="destructive" className="ml-2">
-                        {Array.from(duplicateGroups.values()).reduce((sum, group) => sum + group.length, 0)}
-                      </Badge>
-                    )}
-                  </>
-                )}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline" className="gap-2 cursor-pointer">
+                  <Settings2 className="h-4 w-4" />
+                  Duplication Config
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium leading-none">Duplication Basis</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Choose which fields to check for duplicates.
+                    </p>
+                  </div>
+                  <div className="grid gap-2">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="basis-name" 
+                        checked={duplicateBasis.includes('name')}
+                        onCheckedChange={(checked) => {
+                          if (checked) setDuplicateBasis(prev => [...prev, 'name'])
+                          else setDuplicateBasis(prev => prev.filter(b => b !== 'name'))
+                        }}
+                      />
+                      <Label htmlFor="basis-name" className="cursor-pointer">Full Name</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="basis-email" 
+                        checked={duplicateBasis.includes('email')}
+                        onCheckedChange={(checked) => {
+                          if (checked) setDuplicateBasis(prev => [...prev, 'email'])
+                          else setDuplicateBasis(prev => prev.filter(b => b !== 'email'))
+                        }}
+                      />
+                      <Label htmlFor="basis-email" className="cursor-pointer">Email Address</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="basis-phone" 
+                        checked={duplicateBasis.includes('phone')}
+                        onCheckedChange={(checked) => {
+                          if (checked) setDuplicateBasis(prev => [...prev, 'phone'])
+                          else setDuplicateBasis(prev => prev.filter(b => b !== 'phone'))
+                        }}
+                      />
+                      <Label htmlFor="basis-phone" className="cursor-pointer">Phone Number</Label>
+                    </div>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="cursor-pointer bg-primary hover:bg-primary/20 text-primary-foreground">
+                  <Zap className="h-4 w-4 mr-2" />
+                  Quick Actions
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleQuickAction("paid")} className="cursor-pointer">
+                  Quick Mark as Paid
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleQuickAction("room")} className="cursor-pointer">
+                  Quick Send Room Link
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleQuickAction("move")} className="cursor-pointer">
+                  Move to Another Schedule
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => {
+                    setShowDuplicatesOnly(!showDuplicatesOnly)
+                    if (!showDuplicatesOnly) {
+                      detectDuplicates()
+                    }
+                  }} 
+                  className="cursor-pointer"
+                >
+                  {showDuplicatesOnly ? (
+                    <>
+                      <XCircle className="h-4 w-4 mr-2" />
+                      Show All Entries
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-4 w-4 mr-2" />
+                      View Duplicate Entries
+                      {duplicateGroups.size > 0 && (
+                        <Badge variant="destructive" className="ml-2">
+                          {Array.from(duplicateGroups.values()).reduce((sum, group) => sum + group.length, 0)}
+                        </Badge>
+                      )}
+                    </>
+                  )}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         )}
       </div>
 
