@@ -9,9 +9,6 @@ import * as fs from "fs";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const config = {
-  api: { bodyParser: false }
-};
 function bufferToStream(buffer: Buffer): Readable {
   const stream = new Readable();
   stream.push(buffer);
