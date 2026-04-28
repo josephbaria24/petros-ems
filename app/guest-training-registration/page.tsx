@@ -14,7 +14,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
-import welcomeAnimation from "@/public/Welcome.json"
+import welcomeAnimation from "../../public/Welcome.json"
 import Lottie from "lottie-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { checkDuplicateRegistration, DuplicateRegistrationHandler } from "@/components/duplicate-registration-handler"
