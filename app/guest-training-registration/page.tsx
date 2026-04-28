@@ -14,7 +14,6 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
-import welcomeAnimation from "../../public/Welcome.json"
 import Lottie from "lottie-react"
 import { AnimatePresence, motion } from "framer-motion"
 import { checkDuplicateRegistration, DuplicateRegistrationHandler } from "@/components/duplicate-registration-handler"
@@ -152,6 +151,7 @@ export default function GuestTrainingRegistration() {
   const [regions, setRegions] = useState<{ code: string; name: string }[]>([])
   const [paymentMethod, setPaymentMethod] = useState("BPI")
   const [errors, setErrors] = useState<{ [key: string]: boolean }>({})
+  const [welcomeAnimationData, setWelcomeAnimationData] = useState<any>(null)
 
   const [scheduleId, setScheduleId] = useState<string>("")
 
@@ -195,6 +195,23 @@ export default function GuestTrainingRegistration() {
   const [voucherDetails, setVoucherDetails] = useState<any>(null)
   const [isVerifyingVoucher, setIsVerifyingVoucher] = useState(false)
   const [voucherError, setVoucherError] = useState("")
+
+  useEffect(() => {
+    let isMounted = true
+
+    fetch("/welcome.json")
+      .then((response) => response.json())
+      .then((data) => {
+        if (isMounted) setWelcomeAnimationData(data)
+      })
+      .catch(() => {
+        if (isMounted) setWelcomeAnimationData(null)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const normalizeToLocalPhone = (phoneNumber: string) => {
     const digits = phoneNumber.replace(/\D/g, "")
@@ -1503,12 +1520,16 @@ export default function GuestTrainingRegistration() {
                     <img src="/trans-logo-dark.png" alt="logo" className="w-60 h-auto" />
                   </div>
                   <div className="mx-auto flex w-full max-w-md flex-col items-center rounded-3xl border border-[#eef1ff] bg-gradient-to-b from-[#f8f9ff] to-white p-4 shadow-sm">
-                    <Lottie
-                      animationData={welcomeAnimation}
-                      loop
-                      autoplay
-                      className="h-[260px] w-full max-w-[340px]"
-                    />
+                    {welcomeAnimationData ? (
+                      <Lottie
+                        animationData={welcomeAnimationData}
+                        loop
+                        autoplay
+                        className="h-[260px] w-full max-w-[340px]"
+                      />
+                    ) : (
+                      <div className="h-[260px] w-full max-w-[340px] animate-pulse rounded-2xl bg-slate-100" />
+                    )}
                   </div>
 
                   <div className="space-y-3">
