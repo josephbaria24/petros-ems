@@ -12,7 +12,7 @@ export default function GuestRegistrationLayout({ children }: { children: React.
   }, [])
 
   return (
-    <div className="m-0 p-0 min-h-screen bg-white text-black">
+    <div className="m-0 min-h-screen bg-[#f3f5ff] p-0 text-black">
       {children}
     </div>
   )

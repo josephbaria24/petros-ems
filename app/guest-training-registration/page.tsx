@@ -14,10 +14,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
-import welcomeAnimation from '@/public/welcome.json';
-import Lottie from 'lottie-react';
+import welcomeAnimation from "@/public/Welcome.json"
+import Lottie from "lottie-react"
+import { AnimatePresence, motion } from "framer-motion"
 import { checkDuplicateRegistration, DuplicateRegistrationHandler } from "@/components/duplicate-registration-handler"
 import { CustomFormRenderer } from "@/components/custom-form-renderer"
+import Grainient from "@/components/Grainient"
 
 
 
@@ -1251,12 +1253,42 @@ export default function GuestTrainingRegistration() {
         { id: 3, title: "Verification Details", subtitle: "Upload your identification documents", icon: Upload, completed: step > 3 },
         { id: 4, title: "Confirmation", subtitle: "You're all set! Enjoy your journey.", icon: CheckCircle2, completed: step > 4 }
       ]
+  const activeViewKey = `${course?.registration_form_type === "custom" ? "custom" : "default"}-${step}-${isSubmitted ? "submitted" : "editing"}`
+
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-orange-50 via-white to-emerald-50 flex items-center justify-center p-2 sm:p-4 md:p-8">
-      <div className="w-full max-w-7xl h-full flex gap-2 sm:gap-4 md:gap-8">
-        <div className="hidden lg:flex lg:w-[45%] rounded-3xl bg-banded text-black p-8 flex-col backdrop-blur-sm shadow-[0_20px_60px_rgba(0,0,0,0.3)] border-0">
+    <div className="min-h-screen bg-[#f3f5ff]">
+      <div className="flex min-h-screen w-full">
+        <div className="relative hidden overflow-hidden rounded-[2rem] border border-[#ffffff1f] bg-[#00044a] p-8 text-white shadow-[0_24px_80px_rgba(0,4,74,0.45)] lg:flex lg:w-[44%] lg:flex-col">
+          <div className="pointer-events-none absolute inset-0 z-0">
+            <Grainient
+              color1="#ffb800"
+              color2="#00044a"
+              color3="#001a8d"
+              timeSpeed={0.2}
+              warpStrength={0.8}
+              warpFrequency={3.5}
+              warpSpeed={1.6}
+              blendAngle={25}
+              blendSoftness={0.12}
+              grainAmount={0.12}
+              grainScale={2.8}
+              grainAnimated
+              contrast={1.25}
+              saturation={1.1}
+              zoom={0.95}
+            />
+          </div>
+          <div className="pointer-events-none absolute inset-0 z-0 bg-[linear-gradient(160deg,rgba(0,4,74,0.78)_0%,rgba(1,7,53,0.86)_65%,rgba(0,2,22,0.92)_100%)]" />
+          <div className="relative z-10 mb-8">
+            <p className="mb-3 inline-flex rounded-full border border-[#ffb80066] bg-[#ffb8001a] px-3 py-1 text-xs font-semibold tracking-wide text-[#ffb800]">
+              PETROSPHERE TRAINING
+            </p>
+          </div>
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-white">Training Registration</h1>
+            <h1 className="text-3xl font-bold leading-tight text-white">Join Now for Success</h1>
+            <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-200">
+              Complete your registration and secure your training slot in just a few guided steps.
+            </p>
             {/* {course && (
               <div className="border rounded-xl inline-block p-3 mt-2">
                 <p className="text-md text-white/90 font-bold m-0 mb-1">
@@ -1277,7 +1309,7 @@ export default function GuestTrainingRegistration() {
             )} */}
           </div>
 
-          <div className="space-y-0 flex-1 pt-10">
+          <div className="relative z-10 flex-1 space-y-0 pt-10">
             {steps.map((s, i) => {
               const Icon = s.icon
               const isActive = step === s.id
@@ -1286,9 +1318,9 @@ export default function GuestTrainingRegistration() {
               return (
                 <div key={s.id} className="flex items-start gap-4 ">
                   <div className="flex flex-col items-center">
-                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border-2 transition-all ${isCompleted ? "bg-emerald-500 border-emerald-500" :
-                        isActive ? "bg-primary border-slate-500 text-white" :
-                          "bg-slate-300 border-slate-400"
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border-2 transition-all ${isCompleted ? "bg-[#ffb800] border-[#ffb800] text-[#00044a]" :
+                        isActive ? "bg-white border-[#ffb800] text-[#00044a]" :
+                          "bg-white/15 border-white/30 text-white"
                       }`}>
                       {isCompleted ? (
                         <Check className="w-5 h-5" />
@@ -1297,31 +1329,31 @@ export default function GuestTrainingRegistration() {
                       )}
                     </div>
                     {i < steps.length - 1 && (
-                      <div className={`w-0.5 h-16 mt-0 ${isCompleted ? "bg-emerald-500" : "bg-slate-600"
+                      <div className={`w-0.5 h-16 mt-0 ${isCompleted ? "bg-[#ffb800]" : "bg-white/30"
                         }`}></div>
                     )}
                   </div>
 
                   <div className="flex-1 pt-2">
-                    <h3 className={`font-semibold text-sm ${isActive ? "text-primary" : "text-slate-600"}`}>
+                    <h3 className={`font-semibold text-sm ${isActive ? "text-[#ffb800]" : "text-white/90"}`}>
                       {s.title}
                     </h3>
-                    <p className="text-xs text-slate-500 mt-1">{s.subtitle}</p>
+                    <p className="mt-1 text-xs text-slate-300">{s.subtitle}</p>
                   </div>
                 </div>
               )
             })}
           </div>
 
-          <div className=" border-0 p-3 rounded-2xl">
-            <h3 className="font-semibold mb-2 text-primary">Complete your registration!</h3>
-            <p className="text-sm text-slate-600">Start your training career now.</p>
+          <div className="relative z-10 rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+            <h3 className="mb-2 font-semibold text-[#ffb800]">Complete your registration!</h3>
+            <p className="text-sm text-slate-200">Start your training career now.</p>
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col bg-white/70 backdrop-blur-xl rounded-3xl shadow-[0_20px_60px_rgba(0,0,0,0.3)] border border-white/40 overflow-hidden">
+        <div className="flex flex-1 flex-col overflow-hidden bg-white">
           {step > 0 && (
-            <div className="p-2 sm:p-4 flex items-center justify-between border-b">
+            <div className="flex items-center justify-between border-b border-[#edf0ff] p-2 sm:p-4">
               <Button
                 variant="ghost"
                 onClick={() => {
@@ -1331,7 +1363,7 @@ export default function GuestTrainingRegistration() {
                     setStep(Math.max(0, step - 1))
                   }
                 }}
-                className="flex items-center gap-2 rounded-2xl border-1 cursor-pointer font-semibold"
+                className="flex cursor-pointer items-center gap-2 rounded-full border border-[#dde3ff] bg-white px-4 text-[#00044a] hover:bg-[#f5f7ff]"
               >
                 <ArrowLeft className="w-4 h-4" />
                 Go Back
@@ -1382,13 +1414,6 @@ export default function GuestTrainingRegistration() {
                           {formatDateRange(scheduleRange.start_date, scheduleRange.end_date)}
                         </p>
                 )}
-                <div className="mt-6 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
-                  By continuing, you acknowledge that you have read our{" "}
-                  <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline">
-                    Privacy Policy
-                  </a>
-                  .
-                </div>
                     </div>
                   </div>
                 </div>
@@ -1396,8 +1421,16 @@ export default function GuestTrainingRegistration() {
             </div>
           )}
 
-          <div className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 lg:p-8 flex items-center justify-center">
-            <div className="w-full max-w-2xl overflow-auto max-h-full px-1 sm:px-0">
+          <div className="flex flex-1 items-center justify-center overflow-auto bg-gradient-to-b from-white to-[#f9faff] p-2 sm:p-4 md:p-6 lg:p-8">
+            <div className="max-h-full w-full max-w-2xl overflow-auto bg-white">
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={activeViewKey}
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.28, ease: "easeOut" }}
+                >
                {course?.registration_form_type === 'custom' ? (
                  <div className="space-y-6">
                     {!isSubmitted ? (
@@ -1465,16 +1498,16 @@ export default function GuestTrainingRegistration() {
                ) : (
                   <>
                     {step === 0 && (
-                <div className="text-center space-y-4 sm:space-y-6 md:space-y-8">
+                <div className="space-y-4 text-center sm:space-y-6 md:space-y-8">
                   <div className="inline-flex px-4 py-2 from-slate-800 to-slate-700">
                     <img src="/trans-logo-dark.png" alt="logo" className="w-60 h-auto" />
                   </div>
-                  <div className="flex flex-col items-center space-y-6">
+                  <div className="mx-auto flex w-full max-w-md flex-col items-center rounded-3xl border border-[#eef1ff] bg-gradient-to-b from-[#f8f9ff] to-white p-4 shadow-sm">
                     <Lottie
                       animationData={welcomeAnimation}
-                      loop={true}
-                      autoplay={true}
-                      style={{ width: '300px', height: '300px' }}
+                      loop
+                      autoplay
+                      className="h-[260px] w-full max-w-[340px]"
                     />
                   </div>
 
@@ -1492,7 +1525,7 @@ export default function GuestTrainingRegistration() {
                       variant={"default"}
                       onClick={() => setStep(1)}
                       size="lg"
-                      className="w-full border-1 py-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 text-lg font-semibold cursor-pointer"
+                      className="w-full cursor-pointer rounded-xl border-0 bg-[#00044a] py-6 text-lg font-semibold text-white shadow-lg transition-all duration-300 hover:bg-[#070f72] hover:shadow-xl"
                     >
                       <div className="flex items-center justify-center gap-3">
                         <User className="w-6 h-6" />
@@ -1726,7 +1759,7 @@ export default function GuestTrainingRegistration() {
                         }
                       }}
                       size="lg"
-                      className="bg-slate-900 hover:bg-slate-700 cursor-pointer"
+                      className="cursor-pointer bg-[#00044a] text-white hover:bg-[#070f72]"
                     >
                       Continue
                     </Button>
@@ -1820,7 +1853,7 @@ export default function GuestTrainingRegistration() {
                         setStep(3)
                       }}
                       size="lg"
-                      className="bg-slate-900 hover:bg-slate-700 cursor-pointer"
+                      className="cursor-pointer bg-[#00044a] text-white hover:bg-[#070f72]"
                     >
                       Continue
                     </Button>
@@ -1942,7 +1975,7 @@ export default function GuestTrainingRegistration() {
                         setStep(4)
                       }}
                       size="lg"
-                      className="bg-slate-900 hover:bg-slate-700 cursor-pointer"
+                      className="cursor-pointer bg-[#00044a] text-white hover:bg-[#070f72]"
                       disabled={uploading}
                     >
                       {uploading ? "Uploading..." : "Continue"}
@@ -2341,7 +2374,7 @@ export default function GuestTrainingRegistration() {
                           onClick={() => setShowConfirmDialog(true)}
                           disabled={!agreed || !agreedPrivacyPolicy}
                           size="lg"
-                          className="bg-slate-900 hover:bg-slate-700 cursor-pointer"
+                          className="cursor-pointer bg-[#ffb800] text-[#1f1f1f] hover:bg-[#ffcc47]"
                         >
                           Submit Registration
                         </Button>
@@ -2443,6 +2476,8 @@ export default function GuestTrainingRegistration() {
                 )}
               </>
             )}
+                </motion.div>
+              </AnimatePresence>
             </div>
           </div>
         </div>
