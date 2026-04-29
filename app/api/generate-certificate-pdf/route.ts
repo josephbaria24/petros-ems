@@ -8,6 +8,11 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 ).schema("tms");
 
+const DEBUG_PDF_LOGS = process.env.DEBUG_PDF_LOGS === "true";
+const logPdf = (...args: any[]) => {
+  if (DEBUG_PDF_LOGS) console.log(...args);
+};
+
 
 function formatScheduleRange(dates: Date[]): string {
   if (!dates.length) return "";
@@ -137,8 +142,8 @@ export async function POST(req: NextRequest) {
       side = "both",  // 'front' | 'back' | 'both' — controls which pages are included for ID cards
     } = body;
 
-    console.log(`🚀 Processing ${templateType} for [${trainee?.id}] ${trainee?.last_name}`);
-    if (precomputed) console.log("📦 Using precomputed data for optimization");
+    logPdf(`🚀 Processing ${templateType} for [${trainee?.id}] ${trainee?.last_name}`);
+    if (precomputed) logPdf("📦 Using precomputed data for optimization");
 
     if (!trainee || (!courseName && !precomputed?.courseName)) {
       return NextResponse.json(
@@ -330,7 +335,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    console.log("📐 Canvas dimensions:", CANVAS_WIDTH, "x", CANVAS_HEIGHT);
+    logPdf("📐 Canvas dimensions:", CANVAS_WIDTH, "x", CANVAS_HEIGHT);
 
     // Determine which sides to include (only relevant for ID cards)
     const includeFront = !isIDTemplate || side === "front" || side === "both";
@@ -415,7 +420,7 @@ export async function POST(req: NextRequest) {
               width: photoW,
               height: photoH,
             });
-            console.log("📷 ID photo placed at:", photoX, CANVAS_HEIGHT - photoYTop - photoH);
+            logPdf("📷 ID photo placed at:", photoX, CANVAS_HEIGHT - photoYTop - photoH);
           } else {
             const defaultSize = 0.12 * CANVAS_HEIGHT;
             const baseW = photoField && typeof photoField.boxWidth === "number"
@@ -451,7 +456,7 @@ export async function POST(req: NextRequest) {
               width: photoW,
               height: photoH,
             });
-            console.log("📷 Certificate photo placed at:", photoX, CANVAS_HEIGHT - photoYTop - photoH);
+            logPdf("📷 Certificate photo placed at:", photoX, CANVAS_HEIGHT - photoYTop - photoH);
           }
         }
       } catch (error) {
@@ -472,12 +477,12 @@ export async function POST(req: NextRequest) {
     // ✅ FIX: Use courseTitle if provided, otherwise fall back to courseName
     const finalCourseTitle = courseTitle || courseName;
 
-    console.log("🔄 Placeholder replacements:");
-    console.log("  - {{trainee_name}}:", fullName);
-    console.log("  - {{course_name}}:", courseName);
-    console.log("  - {{course_title}}:", finalCourseTitle);
-    console.log("  - {{completion_date}}:", computedGivenDate);
-    console.log("  - {{certificate_number}}:", trainee.certificate_number);
+    logPdf("🔄 Placeholder replacements:");
+    logPdf("  - {{trainee_name}}:", fullName);
+    logPdf("  - {{course_name}}:", courseName);
+    logPdf("  - {{course_title}}:", finalCourseTitle);
+    logPdf("  - {{completion_date}}:", computedGivenDate);
+    logPdf("  - {{certificate_number}}:", trainee.certificate_number);
 
     const replacements: Record<string, string> = {
       "{{trainee_name}}": fullName,
@@ -501,7 +506,7 @@ export async function POST(req: NextRequest) {
     const helveticaBoldOblique = await pdfDoc.embedFont('Helvetica-BoldOblique');
 
     const drawFields = (pageToDraw: any, fields: TextField[], isBackSide: boolean = false) => {
-      console.log(`✍️ Drawing ${fields.length} text fields for ${isBackSide ? 'Back' : 'Front'}`);
+      logPdf(`✍️ Drawing ${fields.length} text fields for ${isBackSide ? 'Back' : 'Front'}`);
       fields.forEach((field, index) => {
         const fo = fieldOverrides[field.id] || {};
         let displayText = field.value || "";
@@ -566,7 +571,7 @@ export async function POST(req: NextRequest) {
           currentY -= lineHeight;
         });
 
-        console.log(`  Field ${index + 1}: "${field.label}" (${lines.length} line${lines.length > 1 ? 's' : ''})`);
+        logPdf(`  Field ${index + 1}: "${field.label}" (${lines.length} line${lines.length > 1 ? 's' : ''})`);
       });
     };
 
@@ -590,7 +595,7 @@ export async function POST(req: NextRequest) {
 
     // Save PDF
     const pdfBytes = await pdfDoc.save();
-    console.log("✅ PDF generated successfully, size:", pdfBytes.length, "bytes");
+    logPdf("✅ PDF generated successfully, size:", pdfBytes.length, "bytes");
 
     const fileName = isIDTemplate 
       ? `ID_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`

@@ -267,6 +267,7 @@ export default function ParticipantDirectoryDialog({
   // ✅ NEW: Checkbox selection state
   const [selectedTraineeIds, setSelectedTraineeIds] = useState<Set<string>>(new Set())
   const [selectAll, setSelectAll] = useState(false)
+  const [attendeeSearch, setAttendeeSearch] = useState("")
 
   // ✅ NEW: Email compose dialog state
   const [emailComposeOpen, setEmailComposeOpen] = useState(false)
@@ -688,6 +689,27 @@ export default function ParticipantDirectoryDialog({
     return trainees.filter(t => selectedTraineeIds.has(t.id))
   }
 
+  const filteredTrainees = useMemo(() => {
+    const keyword = attendeeSearch.trim().toLowerCase()
+    if (!keyword) return trainees
+
+    return trainees.filter((trainee) => {
+      const haystack = [
+        trainee.first_name,
+        trainee.last_name,
+        trainee.middle_initial,
+        trainee.email,
+        trainee.status,
+        trainee.certificate_number,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+
+      return haystack.includes(keyword)
+    })
+  }, [trainees, attendeeSearch])
+
   const callDatabaseAPI = async (action: string, method: 'GET' | 'POST' = 'GET') => {
     const response = await fetch(`/api/database/${action}`, {
       method,
@@ -935,7 +957,6 @@ export default function ParticipantDirectoryDialog({
       fetchTrainees().then(() => {
         ensureCertificateNumbers()
       })
-      fetchCertificateGenerationData()
       fetchScheduleStatus()
       setSelectedTraineeIds(new Set())
       setSelectAll(false)
@@ -1239,6 +1260,9 @@ export default function ParticipantDirectoryDialog({
     // We do a quick fetch of course/template data to setup the viewer, then open immediately
     const openViewer = async () => {
       try {
+        // Start background caching only when opening viewer, and only for selected trainees.
+        fetchCertificateGenerationData(selectedTrainees.map((t) => t.id))
+
         const { data: scheduleData } = await tmsDb
           .from("schedules")
           .select("course_id")
@@ -1422,15 +1446,19 @@ export default function ParticipantDirectoryDialog({
   }
 
   // ✅ NEW: Bulk fetch all data needed for certificates via the new view
-  const fetchCertificateGenerationData = async () => {
+  const fetchCertificateGenerationData = async (targetTraineeIds?: string[]) => {
     if (!scheduleId || !open) return
 
     setIsPreFetching(true)
     try {
-      const { data, error } = await tmsDb
+      let query = tmsDb
         .from("v_certificate_generation_data")
         .select("*")
         .eq("schedule_id", scheduleId)
+      if (targetTraineeIds && targetTraineeIds.length > 0) {
+        query = query.in("training_id", targetTraineeIds)
+      }
+      const { data, error } = await query
 
       if (error) {
         console.error("❌ Error pre-fetching generation data:", error)
@@ -1445,14 +1473,12 @@ export default function ParticipantDirectoryDialog({
         setGenerationDataMap(newMap)
         console.log("🚀 Pre-fetched layout data for", newMap.size, "participants")
 
-        // Initialize background pre-fetching queue for ALL 3 templates
+        // Initialize background pre-fetching queue only for active template.
         const traineeIds = Array.from(newMap.keys())
         const fullQueue: [string, TemplateType][] = []
         
         traineeIds.forEach(id => {
-          fullQueue.push([id, "participation"])
-          fullQueue.push([id, "completion"])
-          fullQueue.push([id, "excellence"])
+          fullQueue.push([id, selectedTemplateType])
         })
 
         preFetchQueueRef.current = fullQueue
@@ -1710,6 +1736,25 @@ export default function ParticipantDirectoryDialog({
     setEmailComposeOpen(true)
   }
 
+  const getFriendlyEmailError = (rawError: string) => {
+    const text = (rawError || "").toLowerCase()
+
+    if (text.includes("suppressed")) {
+      return "This recipient is blocked by the email provider (suppressed). Please remove it from the provider suppression list and try again."
+    }
+    if (text.includes("invalid smtp sender email")) {
+      return "Email sender is not configured correctly. Please contact your admin to check the sender email settings."
+    }
+    if (text.includes("message failed: 500 5.0.0") || text.includes("command\":\"data\"") || text.includes(" command: 'data'")) {
+      return "The email provider rejected this recipient/message. Please verify the recipient email or provider block/suppression list."
+    }
+    if (text.includes("no pdfs could be generated")) {
+      return "Certificate file could not be generated for this participant. Please check the participant details and template."
+    }
+
+    return "Some emails could not be sent. Please try again or contact support if the issue continues."
+  }
+
   const handleSendCertificatesWithEmail = async (customSubject: string, customMessage: string, attachments: string[]) => {
     setEmailComposeOpen(false)
     setIsSendingEmails(true)
@@ -1724,6 +1769,7 @@ export default function ParticipantDirectoryDialog({
 
     try {
       const selectedIds = Array.from(selectedTraineeIds)
+      let lastFriendlyError = ""
 
       const response = await fetch("/api/send-certificates", {
         method: "POST",
@@ -1742,8 +1788,8 @@ export default function ParticipantDirectoryDialog({
         const result = await response.json()
         toast({
           variant: "destructive",
-          title: "Error",
-          description: result.error || "Failed to send certificates.",
+          title: "Unable to send certificates",
+          description: getFriendlyEmailError(result.error || ""),
         })
         setIsSendingEmails(false)
         return
@@ -1783,6 +1829,9 @@ export default function ParticipantDirectoryDialog({
                     return next
                   })
                 }
+                if (typeof data.lastError === "string" && data.lastError.trim()) {
+                  lastFriendlyError = getFriendlyEmailError(data.lastError)
+                }
                 // Removed alertMessage update to avoid toast spam
               } else if (data.type === "complete") {
                 setProgress(100)
@@ -1792,10 +1841,18 @@ export default function ParticipantDirectoryDialog({
                 if (Array.isArray(data.failedTraineeIds)) {
                   setFailedCertificateIds(new Set(data.failedTraineeIds))
                 }
-                toast({
-                  title: "Done",
-                  description: `Successfully sent ${data.successCount} certificate(s). ${data.failCount > 0 ? `${data.failCount} failed.` : ""}`,
-                })
+                if (data.failCount > 0) {
+                  toast({
+                    variant: "destructive",
+                    title: `Sent with ${data.failCount} failed recipient(s)`,
+                    description: `${data.successCount} sent successfully. ${lastFriendlyError || "Please check recipient email/provider restrictions."}`,
+                  })
+                } else {
+                  toast({
+                    title: "Certificates sent successfully",
+                    description: `Successfully sent ${data.successCount} certificate(s).`,
+                  })
+                }
                 setIsSendingEmails(false)
               }
             } catch (parseError) {
@@ -1808,8 +1865,8 @@ export default function ParticipantDirectoryDialog({
       console.error("Error sending certificates:", error)
       toast({
         variant: "destructive",
-        title: "Error",
-        description: "An error occurred while sending certificates.",
+        title: "Unable to send certificates",
+        description: "Network or server issue while sending emails. Please try again.",
       })
       setIsSendingEmails(false)
     }
@@ -2397,8 +2454,14 @@ export default function ParticipantDirectoryDialog({
           </div>
         </div>
 
-        <div className="border rounded-md text-sm font-semibold px-4 py-2 bg-secondary flex justify-between items-center">
-          <span>Attendee Details ({trainees.length} participants)</span>
+        <div className="border rounded-md text-sm font-semibold px-4 py-2 bg-secondary flex justify-between items-center gap-3">
+          <span>Attendee Details ({filteredTrainees.length}/{trainees.length} participants)</span>
+          <Input
+            value={attendeeSearch}
+            onChange={(e) => setAttendeeSearch(e.target.value)}
+            placeholder="Search name, email, status, certificate #..."
+            className="w-full max-w-sm bg-background"
+          />
         </div>
 
         {isSendingEmails && (
@@ -2440,7 +2503,7 @@ export default function ParticipantDirectoryDialog({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {trainees.map((trainee) => (
+                {filteredTrainees.map((trainee) => (
                   <TableRow key={trainee.id} className="hover:bg-muted">
                     <TableCell>
                       <Checkbox
@@ -2484,6 +2547,13 @@ export default function ParticipantDirectoryDialog({
                     </TableCell>
                   </TableRow>
                 ))}
+                {filteredTrainees.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
+                      No attendee matches your search.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>
