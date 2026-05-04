@@ -4,7 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import * as XLSX from "xlsx"
-import { format } from "date-fns"
+import { format, parseISO } from "date-fns"
 import {
   ArrowLeft,
   Loader2,
@@ -48,7 +48,12 @@ import {
 } from "@/components/ui/table"
 import { toast } from "sonner"
 import {
+  countAttendanceSlots,
+  getAttendanceForDay,
   getAttendanceFromCustomData,
+  getTrainingDayKeys,
+  mergeAttendanceAllDays,
+  mergeAttendanceForDay,
   mergeAttendanceIntoCustomData,
   normalizeAttendanceInput,
   type AttendanceStatusValue,
@@ -110,6 +115,19 @@ const STATUS_BADGE: Record<AttendanceStatusValue, string> = {
   present: "bg-emerald-100 text-emerald-900 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-100 dark:border-emerald-800",
   absent: "bg-red-100 text-red-900 border-red-300 dark:bg-red-950 dark:text-red-100 dark:border-red-800",
   late: "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-100 dark:border-amber-800",
+}
+
+function attendanceStatusSelectTriggerClass(
+  status: AttendanceStatusValue,
+  variant: "compact" | "default"
+) {
+  return cn(
+    variant === "compact" ? "h-8 w-[96px] text-xs" : "h-9 w-[130px] text-sm",
+    "font-semibold shadow-none transition-colors",
+    "border",
+    STATUS_BADGE[status],
+    "[&_svg]:text-current [&_svg]:opacity-60"
+  )
 }
 
 /** Stronger contrast in light mode; default checkbox styling in dark mode. */
@@ -246,20 +264,15 @@ export default function ScheduleAttendancePage() {
   const meetingUrl = React.useMemo(() => pickMeetingUrl(rows), [rows])
   const meetingProvider = meetingUrl ? detectProvider(meetingUrl) : null
 
-  const counts = React.useMemo(() => {
-    let present = 0,
-      absent = 0,
-      late = 0,
-      unmarked = 0
-    for (const r of rows) {
-      const s = getAttendanceFromCustomData(r.custom_data)
-      if (s === "present") present++
-      else if (s === "absent") absent++
-      else if (s === "late") late++
-      else unmarked++
-    }
-    return { present, absent, late, unmarked, total: rows.length }
-  }, [rows])
+  const trainingDayKeys = React.useMemo(
+    () => getTrainingDayKeys(scheduleMeta),
+    [scheduleMeta]
+  )
+
+  const counts = React.useMemo(
+    () => countAttendanceSlots(rows, trainingDayKeys),
+    [rows, trainingDayKeys]
+  )
 
   const filteredRows = React.useMemo(() => {
     const q = participantSearch.trim().toLowerCase()
@@ -282,11 +295,19 @@ export default function ScheduleAttendancePage() {
     })
   }, [rows, participantSearch])
 
-  const persistOne = async (id: string, status: AttendanceStatusValue, source: "manual" | "bulk" | "excel") => {
+  const persistAttendance = async (
+    id: string,
+    status: AttendanceStatusValue,
+    source: "manual" | "bulk" | "excel",
+    dayKey?: string
+  ) => {
     const row = rows.find((r) => r.id === id)
     if (!row) return
     setSavingIds((s) => new Set(s).add(id))
-    const custom_data = mergeAttendanceIntoCustomData(row.custom_data, status, source)
+    const custom_data =
+      trainingDayKeys.length > 0 && dayKey !== undefined
+        ? mergeAttendanceForDay(row.custom_data, trainingDayKeys, dayKey, status, source)
+        : mergeAttendanceIntoCustomData(row.custom_data, status, source)
     const { error } = await tmsDb.from("trainings").update({ custom_data }).eq("id", id)
     setSavingIds((s) => {
       const n = new Set(s)
@@ -344,7 +365,10 @@ export default function ScheduleAttendancePage() {
     for (const id of ids) {
       const row = rows.find((r) => r.id === id)
       if (!row) continue
-      const custom_data = mergeAttendanceIntoCustomData(row.custom_data, status, "bulk")
+      const custom_data =
+        trainingDayKeys.length > 0
+          ? mergeAttendanceAllDays(row.custom_data, trainingDayKeys, status, "bulk")
+          : mergeAttendanceIntoCustomData(row.custom_data, status, "bulk")
       const { error } = await tmsDb.from("trainings").update({ custom_data }).eq("id", id)
       if (!error) {
         ok++
@@ -359,13 +383,22 @@ export default function ScheduleAttendancePage() {
   }
 
   const downloadTemplate = () => {
-    const sheetRows = rows.map((r) => ({
-      "Training ID": r.id,
-      Email: r.email || "",
-      "Last Name": r.last_name,
-      "First Name": r.first_name,
-      Attendance: getAttendanceFromCustomData(r.custom_data),
-    }))
+    const sheetRows = rows.map((r) => {
+      const base: Record<string, string> = {
+        "Training ID": r.id,
+        Email: r.email || "",
+        "Last Name": r.last_name,
+        "First Name": r.first_name,
+      }
+      if (trainingDayKeys.length > 0) {
+        for (const dk of trainingDayKeys) {
+          base[dk] = getAttendanceForDay(r.custom_data, dk)
+        }
+      } else {
+        base.Attendance = getAttendanceFromCustomData(r.custom_data)
+      }
+      return base
+    })
     const ws = XLSX.utils.json_to_sheet(sheetRows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Attendance")
@@ -420,9 +453,18 @@ export default function ScheduleAttendancePage() {
       "present/absent",
     ])
 
-    if (!cAtt) {
-      toast.error("Missing attendance column", {
-        description: "Add a column named Attendance, Status, or ems_attendance_status.",
+    const dayCols: { key: string; col: string }[] = []
+    for (const dk of trainingDayKeys) {
+      const orig = headerMap.get(normKey(dk))
+      if (orig) dayCols.push({ key: dk, col: orig })
+    }
+
+    if (!cAtt && dayCols.length === 0) {
+      toast.error("Missing attendance columns", {
+        description:
+          trainingDayKeys.length > 0
+            ? `Add one column per training day (${trainingDayKeys.slice(0, 3).join(", ")}${trainingDayKeys.length > 3 ? ", …" : ""}) using yyyy-MM-dd headers, or a single Attendance column.`
+            : "Add a column named Attendance, Status, or ems_attendance_status.",
       })
       return
     }
@@ -445,10 +487,6 @@ export default function ScheduleAttendancePage() {
     const toastId = toast.loading("Importing attendance…")
 
     for (const rec of json) {
-      const statusRaw = String(rec[cAtt] ?? "")
-      const status = normalizeAttendanceInput(statusRaw)
-      if (status === null || status === "unmarked") continue
-
       let row: TrainingRow | undefined
       if (cId && rec[cId]) {
         const id = String(rec[cId]).trim()
@@ -464,7 +502,36 @@ export default function ScheduleAttendancePage() {
 
       if (!row) continue
       matched++
-      const custom_data = mergeAttendanceIntoCustomData(row.custom_data, status, "excel")
+
+      if (dayCols.length > 0 && trainingDayKeys.length > 0) {
+        let rowUpdated = false
+        let nextCustom = { ...(row.custom_data && typeof row.custom_data === "object" ? row.custom_data : {}) } as Record<string, unknown>
+        for (const { key, col } of dayCols) {
+          const statusRaw = String(rec[col] ?? "")
+          const status = normalizeAttendanceInput(statusRaw)
+          if (status === null || status === "unmarked") continue
+          nextCustom = mergeAttendanceForDay(nextCustom, trainingDayKeys, key, status, "excel")
+          rowUpdated = true
+        }
+        if (rowUpdated) {
+          const { error } = await tmsDb.from("trainings").update({ custom_data: nextCustom }).eq("id", row.id)
+          if (!error) {
+            updated++
+            setRows((prev) => prev.map((r) => (r.id === row!.id ? { ...r, custom_data: nextCustom } : r)))
+          }
+        }
+        continue
+      }
+
+      if (!cAtt) continue
+      const statusRaw = String(rec[cAtt] ?? "")
+      const status = normalizeAttendanceInput(statusRaw)
+      if (status === null || status === "unmarked") continue
+
+      const custom_data =
+        trainingDayKeys.length > 0
+          ? mergeAttendanceAllDays(row.custom_data, trainingDayKeys, status, "excel")
+          : mergeAttendanceIntoCustomData(row.custom_data, status, "excel")
       const { error } = await tmsDb.from("trainings").update({ custom_data }).eq("id", row.id)
       if (!error) {
         updated++
@@ -507,8 +574,9 @@ export default function ScheduleAttendancePage() {
             </Badge>
           </div>
           <p className="text-muted-foreground max-w-2xl text-sm md:text-base">
-            {courseName} — mark presence per trainee, use bulk actions for selected rows, or import an
-            Excel sheet. Data is stored on each registration record.
+            {courseName} — mark attendance per training day when the schedule has dates; use quick actions
+            for selected participants across all days, or import an Excel sheet. Data is stored on each
+            registration record.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -587,6 +655,20 @@ export default function ScheduleAttendancePage() {
                     )}
                   </span>
                 </div>
+                {trainingDayKeys.length > 0 && (
+                  <div className="border-t pt-3">
+                    <h4 className="text-muted-foreground mb-2 text-xs font-semibold uppercase tracking-wide">
+                      Attendance days ({trainingDayKeys.length})
+                    </h4>
+                    <div className="flex flex-wrap gap-1.5">
+                      {trainingDayKeys.map((dk) => (
+                        <Badge key={dk} variant="secondary" className="font-normal">
+                          {format(parseISO(dk), "EEE MMM d, yyyy")}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -631,14 +713,19 @@ export default function ScheduleAttendancePage() {
             <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <CardTitle className="text-base">Summary</CardTitle>
-                <CardDescription>Live counts from saved attendance flags</CardDescription>
+                <CardDescription>
+                  {trainingDayKeys.length > 0
+                    ? "Counts are per participant per training day (session slots)."
+                    : "Live counts from saved attendance flags (whole schedule)."}
+                </CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge className={STATUS_BADGE.present}>{counts.present} present</Badge>
                 <Badge className={STATUS_BADGE.absent}>{counts.absent} absent</Badge>
                 <Badge className={STATUS_BADGE.late}>{counts.late} late</Badge>
                 <Badge className={STATUS_BADGE.unmarked}>{counts.unmarked} unmarked</Badge>
-                <Badge variant="outline">{counts.total} total</Badge>
+                <Badge variant="outline">{counts.total} slots</Badge>
+                <Badge variant="outline">{rows.length} participants</Badge>
               </div>
             </CardHeader>
           </Card>
@@ -649,7 +736,9 @@ export default function ScheduleAttendancePage() {
                 <div>
                   <CardTitle className="text-base">Participants</CardTitle>
                   <CardDescription>
-                    Select rows, then use Quick action to set attendance for those participants only.
+                    Select rows, then use Quick action to set{" "}
+                    {trainingDayKeys.length > 0 ? "all training days at once for" : "attendance for"}{" "}
+                    those participants only.
                   </CardDescription>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
@@ -682,25 +771,33 @@ export default function ScheduleAttendancePage() {
                       className="cursor-pointer"
                       onSelect={() => applyQuickActionToSelected("present")}
                     >
-                      Mark selected as present
+                      {trainingDayKeys.length > 0
+                        ? "Present — all days (selected)"
+                        : "Mark selected as present"}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="cursor-pointer"
                       onSelect={() => applyQuickActionToSelected("absent")}
                     >
-                      Mark selected as absent
+                      {trainingDayKeys.length > 0
+                        ? "Absent — all days (selected)"
+                        : "Mark selected as absent"}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="cursor-pointer"
                       onSelect={() => applyQuickActionToSelected("late")}
                     >
-                      Mark selected as late
+                      {trainingDayKeys.length > 0
+                        ? "Late — all days (selected)"
+                        : "Mark selected as late"}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="cursor-pointer"
                       onSelect={() => applyQuickActionToSelected("unmarked")}
                     >
-                      Clear selected attendance
+                      {trainingDayKeys.length > 0
+                        ? "Clear — all days (selected)"
+                        : "Clear selected attendance"}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -729,11 +826,11 @@ export default function ScheduleAttendancePage() {
                   </p>
                 )}
               </div>
-              <div className="max-h-[min(560px,70vh)] overflow-auto">
+              <div className="max-h-[min(560px,70vh)] overflow-x-auto overflow-y-auto">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50 hover:bg-muted/50">
-                      <TableHead className="w-10 pl-4">
+                      <TableHead className="sticky left-0 z-10 w-10 bg-muted/95 pl-4 backdrop-blur-sm">
                         <Checkbox
                           className={attendanceCheckboxClassName}
                           checked={headerCheckboxChecked}
@@ -742,32 +839,52 @@ export default function ScheduleAttendancePage() {
                           aria-label="Select all visible participants"
                         />
                       </TableHead>
-                      <TableHead>Participant</TableHead>
-                      <TableHead className="hidden md:table-cell">Email</TableHead>
-                      <TableHead className="hidden lg:table-cell">Company</TableHead>
-                      <TableHead className="w-[160px]">Attendance</TableHead>
+                      <TableHead className="sticky left-10 z-10 min-w-[140px] bg-muted/95 backdrop-blur-sm">
+                        Participant
+                      </TableHead>
+                      <TableHead className="hidden min-w-[160px] md:table-cell">Email</TableHead>
+                      <TableHead className="hidden min-w-[120px] lg:table-cell">Company</TableHead>
+                      {trainingDayKeys.length > 0 ? (
+                        trainingDayKeys.map((dk) => (
+                          <TableHead
+                            key={dk}
+                            className="min-w-[104px] whitespace-nowrap px-1 text-center align-bottom text-xs font-semibold"
+                            title={format(parseISO(dk), "EEEE, MMMM d, yyyy")}
+                          >
+                            <div className="text-muted-foreground">{format(parseISO(dk), "EEE")}</div>
+                            <div>{format(parseISO(dk), "MMM d")}</div>
+                          </TableHead>
+                        ))
+                      ) : (
+                        <TableHead className="w-[160px]">Attendance</TableHead>
+                      )}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {rows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-muted-foreground py-12 text-center">
+                        <TableCell
+                          colSpan={4 + Math.max(trainingDayKeys.length, 1)}
+                          className="text-muted-foreground py-12 text-center"
+                        >
                           No participants registered for this schedule yet.
                         </TableCell>
                       </TableRow>
                     ) : filteredRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-muted-foreground py-12 text-center">
+                        <TableCell
+                          colSpan={4 + Math.max(trainingDayKeys.length, 1)}
+                          className="text-muted-foreground py-12 text-center"
+                        >
                           No participants match your search. Try a different name, email, or company.
                         </TableCell>
                       </TableRow>
                     ) : (
                       filteredRows.map((r) => {
-                        const st = getAttendanceFromCustomData(r.custom_data)
                         const busy = savingIds.has(r.id)
                         return (
                           <TableRow key={r.id} className="group">
-                            <TableCell className="pl-4">
+                            <TableCell className="sticky left-0 z-[1] bg-background pl-4 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)]">
                               <Checkbox
                                 className={attendanceCheckboxClassName}
                                 checked={selected.has(r.id)}
@@ -775,16 +892,30 @@ export default function ScheduleAttendancePage() {
                                 aria-label={`Select ${r.first_name} ${r.last_name}`}
                               />
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="sticky left-10 z-[1] min-w-[140px] bg-background shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)]">
                               <div className="font-medium">
                                 {r.last_name}, {r.first_name}
                               </div>
                               <div className="text-muted-foreground mt-0.5 font-mono text-[10px] md:hidden">
                                 {r.email || "—"}
                               </div>
-                              <Badge variant="outline" className={cn("mt-1 text-[10px] md:hidden", STATUS_BADGE[st])}>
-                                {STATUS_LABEL[st]}
-                              </Badge>
+                              {trainingDayKeys.length === 0 ? (
+                                (() => {
+                                  const st = getAttendanceFromCustomData(r.custom_data)
+                                  return (
+                                    <Badge
+                                      variant="outline"
+                                      className={cn("mt-1 text-[10px] md:hidden", STATUS_BADGE[st])}
+                                    >
+                                      {STATUS_LABEL[st]}
+                                    </Badge>
+                                  )
+                                })()
+                              ) : (
+                                <p className="text-muted-foreground mt-1 text-[10px] md:hidden">
+                                  Scroll → per day
+                                </p>
+                              )}
                             </TableCell>
                             <TableCell className="text-muted-foreground hidden max-w-[220px] truncate text-sm md:table-cell">
                               {r.email || "—"}
@@ -792,28 +923,90 @@ export default function ScheduleAttendancePage() {
                             <TableCell className="text-muted-foreground hidden max-w-[160px] truncate text-sm lg:table-cell">
                               {r.company_name || "—"}
                             </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {busy && <Loader2 className="h-4 w-4 animate-spin shrink-0" />}
-                                <Select
-                                  value={st}
-                                  onValueChange={(v) =>
-                                    persistOne(r.id, v as AttendanceStatusValue, "manual")
-                                  }
-                                  disabled={busy}
-                                >
-                                  <SelectTrigger className="h-9 w-[130px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="unmarked">Unmarked</SelectItem>
-                                    <SelectItem value="present">Present</SelectItem>
-                                    <SelectItem value="absent">Absent</SelectItem>
-                                    <SelectItem value="late">Late</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </TableCell>
+                            {trainingDayKeys.length > 0 ? (
+                              trainingDayKeys.map((dk) => {
+                                const stDay = getAttendanceForDay(r.custom_data, dk)
+                                return (
+                                  <TableCell key={dk} className="p-1 align-middle">
+                                    <div className="flex items-center justify-center gap-0.5">
+                                      {busy && (
+                                        <Loader2 className="text-muted-foreground h-3 w-3 shrink-0 animate-spin" />
+                                      )}
+                                      <Select
+                                        value={stDay}
+                                        onValueChange={(v) =>
+                                          persistAttendance(
+                                            r.id,
+                                            v as AttendanceStatusValue,
+                                            "manual",
+                                            dk
+                                          )
+                                        }
+                                        disabled={busy}
+                                      >
+                                        <SelectTrigger
+                                          className={attendanceStatusSelectTriggerClass(stDay, "compact")}
+                                        >
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="unmarked" className={STATUS_BADGE.unmarked}>
+                                            —
+                                          </SelectItem>
+                                          <SelectItem value="present" className={STATUS_BADGE.present}>
+                                            Present
+                                          </SelectItem>
+                                          <SelectItem value="absent" className={STATUS_BADGE.absent}>
+                                            Absent
+                                          </SelectItem>
+                                          <SelectItem value="late" className={STATUS_BADGE.late}>
+                                            Late
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </TableCell>
+                                )
+                              })
+                            ) : (
+                              <TableCell>
+                                {(() => {
+                                  const st = getAttendanceFromCustomData(r.custom_data)
+                                  return (
+                                    <div className="flex items-center gap-2">
+                                      {busy && <Loader2 className="h-4 w-4 shrink-0 animate-spin" />}
+                                      <Select
+                                        value={st}
+                                        onValueChange={(v) =>
+                                          persistAttendance(r.id, v as AttendanceStatusValue, "manual")
+                                        }
+                                        disabled={busy}
+                                      >
+                                        <SelectTrigger
+                                          className={attendanceStatusSelectTriggerClass(st, "default")}
+                                        >
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="unmarked" className={STATUS_BADGE.unmarked}>
+                                            Unmarked
+                                          </SelectItem>
+                                          <SelectItem value="present" className={STATUS_BADGE.present}>
+                                            Present
+                                          </SelectItem>
+                                          <SelectItem value="absent" className={STATUS_BADGE.absent}>
+                                            Absent
+                                          </SelectItem>
+                                          <SelectItem value="late" className={STATUS_BADGE.late}>
+                                            Late
+                                          </SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  )
+                                })()}
+                              </TableCell>
+                            )}
                           </TableRow>
                         )
                       })
