@@ -1,9 +1,13 @@
 // app/api/send-certificates/route.ts - UPDATED VERSION
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getServerOrigin } from "@/lib/get-server-origin";
+import { sendSmtpMail } from "@/lib/send-smtp-mail";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Certificate PDF + SMTP can exceed default Vercel timeout; Pro supports up to 300s. */
+export const maxDuration = 300;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -100,7 +104,9 @@ export async function POST(req: NextRequest) {
       customEmailMessage,
       attachments = [] // ✅ NEW
     } = await req.json();
-    
+
+    const serverOrigin = getServerOrigin(req);
+
     console.log("✅ Custom email subject:", customEmailSubject);
     console.log("✅ Custom email message length:", customEmailMessage?.length);
 
@@ -275,7 +281,7 @@ export async function POST(req: NextRequest) {
 
             for (const type of attachmentTypes) {
               const pdfResponse = await fetch(
-                `${req.nextUrl.origin}/api/generate-certificate-pdf`,
+                `${serverOrigin}/api/generate-certificate-pdf`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -334,21 +340,18 @@ export async function POST(req: NextRequest) {
               emailMessage = personalizeEmail(emailMessage, trainee, trainee.certificate_number);
             }
 
-            // Send email
-            const emailResponse = await fetch(`${req.nextUrl.origin}/api/send-email`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                to: trainee.email,
-                subject: emailSubject,
-                message: emailMessage,
-                attachments: pdfAttachments, // ✅ Send ALL attachments
-              }),
+            // Send in-process (avoid POSTing multi‑MB base64 to /api/send-email — Vercel body ~4.5MB cap)
+            const mailResult = await sendSmtpMail({
+              to: trainee.email,
+              subject: emailSubject,
+              message: emailMessage,
+              attachments: pdfAttachments,
             });
 
-            if (!emailResponse.ok) {
-              const errTxt = await emailResponse.text();
-              throw new Error(`Email send failed: ${errTxt.substring(0, 300)}`);
+            if (!mailResult.success) {
+              throw new Error(
+                `Email send failed: ${mailResult.error}${mailResult.details ? ` ${JSON.stringify(mailResult.details)}` : ""}`
+              );
             }
 
             // Persist email-send result so UI status survives refresh.
