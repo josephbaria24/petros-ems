@@ -22,6 +22,49 @@ function isValidEmail(email: string) {
 }
 
 /**
+ * Picks the mailbox address used in the From header. Supports:
+ * - bare email, `Name <email@domain.com>`, accidental brackets stripped wrong.
+ * Does NOT treat SMTP auth usernames like `apikey` as email (those need SMTP_FROM_EMAIL).
+ */
+function extractEnvelopeEmail(raw: string | undefined): string | null {
+  if (!raw || typeof raw !== "string") return null
+  const t = raw.trim()
+  const angle = t.match(/<([^>]+@[^>]+)>/)
+  if (angle?.[1] && isValidEmail(angle[1])) return angle[1].trim()
+  const stripped = t.replace(/[<>]/g, "").trim()
+  if (isValidEmail(stripped)) return stripped
+  const loose = t.match(/([^\s<>,]+@[^\s<>,]+\.[^\s<>,]+)/)
+  if (loose?.[1] && isValidEmail(loose[1])) return loose[1].trim()
+  return null
+}
+
+function resolveEnvelopeFromEmail(): { email: string } | { error: string; details?: Record<string, unknown> } {
+  const candidates = [
+    process.env.SMTP_FROM_EMAIL,
+    process.env.SMTP_FROM_EMAIL_ADDRESS,
+    process.env.SMTP_FROM,
+    process.env.MAIL_FROM,
+  ]
+  for (const c of candidates) {
+    const e = extractEnvelopeEmail(c)
+    if (e) return { email: e }
+  }
+  const fromUser = extractEnvelopeEmail(process.env.SMTP_USER)
+  if (fromUser) return { email: fromUser }
+
+  const userPreview = process.env.SMTP_USER?.includes("@")
+    ? process.env.SMTP_USER
+    : "(not an email — likely an API key or login id)"
+
+  return {
+    error:
+      "Invalid SMTP sender email. Set SMTP_FROM_EMAIL (or SMTP_FROM / MAIL_FROM) to a verified sender address. " +
+      "On hosted SMTP, SMTP_USER is often not an email (e.g. SendGrid uses `apikey`); the From address must still be a real mailbox your provider allows.",
+    details: { smtpUserHint: userPreview },
+  }
+}
+
+/**
  * Sends mail via configured SMTP. Used by /api/send-email and in-process by
  * /api/send-certificates so large PDF attachments are not re-POSTed as JSON
  * (Vercel serverless request body limit ~4.5MB).
@@ -64,20 +107,11 @@ export async function sendSmtpMail(input: SendSmtpMailInput): Promise<SendSmtpMa
   })
 
   const fromName = process.env.SMTP_FROM_NAME || "Petrosphere Training"
-  const smtpFromEmailRaw = process.env.SMTP_FROM_EMAIL || process.env.SMTP_FROM_EMAIL_ADDRESS
-  const smtpFromEmail =
-    typeof smtpFromEmailRaw === "string" && smtpFromEmailRaw.trim()
-      ? smtpFromEmailRaw.trim().replace(/[<>]/g, "")
-      : smtpUser
-
-  if (!isValidEmail(String(smtpFromEmail))) {
-    return {
-      success: false,
-      error:
-        "Invalid SMTP sender email. Set SMTP_FROM_EMAIL to a valid email address authorized in your SMTP provider.",
-      details: { smtpFromEmail },
-    }
+  const resolved = resolveEnvelopeFromEmail()
+  if ("error" in resolved) {
+    return { success: false, error: resolved.error, details: resolved.details }
   }
+  const smtpFromEmail = resolved.email
 
   const from = `"${fromName}" <${smtpFromEmail}>`
 
