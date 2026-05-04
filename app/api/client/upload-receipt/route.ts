@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
         // 2. Get training details
         const { data: training, error: trainingError } = await supabase
           .from('trainings')
-          .select('id, first_name, last_name, email, payment_method, course_id, has_discount, discounted_fee')
+          .select('id, first_name, last_name, email, payment_method, course_id, has_discount, discounted_fee, schedule_id')
           .eq('id', bookingSummary.training_id)
           .single();
 
@@ -208,6 +208,10 @@ export async function POST(req: NextRequest) {
               photo_url: publicUrl,
               read: false,
               created_at: new Date().toISOString(),
+              training_id: bookingSummary.training_id,
+              schedule_info: training.schedule_id
+                ? { schedule_id: training.schedule_id }
+                : null,
             });
 
           if (notificationError) {

@@ -58,6 +58,8 @@ interface SubmissionDialogProps {
   trainee: any;
   onVerify: () => void;
   onDecline: () => void; // This will now open decline dialog
+  /** When opening from a deep link (e.g. receipt notification), start on Payment Details. */
+  initialTab?: "info" | "payment";
 }
 
 export function SubmissionDialog({
@@ -66,6 +68,7 @@ export function SubmissionDialog({
   trainee,
   onVerify,
   onDecline, // Will be used to open decline photo dialog
+  initialTab = "info",
 }: SubmissionDialogProps) {
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -136,8 +139,8 @@ const [newDetails, setNewDetails] = useState({
 
 const [activeTab, setActiveTab] = useState<"info" | "payment">("info");
 useEffect(() => {
-  if (open) setActiveTab("info");
-}, [open]);
+  if (open) setActiveTab(initialTab);
+}, [open, initialTab]);
 
 
 useEffect(() => {

@@ -231,21 +231,58 @@ export function AppHeader() {
       return "";
     };
 
-    const handleNotificationClick = () => {
-      markAsRead(note.id);
-      
-      if (note.schedule_info?.schedule_id && note.training_id) {
-        // Navigate to submissions page with highlight parameter
-        router.push(
-          `/submissions?scheduleId=${note.schedule_info.schedule_id}&highlight=${note.training_id}`
-        );
+    const handleNotificationClick = async () => {
+      await markAsRead(note.id)
+
+      let scheduleId: string | undefined = note.schedule_info?.schedule_id
+      let trainingId: string | undefined = note.training_id
+
+      if (!scheduleId || !trainingId) {
+        const title = typeof note.title === "string" ? note.title : ""
+        const m = title.match(/New receipt uploaded for\s+(\S+)/i)
+        const ref = m?.[1]?.trim()
+        if (ref) {
+          let { data: bs } = await tmsDb
+            .from("booking_summary")
+            .select("training_id")
+            .eq("reference_number", ref)
+            .maybeSingle()
+          if (!bs?.training_id) {
+            const alt = await tmsDb
+              .from("booking_summary")
+              .select("training_id")
+              .eq("reference_number", ref.toUpperCase())
+              .maybeSingle()
+            bs = alt.data
+          }
+          if (bs?.training_id) {
+            trainingId = bs.training_id as string
+            const { data: tr } = await tmsDb
+              .from("trainings")
+              .select("schedule_id")
+              .eq("id", bs.training_id)
+              .single()
+            if (tr?.schedule_id) scheduleId = tr.schedule_id as string
+          }
+        }
       }
-    };
+
+      if (!scheduleId || !trainingId) return
+
+      const isReceipt =
+        typeof note.title === "string" &&
+        note.title.toLowerCase().includes("receipt")
+
+      const paymentParam = isReceipt ? "&openPayment=1" : ""
+      router.push(
+        `/submissions?scheduleId=${scheduleId}&highlight=${trainingId}&from=all${paymentParam}`
+      )
+    }
 
     return (
       <DropdownMenuItem
         key={note.id}
-        onClick={handleNotificationClick}
+        onClick={() => void handleNotificationClick()}
         className={`flex items-start space-x-3 cursor-pointer py-3 ${
           !note.read ? "bg-muted/50" : ""
         }`}

@@ -16,7 +16,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table"
-import { ArrowUpDown, FileText, FolderOpen, ClipboardCheck, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode } from "lucide-react"
+import { ArrowUpDown, FileText, FolderOpen, UserCheck, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -494,15 +494,14 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                 Directory
               </Button>
 
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
+              <Link
+                href={`/training-schedules/attendance?scheduleId=${row.original.id}&from=${status}`}
+                className="inline-flex h-7 items-center gap-1 rounded-md px-2 py-1.5 text-xs text-foreground hover:bg-muted cursor-pointer"
                 onClick={(e) => e.stopPropagation()}
               >
-                <ClipboardCheck className="h-3 w-3" />
-                Exam Result
-              </Button>
+                <UserCheck className="h-3 w-3" />
+                Attendance
+              </Link>
             </div>
           </div>
         )

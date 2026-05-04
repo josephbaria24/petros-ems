@@ -67,6 +67,7 @@ export default function SubmissionPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedTrainee, setSelectedTrainee] = useState<any | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [submissionInitialTab, setSubmissionInitialTab] = useState<"info" | "payment">("info")
   const [declineDialogOpen, setDeclineDialogOpen] = useState(false)
   
   // Bulk action states
@@ -538,7 +539,10 @@ const handleView = (trainee: any) => {
   
 const handleDialogClose = async (open: boolean) => {
   setDialogOpen(open);
-  
+  if (!open) {
+    setSubmissionInitialTab("info");
+  }
+
   if (!open && selectedTrainee) {
     // ✅ Only refetch the specific trainee that was updated
     const { data: updatedTrainee } = await tmsDb
@@ -709,26 +713,45 @@ const handleCancelDelete = () => {
 
 
 const highlightId = searchParams.get("highlight")
+const openPaymentFromUrl = searchParams.get("openPayment") === "1"
 const [highlightedRow, setHighlightedRow] = useState<string | null>(null)
 
 useEffect(() => {
-  if (highlightId && trainees.length > 0) {
-    setHighlightedRow(highlightId);
-    
-    // Scroll to highlighted row
-    setTimeout(() => {
-      const element = document.getElementById(`trainee-row-${highlightId}`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }, 100);
-    
-    // Remove highlight after 2 seconds
-    setTimeout(() => {
-      setHighlightedRow(null);
-    }, 2000);
+  if (!highlightId || trainees.length === 0 || !scheduleId) return
+
+  const trainee = trainees.find((t) => t.id === highlightId)
+  if (!trainee) return
+
+  if (openPaymentFromUrl) {
+    setSelectedTrainee(trainee)
+    setSubmissionInitialTab("payment")
+    setDialogOpen(true)
+    setHighlightedRow(null)
+    router.replace(
+      `/submissions?scheduleId=${scheduleId}&from=${encodeURIComponent(fromTab)}`,
+      { scroll: false }
+    )
+    return
   }
-}, [highlightId, trainees]);
+
+  setHighlightedRow(highlightId)
+
+  const scrollTimer = setTimeout(() => {
+    const element = document.getElementById(`trainee-row-${highlightId}`)
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" })
+    }
+  }, 100)
+
+  const clearTimer = setTimeout(() => {
+    setHighlightedRow(null)
+  }, 2000)
+
+  return () => {
+    clearTimeout(scrollTimer)
+    clearTimeout(clearTimer)
+  }
+}, [highlightId, openPaymentFromUrl, trainees, scheduleId, fromTab, router])
 
 
 const updateStatus = async (status: string) => {
@@ -1583,6 +1606,7 @@ const filteredTrainees = trainees.filter((t) => {
         open={dialogOpen}
         onOpenChange={handleDialogClose}
         trainee={selectedTrainee}
+        initialTab={submissionInitialTab}
         onVerify={() => updateStatus("Pending Payment")}
         onDecline={handleDeclineFromSubmission}
       />
