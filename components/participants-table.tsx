@@ -16,7 +16,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table"
-import { ArrowUpDown, FileText, FolderOpen, UserCheck, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode } from "lucide-react"
+import { ArrowUpDown, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -48,6 +48,53 @@ import { TraineeSearchDialog } from "./trainee-search-dialog"
 import { ScheduleDetailDialog } from "./schedule-detail-dialog"
 import { ScheduleEvaluationsDialog } from "./evaluation-dialog"
 import { ClipboardList } from "lucide-react"
+
+const SubmissionIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    {...props}
+  >
+    <path
+      fill="currentColor"
+      d="M7.5 9c.194 0 .382.03.56.081a1.5 1.5 0 0 0 .322 1.419a1.5 1.5 0 0 0-.382 1c0 .384.144.735.382 1a1.5 1.5 0 0 0-.363.77C7.208 13.742 6.142 14 5 14c-1.175 0-2.27-.272-3.089-.77C1.091 12.73.5 11.965.5 11a2 2 0 0 1 2-2zm7 4a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1zm0-2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1zm0-2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1zM5 2.5A2.75 2.75 0 1 1 5 8a2.75 2.75 0 0 1 0-5.5m7.002.997a2.252 2.252 0 1 1 0 4.503a2.252 2.252 0 0 1 0-4.503"
+    />
+  </svg>
+)
+
+const DirectoryIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    {...props}
+  >
+    <path
+      fill="currentColor"
+      fillRule="evenodd"
+      d="M2.07 5.258C2 5.626 2 6.068 2 6.95V14c0 3.771 0 5.657 1.172 6.828S6.229 22 10 22h4c3.771 0 5.657 0 6.828-1.172S22 17.771 22 14v-2.202c0-2.632 0-3.949-.77-4.804a3 3 0 0 0-.224-.225C20.151 6 18.834 6 16.202 6h-.374c-1.153 0-1.73 0-2.268-.153a4 4 0 0 1-.848-.352C12.224 5.224 11.816 4.815 11 4l-.55-.55c-.274-.274-.41-.41-.554-.53a4 4 0 0 0-2.18-.903C7.53 2 7.336 2 6.95 2c-.883 0-1.324 0-1.692.07A4 4 0 0 0 2.07 5.257M12.25 10a.75.75 0 0 1 .75-.75h5a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1-.75-.75"
+      clipRule="evenodd"
+    />
+  </svg>
+)
+
+const AttendanceIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 20 20"
+    {...props}
+  >
+    <path
+      fill="currentColor"
+      d="M6.75 9a3.25 3.25 0 1 0 0-6.5a3.25 3.25 0 0 0 0 6.5M17 6.5a2.5 2.5 0 1 1-5 0a2.5 2.5 0 0 1 5 0m-8 8c0-1.704.775-3.228 1.993-4.237A2 2 0 0 0 10 10H3.5a2 2 0 0 0-2 2s0 4 5.25 4c.953 0 1.733-.132 2.371-.347A5.5 5.5 0 0 1 9 14.5m10 0a4.5 4.5 0 1 1-9 0a4.5 4.5 0 0 1 9 0m-2.146-1.854a.5.5 0 0 0-.708 0L13.5 15.293l-.646-.647a.5.5 0 0 0-.708.708l1 1a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0 0-.708"
+    />
+  </svg>
+)
 
 type Participant = {
   id: string
@@ -469,7 +516,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                 className="flex items-center gap-1 text-xs hover:bg-muted rounded-md px-2 py-1.5 cursor-pointer"
                 onClick={(e) => e.stopPropagation()}
               >
-                <FileText className="h-3 w-3" />
+                <SubmissionIcon className="h-3 w-3" />
                 Submission
                 {submissionCount > 0 && (
                   <Badge variant="destructive" className="ml-1 h-4 px-1 text-xs">
@@ -490,7 +537,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                   setDirectoryOpen(true)
                 }}
               >
-                <FolderOpen className="h-3 w-3" />
+                <DirectoryIcon className="h-3 w-3" />
                 Directory
               </Button>
 
@@ -499,7 +546,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                 className="inline-flex h-7 items-center gap-1 rounded-md px-2 py-1.5 text-xs text-foreground hover:bg-muted cursor-pointer"
                 onClick={(e) => e.stopPropagation()}
               >
-                <UserCheck className="h-3 w-3" />
+                <AttendanceIcon className="h-3.5 w-3.5" />
                 Attendance
               </Link>
             </div>

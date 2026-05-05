@@ -4,11 +4,6 @@ import * as React from "react"
 import {
   ChevronLeft,
   ChevronRight,
-  CalendarCheckIcon,
-  LucideAward,
-  MapPin,
-  BadgePercent,
-  ShieldCheck,
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -63,6 +58,81 @@ const CoursesIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+const CertificateManagementIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="32"
+    height="32"
+    viewBox="0 0 32 32"
+    {...props}
+  >
+    <path
+      fill="currentColor"
+      d="M5.25 4A3.25 3.25 0 0 0 2 7.25v7.92a7 7 0 0 1 11.5 7.938V25h13.25A3.25 3.25 0 0 0 30 21.75V7.25A3.25 3.25 0 0 0 26.75 4zM9 10h14a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2m7 8a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2h-6a1 1 0 0 1-1-1m-3 1.5a5.5 5.5 0 1 1-11 0a5.5 5.5 0 0 1 11 0m-1 5.362A6.97 6.97 0 0 1 7.5 26.5A6.97 6.97 0 0 1 3 24.862V29a1 1 0 0 0 1.528.849l2.972-1.85l2.972 1.85a1 1 0 0 0 1.528-.85z"
+    />
+  </svg>
+)
+
+const CertificateTrackerIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    {...props}
+  >
+    <path
+      fill="currentColor"
+      d="M4 2v6H2V2zM2 22h2v-6H2zm3-10a2 2 0 1 0-2 2c1.11 0 2-.89 2-2m19-6v12c0 1.11-.89 2-2 2H10a2 2 0 0 1-2-2v-4l-2-2l2-2V6a2 2 0 0 1 2-2h12c1.11 0 2 .89 2 2m-5 7h-8v2h8zm2-4H11v2h10z"
+    />
+  </svg>
+)
+
+const CertificateVerifierIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    {...props}
+  >
+    <path
+      fill="currentColor"
+      d="M19 13c.7 0 1.37.13 2 .35V9l-6-6H5c-1.11 0-2 .89-2 2v14a2 2 0 0 0 2 2h8.35c-.22-.63-.35-1.3-.35-2c0-3.31 2.69-6 6-6m-5-8.5l5.5 5.5H14zm8.5 12.75L17.75 22L15 19l1.16-1.16l1.59 1.59l3.59-3.59z"
+    />
+  </svg>
+)
+
+const VoucherManagerIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    {...props}
+  >
+    <path
+      fill="currentColor"
+      d="M4 4a2 2 0 0 0-2 2v4a2 2 0 0 1 2 2a2 2 0 0 1-2 2v4a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-4a2 2 0 0 1-2-2a2 2 0 0 1 2-2V6a2 2 0 0 0-2-2zm11.5 3L17 8.5L8.5 17L7 15.5zm-6.69.04c.98 0 1.77.79 1.77 1.77a1.77 1.77 0 0 1-1.77 1.77c-.98 0-1.77-.79-1.77-1.77a1.77 1.77 0 0 1 1.77-1.77m6.38 6.38c.98 0 1.77.79 1.77 1.77a1.77 1.77 0 0 1-1.77 1.77c-.98 0-1.77-.79-1.77-1.77a1.77 1.77 0 0 1 1.77-1.77"
+    />
+  </svg>
+)
+
+const EventManagementIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    {...props}
+  >
+    <path
+      fill="currentColor"
+      d="M19 4h-2V2h-2v2H9V2H7v2H5c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h14c1.103 0 2-.897 2-2V6c0-1.103-.897-2-2-2m-1 15h-6v-6h6zm1-10H5V7h14z"
+    />
+  </svg>
+)
+
 const menuItems = [
   {
     title: "Dashboard",
@@ -108,17 +178,17 @@ const menuItems = [
 
   {
     title: "Certs & ID Management",
-    icon: LucideAward,
+    icon: CertificateManagementIcon,
     href: "/certificate-id-management",
   },
   {
     title: "Certificate Tracker",
-    icon: MapPin,
+    icon: CertificateTrackerIcon,
     href: "/cert-tracker",
   },
   {
     title: "Certificate Verifier",
-    icon: ShieldCheck,
+    icon: CertificateVerifierIcon,
     href: "/certificate-verifier",
   },
   {
@@ -127,7 +197,7 @@ const menuItems = [
   },
   {
     title: "Voucher Manager",
-    icon: BadgePercent,
+    icon: VoucherManagerIcon,
     href: "/voucher-manager",
   },
 
@@ -139,7 +209,7 @@ const menuItems = [
 
   {
     title: "Event Management",
-    icon: CalendarCheckIcon,
+    icon: EventManagementIcon,
     href: "https://ems.petros-global.com/",
   },
 ]
