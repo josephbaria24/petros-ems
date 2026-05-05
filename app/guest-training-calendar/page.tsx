@@ -843,8 +843,8 @@ export default function TrainingCalendar() {
                   ) : (
                     <ul className="flex flex-1 flex-col gap-2 overflow-y-auto overscroll-y-contain p-1.5 sm:gap-4 sm:p-3">
                       {listFilteredEvents.map((event) => {
-                      const dateRange = `${format(event.startDate, "yyyy-MM-dd")} — ${format(event.endDate, "yyyy-MM-dd")}`
-                      const dateRangeShort = `${format(event.startDate, "MMM d")} – ${format(event.endDate, "MMM d")}`
+                      const dateRange = `${format(event.startDate, "MMM dd, yyyy")} - ${format(event.endDate, "MMM dd, yyyy")}`
+                      const dateRangeShort = `${format(event.startDate, "MMM dd")} - ${format(event.endDate, "MMM dd")}`
                       const locationLine =
                         event.branch === "online"
                           ? "Online"
@@ -1083,27 +1083,15 @@ export default function TrainingCalendar() {
                       .sort((a, b) => a.getTime() - b.getTime())
                       .map(d => (
                         <div key={d.toISOString()}>
-                          {d.toLocaleDateString('en-US', {
-                            month: 'long',
-                            day: 'numeric',
-                            year: 'numeric',
-                          })}
+                          {format(d, "MMM dd, yyyy")}
                         </div>
                       ))}
                   </div>
                 ) : (
                   <p className="text-sm">
-                    {selectedEvent.startDate.toLocaleDateString('en-US', {
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}{' '}
-                    –{' '}
-                    {selectedEvent.endDate.toLocaleDateString('en-US', {
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
+                    {format(selectedEvent.startDate, "MMM dd, yyyy")}
+                    {' - '}
+                    {format(selectedEvent.endDate, "MMM dd, yyyy")}
                   </p>
                 )}
 
