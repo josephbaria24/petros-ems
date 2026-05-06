@@ -62,7 +62,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
   const [courseOptions, setCourseOptions] = React.useState<{ id: string; name: string }[]>([])
   const [loadingCourses, setLoadingCourses] = React.useState(true)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
-  const isBranchRequired = eventType === "face-to-face"
+  const isBranchRequired = false
   const [batchNumber, setBatchNumber] = React.useState<number | null>(null)
   const [courseSearch, setCourseSearch] = React.useState("")
   const [courseOpen, setCourseOpen] = React.useState(false)
@@ -338,7 +338,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
 
   return (
   <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-w-full p-6 max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-5x lg:w-[80vw]  p-6 max-h-[90vh] overflow-y-auto">
 
         <DialogHeader>
           <DialogTitle>New Training Schedule</DialogTitle>
@@ -351,25 +351,10 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
           {/* Two-Column Grid */}
           <div className="flex flex-col md:flex-row gap-6 mt-6">
             {/* LEFT COLUMN: Inputs */}
-            {/* Training Type + Course (same row) */}
+            {/* Course + Training Type & Fees */}
             <div className="grid gap-6 md:grid-cols-2">
-              {/* Event Type */}
-              <div className="grid gap-2">
-                <Label htmlFor="event-type">Training Type *</Label>
-                <Select value={eventType} onValueChange={setEventType} disabled={isSubmitting}>
-                  <SelectTrigger id="event-type" className="w-full">
-                    <SelectValue placeholder="Select training type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="online">Online</SelectItem>
-                    <SelectItem value="face-to-face">Face-to-Face</SelectItem>
-                    <SelectItem value="elearning">E-Learning</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* Course - Searchable */}
-              <div className="grid gap-2">
+              <div className="grid gap-2 md:col-span-2">
                 <Label htmlFor="course">Course *</Label>
                 <div className="relative w-full">
                   <Button
@@ -439,14 +424,17 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
               {selectedCourseData && (
                 <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-md space-y-2">
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                    Training Fees:
+                    Training Types and fees:
                   </p>
                   <div className="space-y-2">
                     {/* Online Fee */}
-                    <div
+                    <button
+                      type="button"
+                      onClick={() => setEventType("online")}
+                      disabled={isSubmitting}
                       className={`p-2 rounded-md transition-all ${eventType === 'online'
                         ? 'bg-emerald-100 dark:bg-emerald-950 border-2 border-emerald-500 ring-2 ring-emerald-200'
-                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-700'
                         }`}
                     >
                       <div className="flex justify-between items-center">
@@ -466,13 +454,16 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                           ✓ Selected
                         </p>
                       )}
-                    </div>
+                    </button>
 
                     {/* Face-to-Face Fee */}
-                    <div
+                    <button
+                      type="button"
+                      onClick={() => setEventType("face-to-face")}
+                      disabled={isSubmitting}
                       className={`p-2 rounded-md transition-all ${eventType === 'face-to-face'
                         ? 'bg-blue-100 dark:bg-blue-950 border-2 border-blue-500 ring-2 ring-blue-200'
-                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-700'
                         }`}
                     >
                       <div className="flex justify-between items-center">
@@ -492,13 +483,16 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                           ✓ Selected
                         </p>
                       )}
-                    </div>
+                    </button>
 
                     {/* E-Learning Fee */}
-                    <div
+                    <button
+                      type="button"
+                      onClick={() => setEventType("elearning")}
+                      disabled={isSubmitting}
                       className={`p-2 rounded-md transition-all ${eventType === 'elearning'
                         ? 'bg-purple-100 dark:bg-purple-950 border-2 border-purple-500 ring-2 ring-purple-200'
-                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                        : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-purple-300 dark:hover:border-purple-700'
                         }`}
                     >
                       <div className="flex justify-between items-center">
@@ -518,14 +512,14 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                           ✓ Selected
                         </p>
                       )}
-                    </div>
+                    </button>
                   </div>
 
                   {/* Info message when no event type selected */}
                   {!eventType && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
                       <span className="text-sm">⚠️</span>
-                      Select a training type above to see the applicable fee
+                      Click one of the training type cards above to continue
                     </p>
                   )}
 
@@ -768,7 +762,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
               {/* Branch */}
               {eventType !== "online" && eventType !== "elearning" && (
                 <div className="grid gap-2">
-                  <Label htmlFor="branch">Branch *</Label>
+                  <Label htmlFor="branch">Branch (optional)</Label>
                   <Select value={branch} onValueChange={setBranch} disabled={isSubmitting}>
                     <SelectTrigger id="branch">
                       <SelectValue placeholder="Select branch" />

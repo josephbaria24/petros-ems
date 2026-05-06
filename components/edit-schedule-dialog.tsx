@@ -433,7 +433,7 @@ export function EditScheduleDialog({ open, onOpenChange, scheduleId, onScheduleU
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-w-full p-6 bg-card">
+      <DialogContent className="sm:max-w-4xl lg:w-[80vw] p-6 bg-card">
         <DialogHeader>
           <DialogTitle>Edit Training Schedule</DialogTitle>
           <DialogDescription>
