@@ -18,7 +18,10 @@ export function Calendar05({ value, onChange }: Calendar05Props) {
       selected={value}
       onSelect={onChange}
       numberOfMonths={2}
-      className="rounded-lg border shadow-sm"
+      className="w-full rounded-lg border shadow-sm"
+      classNames={{
+        root: "w-full",
+      }}
     />
   )
 }

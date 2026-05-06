@@ -19,7 +19,10 @@ export function Calendar03({ value, onChange }: Calendar03Props) {
       selected={value}
       onSelect={onChange}
       max={10}
-      className="rounded-lg border shadow-sm"
+      className="w-full rounded-lg border shadow-sm"
+      classNames={{
+        root: "w-full",
+      }}
     />
   )
 }

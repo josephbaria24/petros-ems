@@ -338,7 +338,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
 
   return (
   <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5x lg:w-[80vw]  p-6 max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-1rem)] max-w-6xl p-4 sm:w-[95vw] sm:p-6 lg:w-[88vw] xl:w-[82vw] max-h-[90vh] overflow-y-auto">
 
         <DialogHeader>
           <DialogTitle>New Training Schedule</DialogTitle>
@@ -349,10 +349,10 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
 
         <form onSubmit={handleSubmit}>
           {/* Two-Column Grid */}
-          <div className="flex flex-col md:flex-row gap-6 mt-6">
+          <div className="mt-4 grid gap-4 lg:mt-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:gap-6">
             {/* LEFT COLUMN: Inputs */}
             {/* Course + Training Type & Fees */}
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 lg:gap-6">
               {/* Course - Searchable */}
               <div className="grid gap-2 md:col-span-2">
                 <Label htmlFor="course">Course *</Label>
@@ -559,7 +559,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                   min="1"
                   value={batchNumber ?? ""}
                   onChange={(e) => setBatchNumber(e.target.value ? parseInt(e.target.value) : null)}
-                  className="max-w-sm"
+                  className="w-full"
                   placeholder="Enter batch number"
                   disabled={isSubmitting}
                 />
@@ -609,7 +609,10 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[400px] p-0" align="start">
+                  <PopoverContent
+                    className="w-[var(--radix-popover-trigger-width)] max-w-[min(92vw,420px)] p-0"
+                    align="start"
+                  >
                     <Command>
                       <CommandInput placeholder="Search trainer..." />
                       <CommandList onWheel={(e) => e.stopPropagation()}>
@@ -686,7 +689,7 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                       const currentTrainer = dayTrainers[dateStr] || ""
 
                       return (
-                        <div key={dateStr} className="grid grid-cols-[120px_1fr] items-center gap-4">
+                        <div key={dateStr} className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[120px_1fr] sm:items-center sm:gap-4">
                           <span className="text-xs font-medium text-muted-foreground">
                             Day {idx + 1}: {format(day, "MMM dd")}
                           </span>
@@ -706,7 +709,10 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-[300px] p-0" align="start">
+                            <PopoverContent
+                              className="w-[var(--radix-popover-trigger-width)] max-w-[min(92vw,320px)] p-0"
+                              align="start"
+                            >
                               <Command>
                                 <CommandInput placeholder="Search trainer..." />
                                 <CommandList onWheel={(e) => e.stopPropagation()}>
@@ -803,17 +809,21 @@ export function NewScheduleDialog({ open, onOpenChange, onScheduleCreated }: New
             </div>
 
             {/* RIGHT COLUMN: Calendar */}
-            <div className="flex-1">
+            <div className="min-w-0">
               <Label className="block mb-2">Schedule Dates *</Label>
-              {scheduleType === "regular" ? (
-                <Calendar05 value={rangeDates} onChange={setRangeDates} />
-              ) : (
-                <Calendar03 value={multiDates} onChange={setMultiDates} />
-              )}
+              <div className="w-full overflow-x-auto rounded-md border p-1">
+                <div className="min-w-[300px]">
+                  {scheduleType === "regular" ? (
+                    <Calendar05 value={rangeDates} onChange={setRangeDates} />
+                  ) : (
+                    <Calendar03 value={multiDates} onChange={setMultiDates} />
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
-          <DialogFooter className="mt-6">
+          <DialogFooter className="mt-6 flex-col-reverse gap-2 sm:flex-row sm:gap-0">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
               Cancel
             </Button>
