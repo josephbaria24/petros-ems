@@ -42,6 +42,13 @@ async function uploadRecursive(client: ftp.Client, localDir: string) {
   }
 }
 
+function detectFileTypeByExtension(ext: string): "pdf" | "image" | "zip" | "other" {
+  if (ext === "pdf") return "pdf";
+  if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext)) return "image";
+  if (ext === "zip") return "zip";
+  return "other";
+}
+
 export async function POST(req: NextRequest) {
   return new Promise<NextResponse>((resolve) => {
     const form = new IncomingForm({ multiples: false, maxFileSize: 200 * 1024 * 1024 }); // 200MB limit
@@ -86,11 +93,12 @@ export async function POST(req: NextRequest) {
         }
 
         const originalName = materialFile.originalFilename || "";
-        const isZip = originalName.toLowerCase().endsWith(".zip");
+        const ext = originalName.split(".").pop()?.toLowerCase() || "";
+        const isZip = ext === "zip";
         const folderName = randomUUID();
         
         let publicUrl = "";
-        let finalFileType = "pdf";
+        let finalFileType: "pdf" | "image" | "zip" | "articulate" | "other" = "other";
 
         if (isZip) {
           // Handle Articulate/ZIP
@@ -98,30 +106,38 @@ export async function POST(req: NextRequest) {
           const zip = new AdmZip(materialFile.filepath);
           zip.extractAllTo(tempDir, true);
 
-          // Create folder on FTP
-          await client.ensureDir(folderName);
-          await client.cd(folderName);
-
-          // Recursive upload
-          await uploadRecursive(client, tempDir);
-
           // Identify entry point
           const filesInRoot = fs.readdirSync(tempDir);
           const entryPoints = ["index.html", "index_lms.html", "story.html", "launcher.html"];
-          const entryFile = entryPoints.find(ep => filesInRoot.includes(ep)) || filesInRoot.find(f => f.endsWith(".html")) || "index.html";
+          const entryFile = entryPoints.find((ep) => filesInRoot.includes(ep)) || filesInRoot.find((f) => f.endsWith(".html"));
 
-          publicUrl = `https://petrosphere.com.ph/uploads/trainees/materials/${folderName}/${entryFile}`;
-          finalFileType = "articulate";
+          // If zip appears to be an e-learning package, treat it as articulate.
+          // Otherwise keep the uploaded file as a normal ZIP material.
+          if (entryFile && fs.existsSync(path.join(tempDir, entryFile))) {
+            // Create folder on FTP
+            await client.ensureDir(folderName);
+            await client.cd(folderName);
+            // Recursive upload
+            await uploadRecursive(client, tempDir);
+            publicUrl = `https://petrosphere.com.ph/uploads/trainees/materials/${folderName}/${entryFile}`;
+            finalFileType = "articulate";
+            await client.cd("..");
+          } else {
+            const newFileName = `${folderName}.zip`;
+            await client.uploadFrom(materialFile.filepath, newFileName);
+            publicUrl = `https://petrosphere.com.ph/uploads/trainees/materials/${newFileName}`;
+            finalFileType = "zip";
+          }
 
-          // Cleanup temp
-          fs.rmSync(tempDir, { recursive: true, force: true });
+          if (fs.existsSync(tempDir)) {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+          }
         } else {
-          // Handle Single PDF/File
-          const ext = originalName.split(".").pop()?.toLowerCase() || "pdf";
+          // Handle Single PDF/Image/Other file
           const newFileName = `${folderName}.${ext}`;
           await client.uploadFrom(materialFile.filepath, newFileName);
           publicUrl = `https://petrosphere.com.ph/uploads/trainees/materials/${newFileName}`;
-          finalFileType = ext === "pdf" ? "pdf" : "other";
+          finalFileType = detectFileTypeByExtension(ext);
         }
 
         client.close();

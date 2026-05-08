@@ -45,15 +45,17 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { course_id, title, file_url, file_type, password } = body;
 
-  if (!course_id || !title || !file_url || !password) {
+  if (!course_id || !title || !file_url) {
     return NextResponse.json(
-      { error: "course_id, title, file_url, and password are required" },
+      { error: "course_id, title, and file_url are required" },
       { status: 400 }
     );
   }
 
   const supabase = getSupabase();
-  const password_hash = hashPassword(password);
+  const normalizedPassword = typeof password === "string" ? password.trim() : "";
+  // DB column is NOT NULL, so use empty string to represent "no password".
+  const password_hash = normalizedPassword ? hashPassword(normalizedPassword) : "";
 
   const { data, error } = await supabase
     .from("course_materials")

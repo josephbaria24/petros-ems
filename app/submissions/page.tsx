@@ -852,6 +852,14 @@ const updateStatus = async (status: string) => {
   }
 };
 
+  const handleOpenEmailComposer = () => {
+    if (!scheduleId) {
+      toast.error("Schedule ID is required")
+      return
+    }
+    router.push(`/submissions/email?scheduleId=${scheduleId}&from=${encodeURIComponent(fromTab)}`)
+  }
+
   const handleQuickAction = (action: "paid" | "room" | "move") => {
   setBulkMode(action);
   setSelectedIds([]);
@@ -1309,6 +1317,9 @@ const filteredTrainees = trainees.filter((t) => {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleQuickAction("room")} className="cursor-pointer">
                   Quick Send Room Link
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleOpenEmailComposer} className="cursor-pointer">
+                  Send Email to Participants
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => handleQuickAction("move")} className="cursor-pointer">
                   Move to Another Schedule

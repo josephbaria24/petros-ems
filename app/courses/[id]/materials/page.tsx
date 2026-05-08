@@ -165,11 +165,6 @@ export default function CourseMaterialsPage() {
       toast.error("Please enter a title")
       return
     }
-    if (!uploadPassword.trim()) {
-      toast.error("Please enter a password")
-      return
-    }
-
     setUploading(true)
     try {
       // Step 1: Upload file to FTP
@@ -197,7 +192,7 @@ export default function CourseMaterialsPage() {
           title: uploadTitle.trim(),
           file_url: url,
           file_type: fileType, // Use the detected type from the API (pdf, articulate, or other)
-          password: uploadPassword,
+          password: uploadPassword.trim() || undefined,
         }),
       })
 
@@ -389,7 +384,7 @@ export default function CourseMaterialsPage() {
                         <p className="font-medium">{material.title}</p>
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
                           <Lock className="h-3 w-3" />
-                          Password Protected
+                          Password Optional
                         </p>
                       </div>
                     </div>
@@ -480,7 +475,7 @@ export default function CourseMaterialsPage() {
               Upload Material
             </DialogTitle>
             <DialogDescription>
-              Upload a PDF document for this course. Set a password for viewer access.
+              Upload a PDF, image, or ZIP material for this course. Password is optional.
             </DialogDescription>
           </DialogHeader>
 
@@ -498,7 +493,7 @@ export default function CourseMaterialsPage() {
 
             {/* Password */}
             <div className="space-y-2">
-              <Label htmlFor="password">Viewer Password *</Label>
+              <Label htmlFor="password">Viewer Password (Optional)</Label>
               <Input
                 id="password"
                 type="text"
@@ -507,7 +502,7 @@ export default function CourseMaterialsPage() {
                 onChange={(e) => setUploadPassword(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Viewers will need this password to access the material.
+                Leave blank if you want this material to open without password.
               </p>
             </div>
 
@@ -534,7 +529,7 @@ export default function CourseMaterialsPage() {
                 <input
                   id="file-input"
                   type="file"
-                  accept=".pdf,.zip,.html"
+                  accept=".pdf,.zip,.jpg,.jpeg,.png,.gif,.webp,.bmp,.svg"
                   className="hidden"
                   onChange={handleFileSelect}
                 />
@@ -552,10 +547,11 @@ export default function CourseMaterialsPage() {
                   <>
                     <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
                     <p className="text-sm text-muted-foreground">
-                      Drag & drop a PDF file here, or <span className="text-primary font-medium">browse</span>
+                      Drag & drop a PDF, image, or ZIP file here, or{" "}
+                      <span className="text-primary font-medium">browse</span>
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Supports PDF files up to 200MB
+                      Supports PDF, image, and ZIP files up to 200MB
                     </p>
                   </>
                 )}

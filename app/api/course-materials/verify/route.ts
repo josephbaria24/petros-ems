@@ -18,9 +18,9 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const { materialId, password } = body;
 
-  if (!materialId || !password) {
+  if (!materialId) {
     return NextResponse.json(
-      { error: "materialId and password are required" },
+      { error: "materialId is required" },
       { status: 400 }
     );
   }
@@ -41,7 +41,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This material is currently unavailable" }, { status: 403 });
   }
 
-  const inputHash = createHash("sha256").update(password).digest("hex");
+  // If no password is set for this material, allow direct access.
+  if (!material.password_hash) {
+    return NextResponse.json({
+      valid: true,
+      material: {
+        id: material.id,
+        title: material.title,
+        file_url: material.file_url,
+        file_type: material.file_type,
+      },
+    });
+  }
+
+  const normalizedPassword = typeof password === "string" ? password.trim() : "";
+  if (!normalizedPassword) {
+    return NextResponse.json({ valid: false, error: "Password is required" }, { status: 401 });
+  }
+
+  const inputHash = createHash("sha256").update(normalizedPassword).digest("hex");
   const valid = inputHash === material.password_hash;
 
   if (!valid) {

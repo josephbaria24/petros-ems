@@ -59,6 +59,9 @@ export default function MaterialViewerPage() {
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [showOverlays, setShowOverlays] = useState(true)
   const overlayTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const isPdfMaterial = materialInfo?.file_type === "pdf" || materialInfo?.file_type === "other"
+  const isImageMaterial = materialInfo?.file_type === "image"
+  const isZipMaterial = materialInfo?.file_type === "zip"
 
   // ===== ANTI-SCREENSHOT PROTECTIONS =====
   useEffect(() => {
@@ -109,7 +112,7 @@ export default function MaterialViewerPage() {
       }
 
       // Page navigation with arrows
-      if (isUnlocked && pdfDoc) {
+      if (isUnlocked && isPdfMaterial && pdfDoc) {
         if (e.key === "ArrowRight" || e.key === "ArrowDown") {
           e.preventDefault()
           goToNextPage()
@@ -186,15 +189,16 @@ export default function MaterialViewerPage() {
       window.removeEventListener("mousemove", resetOverlayTimer)
       window.removeEventListener("touchstart", resetOverlayTimer)
     }
-  }, [isUnlocked, pdfDoc, currentPage, totalPages])
+  }, [isUnlocked, isPdfMaterial, pdfDoc, currentPage, totalPages])
 
   // ===== PASSWORD VERIFICATION =====
-  const handleVerify = async () => {
-    if (!password.trim()) {
+  const handleVerify = async (providedPassword?: string) => {
+    const passwordToSend = typeof providedPassword === "string" ? providedPassword : password;
+    const isAutoCheck = providedPassword !== undefined;
+    if (!isAutoCheck && !passwordToSend.trim()) {
       setError("Please enter a password")
       return
     }
-
     setVerifying(true)
     setError("")
 
@@ -202,7 +206,7 @@ export default function MaterialViewerPage() {
       const res = await fetch("/api/course-materials/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ materialId, password }),
+        body: JSON.stringify({ materialId, password: passwordToSend }),
       })
 
       const json = await res.json()
@@ -212,7 +216,9 @@ export default function MaterialViewerPage() {
         setIsUnlocked(true)
         sessionStorage.setItem(`material_${materialId}`, "unlocked")
       } else {
-        setError(json.error || "Incorrect password")
+        if (!isAutoCheck) {
+          setError(json.error || "Incorrect password")
+        }
       }
     } catch (err) {
       setError("Verification failed. Please try again.")
@@ -220,6 +226,17 @@ export default function MaterialViewerPage() {
       setVerifying(false)
     }
   }
+
+  useEffect(() => {
+    if (!materialId || isUnlocked) return
+    const previouslyUnlocked = sessionStorage.getItem(`material_${materialId}`) === "unlocked"
+    if (previouslyUnlocked) {
+      handleVerify("")
+      return
+    }
+    // Auto-check allows direct access when no password is configured.
+    handleVerify("")
+  }, [materialId, isUnlocked])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -229,7 +246,7 @@ export default function MaterialViewerPage() {
 
   // ===== PDF LOADING =====
   useEffect(() => {
-    if (!isUnlocked || !materialInfo?.file_url) return
+    if (!isUnlocked || !materialInfo?.file_url || !isPdfMaterial) return
 
     const loadPdf = async () => {
       setPdfLoading(true)
@@ -257,7 +274,7 @@ export default function MaterialViewerPage() {
     }
 
     loadPdf()
-  }, [isUnlocked, materialInfo])
+  }, [isUnlocked, materialInfo, isPdfMaterial])
 
   // ===== PAGE RENDERING =====
   const renderPage = useCallback(
@@ -346,7 +363,7 @@ export default function MaterialViewerPage() {
   const zoomOut = () => setScale((prev) => Math.max(prev - 0.25, 0.5))
 
   const autoFit = useCallback(async () => {
-    if (!pdfDoc) return
+    if (!pdfDoc || !isPdfMaterial) return
     const page = await pdfDoc.getPage(currentPage)
     const viewport = page.getViewport({ scale: 1 })
     const isMobile = window.innerWidth < 768
@@ -361,7 +378,7 @@ export default function MaterialViewerPage() {
     // Choose the best scale that fits height while respecting width
     const bestScale = Math.min(widthScale, heightScale, 3.0)
     setScale(parseFloat(bestScale.toFixed(2)))
-  }, [pdfDoc, currentPage])
+  }, [pdfDoc, currentPage, isPdfMaterial])
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
@@ -516,57 +533,61 @@ export default function MaterialViewerPage() {
 
             {/* Controls */}
             <div className="flex items-center gap-2">
-              {/* Zoom */}
-              <div className="hidden sm:flex items-center gap-1 bg-white/[0.06] rounded-lg px-2 py-1">
-                <button
-                  onClick={zoomOut}
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors"
-                  title="Zoom Out"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
-                  </svg>
-                </button>
-                <span className="text-xs text-white/50 w-12 text-center font-mono">
-                  {Math.round(scale * 100)}%
-                </span>
-                <button
-                  onClick={zoomIn}
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors"
-                  title="Zoom In"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
-              </div>
+              {isPdfMaterial && (
+                <>
+                  {/* Zoom */}
+                  <div className="hidden sm:flex items-center gap-1 bg-white/[0.06] rounded-lg px-2 py-1">
+                    <button
+                      onClick={zoomOut}
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors"
+                      title="Zoom Out"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
+                      </svg>
+                    </button>
+                    <span className="text-xs text-white/50 w-12 text-center font-mono">
+                      {Math.round(scale * 100)}%
+                    </span>
+                    <button
+                      onClick={zoomIn}
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors"
+                      title="Zoom In"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                      </svg>
+                    </button>
+                  </div>
 
-              {/* Page Navigation */}
-              <div className="flex items-center gap-1 bg-white/[0.06] rounded-lg px-2 py-1">
-                <button
-                  onClick={goToPrevPage}
-                  disabled={currentPage <= 1}
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                  title="Previous Page"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-                <span className="text-xs text-white/50 font-mono px-2 min-w-[70px] text-center">
-                  {currentPage} / {totalPages}
-                </span>
-                <button
-                  onClick={goToNextPage}
-                  disabled={currentPage >= totalPages}
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                  title="Next Page"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
+                  {/* Page Navigation */}
+                  <div className="flex items-center gap-1 bg-white/[0.06] rounded-lg px-2 py-1">
+                    <button
+                      onClick={goToPrevPage}
+                      disabled={currentPage <= 1}
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Previous Page"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <span className="text-xs text-white/50 font-mono px-2 min-w-[70px] text-center">
+                      {currentPage} / {totalPages}
+                    </span>
+                    <button
+                      onClick={goToNextPage}
+                      disabled={currentPage >= totalPages}
+                      className="w-7 h-7 rounded-md flex items-center justify-center text-white/60 hover:text-white hover:bg-white/[0.08] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                      title="Next Page"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                </>
+              )}
 
               {/* Full Screen */}
               <button
@@ -589,7 +610,7 @@ export default function MaterialViewerPage() {
         className={`flex-1 overflow-auto flex justify-center items-center transition-all duration-300 ${isFullScreen ? "p-0" : "py-8 px-4"}`}
         style={{ background: "#141454" }}
       >
-        {isFullScreen && (
+        {isFullScreen && isPdfMaterial && (
           <>
             {/* Side Navigation Overlays */}
             <div
@@ -642,6 +663,30 @@ export default function MaterialViewerPage() {
             {/* Overlay to prevent direct interaction with the iframe's context menu if possible */}
             <div className="absolute inset-0 pointer-events-none" />
           </div>
+        ) : isImageMaterial ? (
+          <div className="w-full max-w-6xl mx-auto rounded-xl overflow-hidden shadow-2xl bg-black/20 p-4">
+            <img
+              src={materialInfo.file_url}
+              alt={materialInfo.title || "Course material"}
+              className="w-full h-auto object-contain max-h-[90vh] rounded-lg"
+              draggable={false}
+            />
+          </div>
+        ) : isZipMaterial ? (
+          <div className="w-full max-w-2xl mx-auto rounded-xl overflow-hidden shadow-2xl bg-white/10 border border-white/15 p-8 text-center">
+            <h2 className="text-xl font-semibold text-white mb-3">ZIP Material</h2>
+            <p className="text-sm text-white/70 mb-6">
+              This material is a ZIP file. Click below to open or download it.
+            </p>
+            <a
+              href={materialInfo.file_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center rounded-lg bg-amber-400 hover:bg-amber-300 text-[#141454] font-semibold px-5 py-2.5 transition-colors"
+            >
+              Open ZIP File
+            </a>
+          </div>
         ) : pdfLoading ? (
           <div className="flex flex-col items-center justify-center gap-4 py-20">
             <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 flex items-center justify-center">
@@ -682,7 +727,7 @@ export default function MaterialViewerPage() {
       </div>
 
       {/* Bottom Bar — Static in normal (mobile) only */}
-      {!isFullScreen && (
+      {!isFullScreen && isPdfMaterial && (
         <div className="sm:hidden sticky bottom-0 bg-[#16162a]/95 backdrop-blur-xl border-t border-white/[0.06] p-2 flex justify-center gap-2">
           <button
             onClick={zoomOut}
