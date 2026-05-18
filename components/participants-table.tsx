@@ -16,7 +16,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table"
-import { ArrowUpDown, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode } from "lucide-react"
+import { ArrowUpDown, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -48,6 +48,7 @@ import { TraineeSearchDialog } from "./trainee-search-dialog"
 import { ScheduleDetailDialog } from "./schedule-detail-dialog"
 import { ScheduleEvaluationsDialog } from "./evaluation-dialog"
 import { ClipboardList } from "lucide-react"
+import { DownloadPassersDialog } from "@/components/download-passers-dialog"
 
 const SubmissionIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -132,6 +133,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
 
   const [directoryOpen, setDirectoryOpen] = React.useState(false)
   const [evaluationsOpen, setEvaluationsOpen] = React.useState(false)
+  const [passersDialogOpen, setPassersDialogOpen] = React.useState(false)
   const [directoryScheduleId, setDirectoryScheduleId] = React.useState<string | null>(null)
   const [directoryCourseName, setDirectoryCourseName] = React.useState("")
   const [directoryRange, setDirectoryRange] = React.useState("")
@@ -270,6 +272,11 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const handleManageEvaluations = (participant: Participant) => {
     setSelectedParticipant(participant)
     setEvaluationsOpen(true)
+  }
+
+  const handleDownloadPassers = (participant: Participant) => {
+    setSelectedParticipant(participant)
+    setPassersDialogOpen(true)
   }
 
   const handleDeleteClick = (participant: Participant) => {
@@ -670,6 +677,11 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleManageEvaluations(participant); }} className="cursor-pointer">
                 <ClipboardList className="mr-2 h-4 w-4 text-blue-600" />
                 Manage Evaluations
+              </DropdownMenuItem>
+
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDownloadPassers(participant); }} className="cursor-pointer">
+                <Download className="mr-2 h-4 w-4 text-emerald-600" />
+                Download Passers
               </DropdownMenuItem>
 
               <DropdownMenuItem
@@ -1125,6 +1137,14 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         onOpenChange={setEvaluationsOpen}
         scheduleId={selectedParticipant?.id || null}
         courseName={selectedParticipant?.course}
+      />
+
+      <DownloadPassersDialog
+        open={passersDialogOpen}
+        onOpenChange={setPassersDialogOpen}
+        scheduleId={selectedParticipant?.id || null}
+        courseName={selectedParticipant?.course || ""}
+        scheduleLabel={selectedParticipant?.schedule || ""}
       />
     </>
   )
