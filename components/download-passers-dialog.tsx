@@ -36,7 +36,7 @@ type ScheduleMeta = {
   schedule_ranges?: { start_date: string; end_date: string }[]
   schedule_dates?: { date: string }[]
   batch_number?: number | null
-  courses?: { name: string } | null
+  courses?: { name: string; title?: string | null } | null
 }
 
 export function DownloadPassersDialog({
@@ -71,7 +71,7 @@ export function DownloadPassersDialog({
                 batch_number,
                 schedule_ranges (start_date, end_date),
                 schedule_dates (date),
-                courses (name)
+                courses (name, title)
               `)
               .eq("id", scheduleId)
               .single(),
@@ -140,6 +140,7 @@ export function DownloadPassersDialog({
 
     const selected = trainees.filter((t) => selectedIds.includes(t.id))
     const resolvedCourseName = scheduleMeta?.courses?.name || courseName
+    const resolvedCourseTitle = scheduleMeta?.courses?.title ?? null
     const batchLabel = scheduleMeta
       ? formatBatchLabelFromSchedule(scheduleMeta)
       : `Batch ${scheduleLabel}`
@@ -152,6 +153,7 @@ export function DownloadPassersDialog({
         selected,
         {
           courseName: resolvedCourseName,
+          courseTitle: resolvedCourseTitle,
           batchLabel,
           releasedOn: new Date(releasedOn),
         },

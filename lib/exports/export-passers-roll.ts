@@ -10,8 +10,17 @@ export type PasserTrainee = {
 
 export type PassersRollMeta = {
   courseName: string
+  courseTitle?: string | null
   batchLabel: string
   releasedOn: Date
+}
+
+export function formatCourseExamLine(title: string | null | undefined, name: string): string {
+  const n = (name || "").trim()
+  const t = (title || "").trim()
+  if (t && n) return `${t}(${n})`
+  if (t) return t
+  return n
 }
 
 const PAGE_WIDTH = 850
@@ -29,8 +38,8 @@ function formatPasserName(trainee: PasserTrainee): string {
   return `${first} ${mi} ${last}`.replace(/\s+/g, " ").trim().toUpperCase() + suffix.toUpperCase()
 }
 
-function getRollTitleLine(courseName: string): string {
-  const upper = courseName.toUpperCase()
+function getRollTitleLine(courseTitle: string | null | undefined, courseName: string): string {
+  const upper = `${courseTitle || ""} ${courseName}`.toUpperCase()
   if (upper.includes("SO2") || upper.includes("SAFETY OFFICER 2")) {
     return "Roll of SO2 Trainee Passers in the"
   }
@@ -89,11 +98,11 @@ async function renderPassersPage(
   // Header block
   let y = 72
   ctx.font = `16px ${FONT_FAMILY}`
-  ctx.fillText(getRollTitleLine(meta.courseName), 72, y)
+  ctx.fillText(getRollTitleLine(meta.courseTitle, meta.courseName), 72, y)
   y += 28
 
   ctx.font = `bold 16px ${FONT_FAMILY}`
-  const examTitle = meta.courseName.toUpperCase()
+  const examTitle = formatCourseExamLine(meta.courseTitle, meta.courseName).toUpperCase()
   ctx.fillText(examTitle, 72, y)
   y += 28
 
@@ -183,7 +192,9 @@ export async function exportPassersRoll(
     await new Promise((r) => setTimeout(r, 50))
   }
 
-  const baseName = sanitizeFilename(meta.courseName || "passers-roll")
+  const baseName = sanitizeFilename(
+    formatCourseExamLine(meta.courseTitle, meta.courseName) || "passers-roll"
+  )
 
   if (blobs.length === 1) {
     downloadBlob(blobs[0].blob, `${baseName}.png`)
