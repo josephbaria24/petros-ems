@@ -260,7 +260,7 @@ const calculateTotalRequired = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 py-7 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 py-7 px-4 sm:px-6 lg:px-8">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-3">

@@ -5,6 +5,7 @@ import { IncomingForm, Files, Fields } from 'formidable';
 import { Readable } from 'stream';
 import * as ftp from 'basic-ftp';
 import { randomUUID } from 'crypto';
+import { notifyStaffFileUpload } from '@/lib/notify-staff-file-upload';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -130,7 +131,7 @@ export async function POST(req: NextRequest) {
         // Get course details to retrieve training_fee
         const { data: course } = await supabase
           .from('courses')
-          .select('training_fee')
+          .select('training_fee, name')
           .eq('id', training.course_id)
           .single();
 
@@ -220,7 +221,20 @@ export async function POST(req: NextRequest) {
             console.log('✅ Notification created');
           }
 
-          // 7. Send confirmation email to trainee (optional - don't fail if it errors)
+          // 7. Notify sales & training of new receipt upload
+          try {
+            await notifyStaffFileUpload({
+              source: 'receipt_upload',
+              traineeName: `${training.first_name} ${training.last_name}`,
+              bookingReference: referenceNumber,
+              courseName: course?.name,
+              files: [{ label: 'Payment Receipt', url: publicUrl }],
+            });
+          } catch (staffNotifyError) {
+            console.error('Staff upload notification failed:', staffNotifyError);
+          }
+
+          // 8. Send confirmation email to trainee (optional - don't fail if it errors)
           try {
             const emailResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/send-receipt-confirmation`, {
               method: 'POST',

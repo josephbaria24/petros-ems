@@ -11,7 +11,9 @@ import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
+import { buildPaymentMethodPanelHtml, type PaymentMethodPanelKey } from "@/lib/email-payment-method-panel-html"
 import {
   Dialog,
   DialogContent,
@@ -70,6 +72,7 @@ type EmailBlockType =
   | 'employment_info'
   | 'payment_summary'
   | 'payment_instructions'
+  | 'payment_method_panel'
   | 'upload_receipt_link'
   | 'next_steps'
   | 'contact_info'
@@ -123,7 +126,7 @@ const DEFAULT_EMAIL_BLOCKS: EmailBlock[] = [
   { id: 'attendee_info', type: 'attendee_info', enabled: true, label: 'Attendee Information' },
   { id: 'employment_info', type: 'employment_info', enabled: true, label: 'Employment Information' },
   { id: 'payment_summary', type: 'payment_summary', enabled: true, label: 'Payment Summary' },
-  { id: 'payment_instructions', type: 'payment_instructions', enabled: true, label: 'Payment Instructions' },
+  { id: 'payment_method', type: 'payment_method_panel', enabled: true, label: 'Payment Method' },
   { id: 'upload_receipt_link', type: 'upload_receipt_link', enabled: true, label: 'Upload Receipt Link', buttonText: 'Upload Receipt Now', description: 'Upload your payment receipt for faster verification' },
   { id: 'next_steps', type: 'next_steps', enabled: true, label: 'Next Steps', items: [
     'Complete your payment using the instructions above',
@@ -137,6 +140,7 @@ const DEFAULT_EMAIL_BLOCKS: EmailBlock[] = [
 ]
 
 const ADDABLE_BLOCKS: { type: EmailBlockType; label: string; icon: any; description: string }[] = [
+  { type: 'payment_method_panel', label: 'Payment Method', icon: CreditCard, description: 'Petrosphere BPI / GCash / OTC panel (matches registration)' },
   { type: 'custom_text', label: 'Custom Text', icon: Type, description: 'Rich text block with variables' },
   { type: 'custom_button', label: 'Custom Button', icon: MousePointer, description: 'Call-to-action button with link' },
   { type: 'custom_upload_link', label: 'Custom Upload Page', icon: Upload, description: 'Configurable file upload page link' },
@@ -153,6 +157,7 @@ const BLOCK_ICONS: Record<EmailBlockType, any> = {
   employment_info: Briefcase,
   payment_summary: CreditCard,
   payment_instructions: CreditCard,
+  payment_method_panel: CreditCard,
   upload_receipt_link: Upload,
   next_steps: ListOrdered,
   contact_info: Phone,
@@ -173,6 +178,7 @@ const BLOCK_COLORS: Record<EmailBlockType, string> = {
   employment_info: "bg-blue-50/40 border-blue-200 dark:bg-blue-950/20 dark:border-blue-900",
   payment_summary: "bg-emerald-50/40 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900",
   payment_instructions: "bg-emerald-50/40 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900",
+  payment_method_panel: "bg-emerald-50/40 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900",
   upload_receipt_link: "bg-purple-50/40 border-purple-200 dark:bg-purple-950/20 dark:border-purple-900",
   next_steps: "bg-teal-50/40 border-teal-200 dark:bg-teal-950/20 dark:border-teal-900",
   contact_info: "bg-slate-50/40 border-slate-200 dark:bg-slate-950/20 dark:border-slate-900",
@@ -209,13 +215,20 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
   const [activeTab, setActiveTab] = useState("builder")
 
   const [emailType, setEmailType] = useState<string>('default')
-  const [config, setConfig] = useState<EmailBlock[]>([...DEFAULT_EMAIL_BLOCKS])
+  const [customConfig, setCustomConfig] = useState<EmailBlock[]>([...DEFAULT_EMAIL_BLOCKS])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
 
   const [templates, setTemplates] = useState<EmailTemplate[]>([])
   const [templateName, setTemplateName] = useState("")
   const [isSavingTemplate, setIsSavingTemplate] = useState(false)
+  const [isUpdatingTemplate, setIsUpdatingTemplate] = useState(false)
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null)
+  /** Preview-only: which payment method panel sample to render (live emails use the trainee’s actual method). */
+  const [previewPaymentMethod, setPreviewPaymentMethod] = useState<PaymentMethodPanelKey>("BPI")
+
+  const cloneBlocks = (blocks: EmailBlock[]) =>
+    JSON.parse(JSON.stringify(blocks)) as EmailBlock[]
 
   const richTextEditorRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const richTextDrafts = useRef<Record<string, string>>({})
@@ -239,8 +252,11 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
         setCourse(data)
         setEmailType(data.email_template_type || 'default')
         if (data.email_template_config && data.email_template_config.length > 0) {
-          setConfig(data.email_template_config)
+          setCustomConfig(data.email_template_config)
+        } else {
+          setCustomConfig(cloneBlocks(DEFAULT_EMAIL_BLOCKS))
         }
+        setSelectedTemplateId(null)
       }
     } catch (err) {
       console.error("Error fetching course:", err)
@@ -268,36 +284,63 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
       const response = await fetch("/api/email-builder-templates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: templateName, config })
+        body: JSON.stringify({ name: templateName.trim(), config: customConfig }),
       })
-      if (!response.ok) throw new Error("Failed to save template")
-      toast.success("Template saved successfully")
+      const saved = await response.json()
+      if (!response.ok) throw new Error(saved.error || "Failed to save template")
+      toast.success("Template saved and selected")
       setTemplateName("")
       setIsSaveDialogOpen(false)
-      fetchTemplates()
-    } catch (err) {
-      toast.error("Failed to save template")
+      setSelectedTemplateId(saved.id)
+      setEditingTemplate(null)
+      setEmailType("custom")
+      await fetchTemplates()
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save template")
     } finally {
       setIsSavingTemplate(false)
     }
   }
 
-  const handleRenameTemplate = async () => {
+  const handleUpdateTemplate = async () => {
     if (!editingTemplate || !templateName.trim()) return
+    setIsUpdatingTemplate(true)
     try {
       const response = await fetch("/api/email-builder-templates", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: editingTemplate.id, name: templateName })
+        body: JSON.stringify({
+          id: editingTemplate.id,
+          name: templateName.trim(),
+          config: customConfig,
+        }),
       })
-      if (!response.ok) throw new Error("Failed to rename template")
-      toast.success("Template renamed")
-      setEditingTemplate(null)
-      setTemplateName("")
-      fetchTemplates()
-    } catch (err) {
-      toast.error("Failed to rename template")
+      const updated = await response.json()
+      if (!response.ok) throw new Error(updated.error || "Failed to update template")
+      toast.success("Template updated")
+      setEditingTemplate({ ...editingTemplate, name: updated.name, config: updated.config })
+      setSelectedTemplateId(updated.id)
+      await fetchTemplates()
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update template")
+    } finally {
+      setIsUpdatingTemplate(false)
     }
+  }
+
+  const handleStartEditTemplate = (template: EmailTemplate) => {
+    setEditingTemplate(template)
+    setTemplateName(template.name)
+    setCustomConfig(cloneBlocks(template.config))
+    setSelectedTemplateId(template.id)
+    setEmailType("custom")
+    setActiveTab("builder")
+    toast.success(`Editing template: ${template.name}`)
+  }
+
+  const handleCancelTemplateEdit = () => {
+    setEditingTemplate(null)
+    setTemplateName("")
   }
 
   const handleDeleteTemplate = async (templateId: string) => {
@@ -315,20 +358,30 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
   }
 
   const loadTemplate = (template: EmailTemplate) => {
-    if (config.some(b => b.type === 'custom_text' || b.type === 'custom_button' || b.type === 'custom_upload_link') &&
-      !confirm("Loading a template will overwrite your current configuration. Proceed?")) return
-    setConfig(template.config)
+    if (
+      customConfig.some(
+        (b) =>
+          b.type === "custom_text" ||
+          b.type === "custom_button" ||
+          b.type === "custom_upload_link"
+      ) &&
+      !confirm("Loading a template will overwrite your current custom email. Proceed?")
+    ) {
+      return
+    }
+    setCustomConfig(cloneBlocks(template.config))
+    setSelectedTemplateId(template.id)
+    setEditingTemplate(null)
     setEmailType("custom")
     toast.success(`Loaded template: ${template.name}`)
   }
 
-  const selectedTemplateId =
-    emailType === "custom"
-      ? templates.find(
-          (template) =>
-            JSON.stringify(template.config || []) === JSON.stringify(config || [])
-        )?.id || null
-      : null
+  const handleEmailTypeChange = (value: string) => {
+    setEmailType(value)
+    if (value === "custom" && customConfig.length === 0) {
+      setCustomConfig(cloneBlocks(DEFAULT_EMAIL_BLOCKS))
+    }
+  }
 
   // ─── Block CRUD ──────────────────────────────────────────────────────
 
@@ -355,35 +408,35 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
         }
       ] : undefined,
     }
-    setConfig([...config, newBlock])
+    setCustomConfig([...customConfig, newBlock])
   }
 
   const removeBlock = (blockId: string) => {
-    setConfig(config.filter(b => b.id !== blockId))
+    setCustomConfig(customConfig.filter(b => b.id !== blockId))
   }
 
   const updateBlock = (blockId: string, updates: Partial<EmailBlock>) => {
-    setConfig(config.map(b => b.id === blockId ? { ...b, ...updates } : b))
+    setCustomConfig(customConfig.map(b => b.id === blockId ? { ...b, ...updates } : b))
   }
 
   const toggleBlock = (blockId: string) => {
-    setConfig(config.map(b => b.id === blockId ? { ...b, enabled: !b.enabled } : b))
+    setCustomConfig(customConfig.map(b => b.id === blockId ? { ...b, enabled: !b.enabled } : b))
   }
 
   const moveBlock = (index: number, direction: 'up' | 'down') => {
-    const newConfig = [...config]
+    const newConfig = [...customConfig]
     const targetIndex = direction === 'up' ? index - 1 : index + 1
     if (targetIndex >= 0 && targetIndex < newConfig.length) {
       const [moved] = newConfig.splice(index, 1)
       newConfig.splice(targetIndex, 0, moved)
-      setConfig(newConfig)
+      setCustomConfig(newConfig)
     }
   }
 
   // ─── Next Steps CRUD ────────────────────────────────────────────────
 
   const addNextStep = (blockId: string) => {
-    setConfig(config.map(b => {
+    setCustomConfig(customConfig.map(b => {
       if (b.id === blockId) {
         return { ...b, items: [...(b.items || []), 'New step'] }
       }
@@ -392,7 +445,7 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
   }
 
   const updateNextStep = (blockId: string, index: number, value: string) => {
-    setConfig(config.map(b => {
+    setCustomConfig(customConfig.map(b => {
       if (b.id === blockId) {
         const items = [...(b.items || [])]
         items[index] = value
@@ -403,7 +456,7 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
   }
 
   const removeNextStep = (blockId: string, index: number) => {
-    setConfig(config.map(b => {
+    setCustomConfig(customConfig.map(b => {
       if (b.id === blockId) {
         const items = [...(b.items || [])]
         items.splice(index, 1)
@@ -416,7 +469,7 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
   // ─── Upload Page Block CRUD ──────────────────────────────────────────
 
   const addUploadPageBlock = (emailBlockId: string, type: UploadPageBlock['type']) => {
-    setConfig(config.map(b => {
+    setCustomConfig(customConfig.map(b => {
       if (b.id === emailBlockId) {
         const newUploadBlock: UploadPageBlock = {
           id: Math.random().toString(36).substr(2, 9),
@@ -435,7 +488,7 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
   }
 
   const updateUploadPageBlock = (emailBlockId: string, uploadBlockId: string, updates: Partial<UploadPageBlock>) => {
-    setConfig(config.map(b => {
+    setCustomConfig(customConfig.map(b => {
       if (b.id === emailBlockId) {
         return {
           ...b,
@@ -449,7 +502,7 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
   }
 
   const removeUploadPageBlock = (emailBlockId: string, uploadBlockId: string) => {
-    setConfig(config.map(b => {
+    setCustomConfig(customConfig.map(b => {
       if (b.id === emailBlockId) {
         return { ...b, uploadPageBlocks: (b.uploadPageBlocks || []).filter(ub => ub.id !== uploadBlockId) }
       }
@@ -497,16 +550,23 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
   const handleSave = async () => {
     setSaving(true)
     try {
-      const { error } = await tmsDb
-        .from("courses")
-        .update({
-          email_template_type: emailType,
-          email_template_config: config
-        })
-        .eq("id", id)
+      const updatePayload: {
+        email_template_type: string
+        email_template_config?: EmailBlock[]
+      } = { email_template_type: emailType }
+
+      if (emailType === "custom") {
+        updatePayload.email_template_config = customConfig
+      }
+
+      const { error } = await tmsDb.from("courses").update(updatePayload).eq("id", id)
 
       if (error) throw error
-      toast.success("Email template updated successfully")
+      toast.success(
+        emailType === "default"
+          ? "Course set to use the default email template"
+          : "Custom email template saved for this course"
+      )
     } catch (err) {
       console.error("Error saving config:", err)
       toast.error("Failed to save configuration")
@@ -517,8 +577,23 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
 
   // ─── Email Preview HTML Generator ──────────────────────────────────
 
-  const generatePreviewHtml = () => {
-    const enabledBlocks = config.filter(b => b.enabled)
+  const generatePreviewHtml = (blocks: EmailBlock[] = customConfig) => {
+    const previewBase =
+      typeof window !== "undefined" && window.location?.origin
+        ? window.location.origin
+        : ""
+    const samplePaymentMethodLabel =
+      previewPaymentMethod === "BPI"
+        ? "BPI Bank Transfer"
+        : previewPaymentMethod === "GCASH"
+          ? "GCash"
+          : "Over the counter (OTC)"
+    const samplePaymentPanel = buildPaymentMethodPanelHtml(
+      previewBase || "http://localhost:3000",
+      previewPaymentMethod
+    )
+
+    const enabledBlocks = blocks.filter(b => b.enabled)
     let html = `<div style="max-width:600px;margin:0 auto;background:#fff;font-family:Arial,sans-serif;">`
 
     for (const block of enabledBlocks) {
@@ -580,15 +655,13 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
             <table style="width:100%;border-collapse:collapse;">
               <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;width:50%;">Training Fee:</td><td style="padding:0.5rem 0;color:#111827;text-align:right;">{{training_fee}}</td></tr>
               <tr style="border-top:2px solid #e5e7eb;"><td style="padding:0.75rem 0;color:#111827;font-weight:700;font-size:1.125rem;">Total Amount:</td><td style="padding:0.75rem 0;color:#111827;font-weight:700;font-size:1.125rem;text-align:right;">{{total_amount}}</td></tr>
-              <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;">Payment Method:</td><td style="padding:0.5rem 0;color:#111827;text-align:right;">{{payment_method}}</td></tr>
+              <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;">Payment Method:</td><td style="padding:0.5rem 0;color:#111827;text-align:right;">${samplePaymentMethodLabel}</td></tr>
             </table>
           </div></div>`
           break
         case 'payment_instructions':
-          html += `<div style="padding:0 2rem;"><div style="background:#f9fafb;padding:1rem;border-radius:0.5rem;margin-bottom:1.5rem;">
-            <p style="font-weight:600;color:#111827;margin-bottom:0.5rem;">Payment Instructions</p>
-            <p style="color:#6b7280;font-size:0.875rem;">BPI / GCash / Counter payment instructions will be dynamically shown based on the trainee's selected payment method.</p>
-          </div></div>`
+        case 'payment_method_panel':
+          html += samplePaymentPanel
           break
         case 'upload_receipt_link':
           html += `<div style="padding:0 2rem;"><div style="padding:1rem;background:#dbeafe;border-radius:0.5rem;border:2px solid #3b82f6;margin-bottom:1.5rem;">
@@ -654,7 +727,7 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
 
   const isBuiltInBlock = (type: EmailBlockType) =>
     ['header', 'success_banner', 'greeting', 'booking_reference', 'training_details',
-     'attendee_info', 'employment_info', 'payment_summary', 'payment_instructions',
+     'attendee_info', 'employment_info', 'payment_summary', 'payment_instructions', 'payment_method_panel',
      'upload_receipt_link', 'next_steps', 'contact_info', 'footer'].includes(type)
 
   return (
@@ -686,7 +759,7 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
             <CardDescription className="text-xs">Choose default or build a custom email</CardDescription>
           </CardHeader>
           <CardContent>
-            <RadioGroup value={emailType} onValueChange={setEmailType} className="space-y-3">
+            <RadioGroup value={emailType} onValueChange={handleEmailTypeChange} className="space-y-3">
               {[
                 { value: 'default', label: 'Default Email', desc: 'Standard booking summary email with all sections' },
                 { value: 'custom', label: 'Custom Email', desc: 'Build your own email from blocks' },
@@ -742,7 +815,7 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
                             Use
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingTemplate(t); setTemplateName(t.name) }}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleStartEditTemplate(t)} title="Edit template content">
                           <Edit2 className="h-3.5 w-3.5" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDeleteTemplate(t.id)}>
@@ -785,6 +858,30 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
         {/* Center - Builder or Default */}
         {emailType === 'custom' ? (
           <div className="lg:col-span-3 space-y-6">
+            {editingTemplate && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold">Editing saved template</p>
+                  <p className="text-xs text-muted-foreground">
+                    Update Template saves to the library. Save Changes applies this custom email to this course only.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    className="h-8 w-48 text-sm"
+                    value={templateName}
+                    onChange={(e) => setTemplateName(e.target.value)}
+                    placeholder="Template name"
+                  />
+                  <Button size="sm" onClick={handleUpdateTemplate} disabled={isUpdatingTemplate || !templateName.trim()}>
+                    {isUpdatingTemplate ? "Updating..." : "Update Template"}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleCancelTemplateEdit}>
+                    Done
+                  </Button>
+                </div>
+              </div>
+            )}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <div className="flex items-center justify-between">
                 <TabsList>
@@ -799,9 +896,15 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
                 </TabsList>
 
                 <div className="flex gap-2">
-                  <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
+                  <Dialog
+                    open={isSaveDialogOpen}
+                    onOpenChange={(open) => {
+                      setIsSaveDialogOpen(open)
+                      if (open && !editingTemplate) setTemplateName("")
+                    }}
+                  >
                     <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" className="gap-2" disabled={config.length === 0}>
+                      <Button variant="outline" size="sm" className="gap-2" disabled={customConfig.length === 0}>
                         <Copy className="h-4 w-4" />
                         Save as Template
                       </Button>
@@ -809,7 +912,9 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
                     <DialogContent className="lg:w-[50vw] w-[90vw]">
                       <DialogHeader>
                         <DialogTitle>Save as Template</DialogTitle>
-                        <DialogDescription>Save this email structure for future use across other courses.</DialogDescription>
+                        <DialogDescription>
+                          Saves a reusable template in the library. This does not change the default email or this course until you click Save Changes.
+                        </DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4 pt-4">
                         <div className="space-y-2">
@@ -846,13 +951,13 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
                 {/* Block List */}
                 <div className="space-y-3">
                   <h3 className="font-semibold text-sm">Email Structure</h3>
-                  {config.length === 0 && (
+                  {customConfig.length === 0 && (
                     <div className="border-2 border-dashed rounded-xl p-12 text-center text-muted-foreground">
                       Your email is empty. Toggle sections or add custom blocks above.
                     </div>
                   )}
 
-                  {config.map((block, index) => {
+                  {customConfig.map((block, index) => {
                     const Icon = BLOCK_ICONS[block.type] || Type
                     const colorClass = BLOCK_COLORS[block.type] || "bg-slate-50 border-slate-200 dark:bg-slate-900/30 dark:border-slate-800"
                     const isBuiltIn = isBuiltInBlock(block.type)
@@ -870,7 +975,7 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
                               <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => moveBlock(index, 'up')} disabled={index === 0}>
                                 <ChevronLeft className="h-3 w-3 rotate-90" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => moveBlock(index, 'down')} disabled={index === config.length - 1}>
+                              <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => moveBlock(index, 'down')} disabled={index === customConfig.length - 1}>
                                 <ChevronLeft className="h-3 w-3 -rotate-90" />
                               </Button>
                               <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive" onClick={() => removeBlock(block.id)}>
@@ -891,7 +996,7 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
                               <ChevronLeft className="h-3 w-3 rotate-90" />
                             </Button>
                             <GripVertical className="h-3 w-3" />
-                            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => moveBlock(index, 'down')} disabled={index === config.length - 1}>
+                            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => moveBlock(index, 'down')} disabled={index === customConfig.length - 1}>
                               <ChevronLeft className="h-3 w-3 -rotate-90" />
                             </Button>
                           </div>
@@ -1236,13 +1341,36 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
               <TabsContent value="preview" className="mt-4">
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Eye className="h-4 w-4" />
-                      Email Preview
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      This is how the email will look. Variable tags show as placeholders.
-                    </CardDescription>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-1.5">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <Eye className="h-4 w-4" />
+                          Email Preview
+                        </CardTitle>
+                        <CardDescription className="text-xs">
+                          This is how the email will look. Variable tags show as placeholders. The payment method
+                          dropdown below is preview-only; sent emails use each trainee&apos;s chosen method.
+                        </CardDescription>
+                      </div>
+                      <div className="flex flex-col gap-1.5 shrink-0 sm:min-w-[200px]">
+                        <Label htmlFor="preview-payment-method" className="text-xs text-muted-foreground">
+                          Sample payment method
+                        </Label>
+                        <Select
+                          value={previewPaymentMethod}
+                          onValueChange={(v) => setPreviewPaymentMethod(v as PaymentMethodPanelKey)}
+                        >
+                          <SelectTrigger id="preview-payment-method" className="h-9 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="BPI">BPI</SelectItem>
+                            <SelectItem value="GCASH">GCash</SelectItem>
+                            <SelectItem value="COUNTER">Over the counter (OTC)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="border rounded-lg overflow-hidden bg-[#f3f4f6]">
@@ -1268,28 +1396,35 @@ export default function ManageEmailTemplate({ params }: { params: Promise<{ id: 
                 (training details, attendee info, payment, upload receipt link, etc.).
                 Switch to "Custom Email" to customize what gets included.
               </p>
-              <div className="mt-6 border rounded-lg overflow-hidden bg-[#f3f4f6] max-w-2xl mx-auto">
+              <div className="mt-6 max-w-2xl mx-auto w-full space-y-2">
+                <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-center sm:gap-4">
+                  <Label htmlFor="preview-payment-method-default" className="text-xs text-muted-foreground sm:pb-2">
+                    Sample payment method (preview only)
+                  </Label>
+                  <Select
+                    value={previewPaymentMethod}
+                    onValueChange={(v) => setPreviewPaymentMethod(v as PaymentMethodPanelKey)}
+                  >
+                    <SelectTrigger id="preview-payment-method-default" className="h-9 text-xs w-full sm:w-[220px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BPI">BPI</SelectItem>
+                      <SelectItem value="GCASH">GCash</SelectItem>
+                      <SelectItem value="COUNTER">Over the counter (OTC)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="border rounded-lg overflow-hidden bg-[#f3f4f6]">
                 <div
-                  dangerouslySetInnerHTML={{ __html: generatePreviewHtml() }}
+                  dangerouslySetInnerHTML={{ __html: generatePreviewHtml(cloneBlocks(DEFAULT_EMAIL_BLOCKS)) }}
                 />
+              </div>
               </div>
             </CardContent>
           </Card>
         )}
       </div>
-
-      <Dialog open={!!editingTemplate} onOpenChange={(open) => { if (!open) setEditingTemplate(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Rename Template</DialogTitle>
-            <DialogDescription>Change the display name of this saved template.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <Input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" />
-            <Button className="w-full" onClick={handleRenameTemplate}>Update Name</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

@@ -16,11 +16,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
   // Define which routes are public (don't require auth)
-  const publicRoutes = ["/login", "/auth/callback", "/guest", "/reupload", "/upload-receipt", "/evaluation", "/view-material", "/privacy-policy"]
+  const publicRoutes = ["/login", "/auth/callback", "/guest", "/reupload", "/upload-receipt", "/client-upload", "/evaluation", "/view-material", "/privacy-policy"]
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
 
   // Define which routes should hide sidebar and header
-  const isGuestPage = pathname.startsWith("/guest") || pathname === "/login" || pathname === "/auth/callback" || pathname.startsWith("/evaluation") || pathname.startsWith("/view-material") || pathname.startsWith("/privacy-policy")
+  const isGuestPage =
+    pathname.startsWith("/guest") ||
+    pathname === "/login" ||
+    pathname === "/auth/callback" ||
+    pathname.startsWith("/client-upload") ||
+    pathname.startsWith("/evaluation") ||
+    pathname.startsWith("/view-material") ||
+    pathname.startsWith("/privacy-policy")
 
   useEffect(() => {
     // Skip auth check for public routes (including guest pages)
@@ -81,7 +88,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (!isPublicRoute && !isAuthenticated) {
     return null
   }
-  const isFullBleed = pathname.startsWith("/upload-receipt") || pathname.startsWith("/guest-certificate-verifier") || pathname.startsWith("/evaluation") || pathname.startsWith("/trainer-repository") || pathname.startsWith("/view-material") || pathname.startsWith("/privacy-policy")
+  const isFullBleed =
+    pathname.startsWith("/upload-receipt") ||
+    pathname.startsWith("/client-upload") ||
+    pathname.startsWith("/guest-certificate-verifier") ||
+    pathname.startsWith("/evaluation") ||
+    pathname.startsWith("/trainer-repository") ||
+    pathname.startsWith("/view-material") ||
+    pathname.startsWith("/privacy-policy")
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -92,7 +106,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <main
             className={cn(
               "flex flex-col flex-1 min-h-0",
-              isFullBleed ? "p-0 bg-transparent" : "p-6 bg-background",
+              isFullBleed ? "p-0 bg-slate-950" : "p-6 bg-background",
               pathname.startsWith("/trainer-repository") ? "overflow-hidden" : "overflow-y-auto"
             )}
           >

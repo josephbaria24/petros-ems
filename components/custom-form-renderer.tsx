@@ -484,6 +484,10 @@ export function CustomFormRenderer({
           { id: 'GCASH', label: 'GCash', icon: '/gcash.jpeg' },
           { id: 'COUNTER', label: 'Over the Counter', icon: '/otc.svg' }
         ]
+        const selectedPaymentMethod =
+          (formData.payment_method && activeMethods.includes(formData.payment_method))
+            ? formData.payment_method
+            : (activeMethods[0] || 'BPI')
         return (
           <div className="space-y-4 border-b pb-6 mb-6" key={comp.id}>
             <div className="flex items-center gap-2 mb-2">
@@ -514,6 +518,47 @@ export function CustomFormRenderer({
                   </div>
                 ))}
               </RadioGroup>
+
+              <div className="rounded-md border border-primary/20 bg-white p-4 text-sm text-gray-700">
+                {selectedPaymentMethod === "BPI" && (
+                  <div>
+                    <p className="font-medium text-gray-900 mb-1">BPI Bank Deposit/Transfer</p>
+                    <p>Make your payment via deposit at any nearest BPI branches or via bank transfer with the following details:</p>
+                    <p className="mt-2"><strong>Account Name:</strong> PETROSPHERE INCORPORATED</p>
+                    <p><strong>Account Number:</strong> 3481 0038 99</p>
+                  </div>
+                )}
+
+                {selectedPaymentMethod === "GCASH" && (
+                  <div>
+                    <p className="font-medium text-gray-900 mb-1">GCash</p>
+                    <ol className="list-decimal ml-5 space-y-1">
+                      <li>Login in your GCash App and tap Bank Transfer.</li>
+                      <li>Select BPI from the list of banks.</li>
+                      <li>Enter the corresponding training fee and the following details:</li>
+                    </ol>
+                    <ul className="list-disc ml-6 mt-1">
+                      <li><strong>Account Name:</strong> PETROSPHERE INCORPORATED</li>
+                      <li><strong>Account Number:</strong> 3481 0038 99</li>
+                    </ul>
+                    <ol start={4} className="list-decimal ml-5 mt-1">
+                      <li>Tap send money, review the details, then tap confirm to complete your transaction.</li>
+                    </ol>
+                  </div>
+                )}
+
+                {selectedPaymentMethod === "COUNTER" && (
+                  <div>
+                    <p className="font-medium text-gray-900 mb-1">Pay Over the Counter</p>
+                    <p>To process your payment, drop by the office at:</p>
+                    <p className="mt-2">
+                      Unit 305 3F, Trigold Business Park,<br />
+                      Gen. Trias St. cor. Gen. Lim St.,<br />
+                      Bangkal, Makati City
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )

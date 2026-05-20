@@ -2,6 +2,7 @@
 import nodemailer from "nodemailer";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { buildPaymentMethodPanelHtml } from "@/lib/email-payment-method-panel-html";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,10 +37,23 @@ function formatDateRange(start: string, end: string) {
 }
 
 
+function normalizePaymentMethod(raw: unknown): "BPI" | "GCASH" | "COUNTER" {
+  const s = String(raw ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "")
+  if (s === "GCASH" || s === "G-CASH") return "GCASH"
+  if (s === "COUNTER" || s === "OTC") return "COUNTER"
+  if (s === "BPI") return "BPI"
+  return "BPI"
+}
+
+
 function buildCustomEmailHtml(
   emailConfig: any[],
   vars: Record<string, string>,
-  paymentInstructions: string,
+  paymentMethodPanelHtml: string,
+  paymentUploadCta: string,
   employmentInfo: any
 ) {
   const enabledBlocks = emailConfig.filter((b: any) => b.enabled)
@@ -123,11 +137,11 @@ function buildCustomEmailHtml(
             <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;">Payment Method:</td><td style="padding:0.5rem 0;color:#111827;text-align:right;">${vars['{{payment_method}}']}</td></tr>
             <tr><td style="padding:0.5rem 0;color:#6b7280;font-weight:600;">Payment Status:</td><td style="padding:0.5rem 0;text-align:right;"><span style="background-color:#dbeafe;color:#1e3a8a;padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.875rem;font-weight:600;">${vars['{{payment_status}}']}</span></td></tr>
           </table>
-          ${paymentInstructions}
         </div></div>`
         break
       case 'payment_instructions':
-        html += `<div style="padding:0 2rem;">${paymentInstructions}</div>`
+      case 'payment_method_panel':
+        html += paymentMethodPanelHtml
         break
       case 'upload_receipt_link':
         html += `<div style="padding:0 2rem;"><div style="padding:1rem;background-color:#dbeafe;border-radius:0.5rem;border:2px solid #3b82f6;margin-bottom:1.5rem;">
@@ -187,6 +201,11 @@ function buildCustomEmailHtml(
     }
   }
 
+  const hasReceiptUploadBlock = enabledBlocks.some((b: any) => b.type === "upload_receipt_link")
+  if (paymentUploadCta && !hasReceiptUploadBlock) {
+    html += `<div style="padding:0 2rem;">${paymentUploadCta}</div>`
+  }
+
   html += `</div></body></html>`
   return html
 }
@@ -218,21 +237,15 @@ export async function POST(req: Request) {
       },
     });
 
-    // Generate payment instructions based on method
-    let paymentInstructions = "";
-    if (paymentInfo.paymentMethod === "BPI") {
-      paymentInstructions = `
-        <div style="background-color: #f9fafb; padding: 1rem; border-radius: 0.5rem; margin-top: 1rem;">
-          <p style="font-weight: 600; color: #111827; margin-bottom: 0.5rem;">BPI Bank Deposit/Transfer Instructions:</p>
-          <p style="margin: 0.25rem 0;">Make your payment via deposit at any nearest BPI branches or via bank transfer with the following details:</p>
-          <div style="margin-top: 0.75rem; padding: 0.75rem; background-color: white; border-radius: 0.375rem; border: 1px solid #e5e7eb;">
-            <p style="margin: 0.25rem 0;"><strong>Account Name:</strong> PETROSPHERE INCORPORATED</p>
-            <p style="margin: 0.25rem 0;"><strong>Account Number:</strong> 3481 0038 99</p>
-          </div>
-          
+    const pm = normalizePaymentMethod(paymentInfo?.paymentMethod)
+
+    const paymentUploadCta =
+      pm === "COUNTER"
+        ? ""
+        : `
           <div style="margin-top: 1rem; padding: 1rem; background-color: #dbeafe; border-radius: 0.5rem; border: 2px solid #3b82f6;">
             <p style="font-weight: 600; color: #1e3a8a; margin-bottom: 0.5rem;">📤 After Payment:</p>
-            <p style="margin: 0.5rem 0; color: #1e40af;">Upload your payment receipt for faster verification:</p>
+            <p style="margin: 0.5rem 0; color: #1e40af;">${pm === "GCASH" ? "Upload your GCash receipt for faster verification:" : "Upload your payment receipt for faster verification:"}</p>
             <a href="${process.env.NEXT_PUBLIC_APP_URL}/upload-receipt" 
                style="display: inline-block; margin-top: 0.5rem; padding: 0.75rem 1.5rem; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 0.5rem; font-weight: 600;">
               Upload Receipt Now
@@ -241,51 +254,12 @@ export async function POST(req: Request) {
               Use your booking reference: <strong style="color: #1e3a8a;">${bookingReference}</strong>
             </p>
           </div>
-        </div>
-      `;
-    } else if (paymentInfo.paymentMethod === "GCASH") {
-      paymentInstructions = `
-        <div style="background-color: #f9fafb; padding: 1rem; border-radius: 0.5rem; margin-top: 1rem;">
-          <p style="font-weight: 600; color: #111827; margin-bottom: 0.5rem;">GCash Payment Instructions:</p>
-          <ol style="margin-left: 1.25rem; margin-top: 0.5rem;">
-            <li>Login in your GCash App and tap Bank Transfer.</li>
-            <li>Select BPI from the list of banks.</li>
-            <li>Enter the corresponding training fee and the following details:</li>
-            <div style="margin: 0.75rem 0; padding: 0.75rem; background-color: white; border-radius: 0.375rem; border: 1px solid #e5e7eb;">
-              <p style="margin: 0.25rem 0;"><strong>Account Name:</strong> PETROSPHERE INCORPORATED</p>
-              <p style="margin: 0.25rem 0;"><strong>Account Number:</strong> 3481 0038 99</p>
-            </div>
-            <li>Tap send money, review the details, then tap confirm to complete your transaction.</li>
-            <li>Download receipt and keep it for your records.</li>
-          </ol>
-          <p style="margin-top: 0.75rem; font-size: 0.875rem; color: #4b5563;">If you have questions, feel free to contact us at 0917 708 7994.</p>
-          
-          <div style="margin-top: 1rem; padding: 1rem; background-color: #dbeafe; border-radius: 0.5rem; border: 2px solid #3b82f6;">
-            <p style="font-weight: 600; color: #1e3a8a; margin-bottom: 0.5rem;">📤 After Payment:</p>
-            <p style="margin: 0.5rem 0; color: #1e40af;">Upload your GCash receipt for faster verification:</p>
-            <a href="${process.env.NEXT_PUBLIC_APP_URL}/upload-receipt" 
-               style="display: inline-block; margin-top: 0.5rem; padding: 0.75rem 1.5rem; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 0.5rem; font-weight: 600;">
-              Upload Receipt Now
-            </a>
-            <p style="margin-top: 0.5rem; font-size: 0.875rem; color: #4b5563;">
-              Use your booking reference: <strong style="color: #1e3a8a;">${bookingReference}</strong>
-            </p>
-          </div>
-        </div>
-      `;
-    } else if (paymentInfo.paymentMethod === "COUNTER") {
-      paymentInstructions = `
-        <div style="background-color: #f9fafb; padding: 1rem; border-radius: 0.5rem; margin-top: 1rem;">
-          <p style="font-weight: 600; color: #111827; margin-bottom: 0.5rem;">Pay Over the Counter:</p>
-          <p style="margin: 0.25rem 0;">To process your payment, drop by the office at:</p>
-          <div style="margin-top: 0.75rem; padding: 0.75rem; background-color: white; border-radius: 0.375rem; border: 1px solid #e5e7eb;">
-            <p style="margin: 0.25rem 0;">Unit 305 3F, Trigold Business Park,</p>
-            <p style="margin: 0.25rem 0;">Barangay San Pedro National Highway,</p>
-            <p style="margin: 0.25rem 0;">Puerto Princesa City, 5300 Palawan, Philippines</p>
-          </div>
-        </div>
-      `;
-    }
+        `
+
+    const appBase = process.env.NEXT_PUBLIC_APP_URL || ""
+    const paymentMethodPanelHtml = buildPaymentMethodPanelHtml(appBase, pm)
+
+    const paymentInstructions = `${paymentMethodPanelHtml}${paymentUploadCta}`
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -438,7 +412,7 @@ export async function POST(req: Request) {
                 </tr>
                 <tr>
                   <td style="padding: 0.5rem 0; color: #6b7280; font-weight: 600;">Payment Method:</td>
-                  <td style="padding: 0.5rem 0; color: #111827; text-align: right;">${paymentInfo.paymentMethod === 'BPI' ? 'BPI Bank Transfer' : paymentInfo.paymentMethod === 'GCASH' ? 'GCash' : 'Over the Counter'}</td>
+                  <td style="padding: 0.5rem 0; color: #111827; text-align: right;">${pm === 'BPI' ? 'BPI Bank Transfer' : pm === 'GCASH' ? 'GCash' : 'Over the Counter'}</td>
                 </tr>
                 <tr>
                   <td style="padding: 0.5rem 0; color: #6b7280; font-weight: 600;">Payment Status:</td>
@@ -527,8 +501,8 @@ export async function POST(req: Request) {
           .single();
 
         if (courseData?.email_template_type === 'custom' && courseData?.email_template_config?.length > 0) {
-          const paymentMethodLabel = paymentInfo.paymentMethod === 'BPI' ? 'BPI Bank Transfer'
-            : paymentInfo.paymentMethod === 'GCASH' ? 'GCash' : 'Over the Counter';
+          const paymentMethodLabel =
+            pm === "BPI" ? "BPI Bank Transfer" : pm === "GCASH" ? "GCash" : "Over the Counter";
 
           const vars: Record<string, string> = {
             '{{trainee_name}}': traineeInfo.name,
@@ -550,7 +524,13 @@ export async function POST(req: Request) {
             _courseId: courseId,
           }));
 
-          finalHtml = buildCustomEmailHtml(configWithCourseId, vars, paymentInstructions, employmentInfo);
+          finalHtml = buildCustomEmailHtml(
+            configWithCourseId,
+            vars,
+            paymentMethodPanelHtml,
+            paymentUploadCta,
+            employmentInfo
+          );
         }
       } catch (configErr) {
         console.error("Failed to load custom email config, using default:", configErr);

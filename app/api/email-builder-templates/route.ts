@@ -36,14 +36,14 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const { id, name, config } = await req.json()
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+    if (typeof name === "string" && name.trim()) updates.name = name.trim()
+    if (config) updates.config = config
+
     const { data, error } = await supabaseServer
       .schema("tms")
       .from("email_builder_templates")
-      .update({
-        name,
-        ...(config && { config }),
-        updated_at: new Date().toISOString()
-      })
+      .update(updates)
       .eq("id", id)
       .select()
       .single()

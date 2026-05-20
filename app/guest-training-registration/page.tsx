@@ -1027,6 +1027,10 @@ export default function GuestTrainingRegistration() {
         }
       })
 
+      // Custom registration stores payment in form.payment_method; default flow uses paymentMethod state.
+      // Never let React default "BPI" overwrite mainData.payment_method from the form.
+      const resolvedPaymentMethod = (mainData.payment_method ?? paymentMethod ?? "BPI") as string
+
       const trainingPayload = {
         ...mainData,
         custom_data: customData,
@@ -1034,10 +1038,10 @@ export default function GuestTrainingRegistration() {
         course_id: courseId,
         batch_number: batchNumber,
         status: isEditMode ? form.status || "pending" : "pending",
-        payment_method: paymentMethod,
+        payment_method: resolvedPaymentMethod,
         payment_status: isEditMode
-          ? form.payment_status || (paymentMethod === "COUNTER" ? "pending" : "awaiting receipt")
-          : (paymentMethod === "COUNTER" ? "pending" : "awaiting receipt"),
+          ? form.payment_status || (resolvedPaymentMethod === "COUNTER" ? "pending" : "awaiting receipt")
+          : (resolvedPaymentMethod === "COUNTER" ? "pending" : "awaiting receipt"),
         amount_paid: isEditMode ? form.amount_paid || 0 : 0,
         courtesy_title: form.courtesy_title || mainData.courtesy_title || null,
         discounted_fee: discount > 0 ? (getApplicableFee() || 0) - discount : mainData.discounted_fee || null,
@@ -1190,14 +1194,40 @@ export default function GuestTrainingRegistration() {
                 discount,
                 pvcIdFee: form.add_pvc_id ? getPvcFee() : 0,  // ✅ NEW
                 totalAmount: getApplicableFee() - discount + (form.add_pvc_id ? getPvcFee() : 0),  // ✅ NEW
-                paymentMethod,
-                paymentStatus: paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+                paymentMethod: resolvedPaymentMethod,
+                paymentStatus: resolvedPaymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
               },
             }),
           })
           console.log("Admin notification email sent")
         } catch (emailErr) {
           console.error("Admin email sending failed:", emailErr)
+        }
+
+        // Notify sales & training of registration documents (valid ID, 2x2 photo)
+        const registrationFiles: { label: string; url: string }[] = []
+        if (form.id_picture_url) {
+          registrationFiles.push({ label: "Valid ID", url: form.id_picture_url })
+        }
+        if (form.picture_2x2_url) {
+          registrationFiles.push({ label: "2x2 Photo", url: form.picture_2x2_url })
+        }
+        if (registrationFiles.length > 0) {
+          try {
+            await fetch("/api/notify-staff-file-upload", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                source: "registration",
+                traineeName: `${form.first_name} ${form.last_name}`.trim(),
+                bookingReference,
+                courseName: courseData?.name || course?.name || undefined,
+                files: registrationFiles,
+              }),
+            })
+          } catch (uploadNotifyErr) {
+            console.error("Staff file upload notification failed:", uploadNotifyErr)
+          }
         }
 
         // Send booking summary to trainee
@@ -1241,8 +1271,8 @@ export default function GuestTrainingRegistration() {
                 discount,
                 pvcIdFee: form.add_pvc_id ? getPvcFee() : 0,  // ✅ NEW
                 totalAmount: getApplicableFee() - discount + (form.add_pvc_id ? getPvcFee() : 0),  // ✅ NEW
-                paymentMethod,
-                paymentStatus: paymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
+                paymentMethod: resolvedPaymentMethod,
+                paymentStatus: resolvedPaymentMethod === "COUNTER" ? "Pending" : "Awaiting receipt",
               },
             }),
           })
@@ -1476,6 +1506,7 @@ export default function GuestTrainingRegistration() {
                         }}
                         onSave={(data) => {
                           setForm((prev: any) => ({ ...prev, ...data }))
+                          if (data.payment_method) setPaymentMethod(data.payment_method)
                           setShowConfirmDialog(true)
                         }} 
                       />
