@@ -38,7 +38,20 @@ import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, Al
 import { tmsDb } from "@/lib/supabase-client";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Checkbox } from "./ui/checkbox";
-import { get } from "http";
+
+/** Composite key for files inside email "upload bin" (`custom_data.__custom_upload_*`). */
+const EMAIL_UPLOAD_FILE_KEY_SEP = "::";
+
+function parseEmailUploadCompositeKey(
+  fileKey: string
+): { bundleKey: string; fileBlockId: string } | null {
+  if (!fileKey.includes(EMAIL_UPLOAD_FILE_KEY_SEP)) return null;
+  const i = fileKey.indexOf(EMAIL_UPLOAD_FILE_KEY_SEP);
+  const bundleKey = fileKey.slice(0, i);
+  const fileBlockId = fileKey.slice(i + EMAIL_UPLOAD_FILE_KEY_SEP.length);
+  if (!bundleKey.startsWith("__custom_upload_") || !fileBlockId) return null;
+  return { bundleKey, fileBlockId };
+}
 
 interface Payment {
   id: string;
@@ -247,9 +260,16 @@ const [cropExistingId, setCropExistingId] = useState(false);
       url: string;
       status: "approved" | "declined" | "pending";
       source: "standard" | "custom";
+      fromEmail?: boolean;
     }> = [];
 
-    const pushFile = (key: string, label: string, rawUrl: any, source: "standard" | "custom") => {
+    const pushFile = (
+      key: string,
+      label: string,
+      rawUrl: unknown,
+      source: "standard" | "custom",
+      fromEmail?: boolean
+    ) => {
       const url = fileUrlOverrides[key] || rawUrl;
       if (isFileUrl(url)) {
         files.push({
@@ -258,6 +278,7 @@ const [cropExistingId, setCropExistingId] = useState(false);
           url,
           status: fileReviewStatuses[key] || "pending",
           source,
+          ...(fromEmail ? { fromEmail: true } : {}),
         });
       }
     };
@@ -270,10 +291,34 @@ const [cropExistingId, setCropExistingId] = useState(false);
     const customData = trainee?.custom_data || {};
     Object.entries(customData).forEach(([key, value]) => {
       if (key === "__file_review_statuses") return;
+
+      // Email template "upload bin" — stored as { submitted_at, files: [{ blockId, label, url }] }
+      if (
+        key.startsWith("__custom_upload_") &&
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        Array.isArray((value as { files?: unknown }).files)
+      ) {
+        const entries = (value as { files: Array<{ blockId?: string; label?: string; url?: string }> }).files;
+        entries.forEach((entry, idx) => {
+          const innerId = entry.blockId || `file-${idx}`;
+          const compositeKey = `${key}${EMAIL_UPLOAD_FILE_KEY_SEP}${innerId}`;
+          pushFile(
+            compositeKey,
+            entry.label || formatFileLabel(String(innerId)),
+            entry.url,
+            "custom",
+            true
+          );
+        });
+        return;
+      }
+
       pushFile(key, customFieldLabels[key] || formatFileLabel(key), value, "custom");
     });
 
-    const unique = new Map<string, typeof files[number]>();
+    const unique = new Map<string, (typeof files)[number]>();
     files.forEach((f) => {
       if (!unique.has(f.key)) unique.set(f.key, f);
     });
@@ -339,9 +384,25 @@ const [cropExistingId, setCropExistingId] = useState(false);
       };
       currentCustomData.__file_review_statuses = reviewStatuses;
 
-      let payload: any = { custom_data: currentCustomData };
+      const emailComposite = parseEmailUploadCompositeKey(fileKey);
+
+      let payload: Record<string, unknown> = { custom_data: currentCustomData };
       if (standardKeys.includes(fileKey)) {
         payload[fileKey] = uploadedUrl;
+      } else if (emailComposite) {
+        const { bundleKey, fileBlockId } = emailComposite;
+        const bundle = currentCustomData[bundleKey] as
+          | { files?: Array<{ blockId: string; label?: string; url: string }> }
+          | undefined;
+        const fileList = bundle?.files;
+        if (!Array.isArray(fileList)) {
+          throw new Error("Email upload bundle missing files");
+        }
+        const newFiles = fileList.map((f) =>
+          f.blockId === fileBlockId ? { ...f, url: uploadedUrl } : f
+        );
+        currentCustomData[bundleKey] = { ...bundle, files: newFiles };
+        payload = { custom_data: currentCustomData };
       } else {
         payload = {
           ...payload,
@@ -2727,8 +2788,8 @@ const handleRestoreIdOriginal = async () => {
           <div className="text-xs text-muted-foreground">No uploaded files found.</div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {getUploadedFiles().map((file, index) => (
-              <div key={`${file.url}-${index}`} className="border rounded px-3 py-2">
+            {getUploadedFiles().map((file) => (
+              <div key={file.key} className="border rounded px-3 py-2">
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <div>
                     <div className="text-xs text-muted-foreground">{file.label}</div>
@@ -2741,17 +2802,24 @@ const handleRestoreIdOriginal = async () => {
                       Open File
                     </a>
                   </div>
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-                      file.status === "approved"
-                        ? "bg-green-100 text-green-700"
-                        : file.status === "declined"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-amber-100 text-amber-700"
-                    }`}
-                  >
-                    {file.status === "approved" ? "Approved" : file.status === "declined" ? "Declined" : "Pending"}
-                  </span>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {file.fromEmail && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200">
+                        From email
+                      </span>
+                    )}
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                        file.status === "approved"
+                          ? "bg-green-100 text-green-700"
+                          : file.status === "declined"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {file.status === "approved" ? "Approved" : file.status === "declined" ? "Declined" : "Pending"}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex items-center justify-end gap-1">
                   <Button

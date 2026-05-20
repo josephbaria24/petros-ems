@@ -346,6 +346,7 @@ const fetchTrainees = async () => {
         status,
         id_picture_url,
         picture_2x2_url,
+        custom_data,
         mailing_street,
         mailing_city,
         mailing_province,
