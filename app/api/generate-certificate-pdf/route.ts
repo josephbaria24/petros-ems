@@ -2,6 +2,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { PDFDocument, rgb } from "pdf-lib";
+import {
+  resolveCertificatePageDimensions,
+} from "@/lib/certificate-page-sizes";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -143,6 +146,7 @@ export async function POST(req: NextRequest) {
       layoutOverride,
       precomputed,
       side = "both",  // 'front' | 'back' | 'both' — controls which pages are included for ID cards
+      pageSize,
     } = body;
 
     logPdf(`🚀 Processing ${templateType} for [${trainee?.id}] ${trainee?.last_name}`);
@@ -303,8 +307,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const CANVAS_WIDTH = isIDTemplate ? 1350 : 842;
-    const CANVAS_HEIGHT = isIDTemplate ? 850 : 595;
+    const CANVAS = resolveCertificatePageDimensions(pageSize, isIDTemplate);
+    const CANVAS_WIDTH = CANVAS.width;
+    const CANVAS_HEIGHT = CANVAS.height;
 
     // 7. Layout overrides (Check precomputed first)
     let offsetX = 0;

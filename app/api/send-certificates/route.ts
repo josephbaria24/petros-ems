@@ -102,7 +102,8 @@ export async function POST(req: NextRequest) {
       selectedTraineeIds,
       customEmailSubject,
       customEmailMessage,
-      attachments = [] // ✅ NEW
+      attachments = [], // ✅ NEW
+      pageSize,
     } = await req.json();
 
     const serverOrigin = getServerOrigin(req);
@@ -293,6 +294,7 @@ export async function POST(req: NextRequest) {
                     givenThisDate: computedGivenDate,
                     scheduleRange: computedScheduleRange,
                     templateType: type, // use the current attachment type
+                    ...(type !== "excellence" && pageSize ? { pageSize } : {}),
                   }),
                 }
               );

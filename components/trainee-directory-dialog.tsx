@@ -23,6 +23,12 @@ import { exportTraineeExcel } from "@/lib/exports/export-excel"
 import { exportCertificatesNew } from "@/lib/exports/export-certificate"
 import { batchAssignCertificateSerials } from "@/lib/certificate-serial"
 import {
+  CERTIFICATE_PAGE_SIZES,
+  DEFAULT_CERTIFICATE_PAGE_SIZE,
+  ID_TEMPLATE_PAGE,
+  type CertificatePageSizeKey,
+} from "@/lib/certificate-page-sizes"
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -127,7 +133,8 @@ async function downloadFromServer(
   scheduleRange: string,
   givenThisDate: string = new Date().toLocaleDateString(),
   courseTitle: string = courseName,
-  layoutOverride?: any
+  layoutOverride?: any,
+  pageSize?: CertificatePageSizeKey
 ) {
   console.log("🔽 Downloading certificate for:", trainee.first_name, trainee.last_name);
   console.log("📚 Using courseTitle:", courseTitle);
@@ -144,7 +151,8 @@ async function downloadFromServer(
         courseId: trainee.course_id,
         templateType,
         givenThisDate,
-        layoutOverride
+        layoutOverride,
+        ...(templateType !== "excellence" && pageSize ? { pageSize } : {}),
       }),
     })
 
@@ -329,6 +337,9 @@ export default function ParticipantDirectoryDialog({
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null)
   const [isSavingLayout, setIsSavingLayout] = useState(false)
   const [previewZoom, setPreviewZoom] = useState(1)
+  const [certificatePageSize, setCertificatePageSize] = useState<CertificatePageSizeKey>(
+    DEFAULT_CERTIFICATE_PAGE_SIZE
+  )
 
   // ✅ NEW: Performance & Caching State
   const [certificateCache, setCertificateCache] = useState<Map<string, string>>(new Map())
@@ -340,8 +351,20 @@ export default function ParticipantDirectoryDialog({
 
   const isIdTemplateSelected = selectedTemplateType === "excellence"
   const canvasSize = useMemo(() => {
-    return isIdTemplateSelected ? { w: 1350, h: 850 } : { w: 842, h: 595 }
-  }, [isIdTemplateSelected])
+    if (isIdTemplateSelected) {
+      return { w: ID_TEMPLATE_PAGE.width, h: ID_TEMPLATE_PAGE.height }
+    }
+    const spec = CERTIFICATE_PAGE_SIZES[certificatePageSize]
+    return { w: spec.width, h: spec.height }
+  }, [isIdTemplateSelected, certificatePageSize])
+
+  const getCertificateCacheKey = useCallback(
+    (traineeId: string, templateType: TemplateType) =>
+      templateType === "excellence"
+        ? `${traineeId}-${templateType}-id`
+        : `${traineeId}-${templateType}-${certificatePageSize}`,
+    [certificatePageSize]
+  )
 
   const previewContainerRef = useRef<HTMLDivElement>(null)
   const previewCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -977,6 +1000,22 @@ export default function ParticipantDirectoryDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePreviewIndex, isCertificateViewerOpen])
 
+  // Invalidate cached PDFs when page size changes (certificates only)
+  useEffect(() => {
+    if (isIdTemplateSelected) return
+    setCertificateCache((prev) => {
+      prev.forEach((url) => URL.revokeObjectURL(url))
+      return new Map()
+    })
+    setCertificatePreviews((prev) => {
+      if (prev.length === 0) return prev
+      prev.forEach((p) => {
+        if (p.url) URL.revokeObjectURL(p.url)
+      })
+      return prev.map((p) => ({ ...p, url: null }))
+    })
+  }, [certificatePageSize, isIdTemplateSelected])
+
   // Live preview: regenerate current participant PDF while adjusting sliders (debounced)
   useEffect(() => {
     if (!isCertificateViewerOpen) return
@@ -1007,6 +1046,9 @@ export default function ParticipantDirectoryDialog({
               offsetY: layoutOffset.offsetY,
               fieldOverrides,
             },
+            ...(selectedTemplateType !== "excellence"
+              ? { pageSize: certificatePageSize }
+              : {}),
           }),
         })
 
@@ -1046,6 +1088,7 @@ export default function ParticipantDirectoryDialog({
     layoutOffset.offsetX,
     layoutOffset.offsetY,
     fieldOverrides,
+    certificatePageSize,
   ])
 
   const handleDownloadCertificates = async () => {
@@ -1159,6 +1202,9 @@ export default function ParticipantDirectoryDialog({
                   fieldOverrides,
                 } : undefined,
                 side: isIDTemplate ? "front" : "both",
+                ...(selectedTemplateType !== "excellence"
+                  ? { pageSize: certificatePageSize }
+                  : {}),
               }),
             });
 
@@ -1213,7 +1259,8 @@ export default function ParticipantDirectoryDialog({
                 offsetX: layoutOffset.offsetX,
                 offsetY: layoutOffset.offsetY,
                 fieldOverrides,
-              } : undefined
+              } : undefined,
+              selectedTemplateType !== "excellence" ? certificatePageSize : undefined
             );
             successCount++;
 
@@ -1335,7 +1382,7 @@ export default function ParticipantDirectoryDialog({
 
         const previews = updatedTrainees.map(trainee => ({
           trainee,
-          url: certificateCache.get(`${trainee.id}-${selectedTemplateType}`) || null
+          url: certificateCache.get(getCertificateCacheKey(trainee.id, selectedTemplateType)) || null
         }))
 
         setCertificatePreviews(previews)
@@ -1363,7 +1410,7 @@ export default function ParticipantDirectoryDialog({
     setCertificatePreviews(prev => {
       let changed = false
       const next = prev.map(p => {
-        const cacheKey = `${p.trainee.id}-${selectedTemplateType}`
+        const cacheKey = getCertificateCacheKey(p.trainee.id, selectedTemplateType)
         const cachedUrl = certificateCache.get(cacheKey)
         if (cachedUrl && p.url !== cachedUrl) {
           changed = true
@@ -1373,7 +1420,7 @@ export default function ParticipantDirectoryDialog({
       })
       return changed ? next : prev
     })
-  }, [certificateCache, isCertificateViewerOpen, selectedTemplateType])
+  }, [certificateCache, isCertificateViewerOpen, selectedTemplateType, getCertificateCacheKey])
 
   const fetchTrainees = async () => {
     if (!scheduleId) return
@@ -1510,7 +1557,7 @@ export default function ParticipantDirectoryDialog({
       }
 
       const [traineeId, templateType] = nextTask
-      const cacheKey = `${traineeId}-${templateType}`
+      const cacheKey = getCertificateCacheKey(traineeId, templateType)
 
       // Skip if already has a preview in cache
       if (certificateCache.has(cacheKey)) {
@@ -1553,7 +1600,8 @@ export default function ParticipantDirectoryDialog({
                 offsetY: genData.offset_y,
                 fieldOverrides: genData.field_overrides
               }
-            }
+            },
+            ...(templateType !== "excellence" ? { pageSize: certificatePageSize } : {}),
           }),
         })
 
@@ -1578,7 +1626,7 @@ export default function ParticipantDirectoryDialog({
     }
 
     processQueue()
-  }, [generationDataMap, open, certificateCache])
+  }, [generationDataMap, open, certificateCache, certificatePageSize, getCertificateCacheKey])
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status?.toLowerCase()) {
@@ -1781,6 +1829,9 @@ export default function ParticipantDirectoryDialog({
           selectedTraineeIds: selectedIds,
           customEmailSubject: customSubject,
           customEmailMessage: customMessage,
+          ...(selectedTemplateType !== "excellence"
+            ? { pageSize: certificatePageSize }
+            : {}),
         }),
       })
 
@@ -1940,7 +1991,10 @@ export default function ParticipantDirectoryDialog({
               offsetY: layoutOffset.offsetY,
               fieldOverrides
             }
-          }
+          },
+          ...(selectedTemplateType !== "excellence"
+            ? { pageSize: certificatePageSize }
+            : {}),
         }),
       })
 
@@ -2897,6 +2951,36 @@ export default function ParticipantDirectoryDialog({
                     </div>
                   </div>
                 </div>
+
+                {!isIdTemplateSelected && (
+                  <div className="space-y-1.5 border-t pt-3">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">
+                      PDF Page Size
+                    </Label>
+                    <Select
+                      value={certificatePageSize}
+                      onValueChange={(value) =>
+                        setCertificatePageSize(value as CertificatePageSizeKey)
+                      }
+                    >
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.entries(CERTIFICATE_PAGE_SIZES) as [CertificatePageSizeKey, { label: string }][]).map(
+                          ([key, spec]) => (
+                            <SelectItem key={key} value={key}>
+                              {spec.label}
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[9px] text-muted-foreground leading-snug">
+                      Applies to PDF view, download, and email attachments. Field positions scale with the selected paper size.
+                    </p>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Button
