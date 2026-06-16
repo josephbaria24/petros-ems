@@ -188,6 +188,7 @@ useEffect(() => {
   const [show2x2ViewModal, setShow2x2ViewModal] = useState(false);
   const [showIdViewModal, setShowIdViewModal] = useState(false);
   const [sendingFollowUp, setSendingFollowUp] = useState(false);
+  const [markingPendingVerification, setMarkingPendingVerification] = useState(false);
   const [customFieldLabels, setCustomFieldLabels] = useState<Record<string, string>>({});
   const [fileReviewStatuses, setFileReviewStatuses] = useState<Record<string, "approved" | "declined" | "pending">>({});
   const [fileUrlOverrides, setFileUrlOverrides] = useState<Record<string, string>>({});
@@ -1050,6 +1051,36 @@ const validateRequired = (fields: { key: string; label: string; value: any }[]) 
       alert("Failed to send follow-up email");
     } finally {
       setSendingFollowUp(false);
+    }
+  };
+
+  const handleMarkPendingVerification = async () => {
+    if (!trainee?.id) return;
+
+    const confirmed = window.confirm(
+      "Mark this trainee as pending verification?\n\nThis cancels waiting for photo resubmission and moves them back into the photo review queue using their current photos on file."
+    );
+    if (!confirmed) return;
+
+    setMarkingPendingVerification(true);
+    try {
+      const { error } = await supabase
+        .from("trainings")
+        .update({
+          status: "Resubmitted (Pending Verification)",
+          declined_photos: null,
+        })
+        .eq("id", trainee.id);
+
+      if (error) throw error;
+
+      alert("Status updated to pending verification. Reopen this submission to review photos.");
+      onOpenChange(false);
+    } catch (error) {
+      console.error("Error marking pending verification:", error);
+      alert("Failed to update status. Please try again.");
+    } finally {
+      setMarkingPendingVerification(false);
     }
   };
 
@@ -2226,10 +2257,10 @@ const handleRestoreIdOriginal = async () => {
               </div>
             </div>
             <DialogFooter className="mt-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={handleFollowUp}
-                disabled={sendingFollowUp}
+                disabled={sendingFollowUp || markingPendingVerification}
               >
                 {sendingFollowUp ? (
                   <>
@@ -2243,7 +2274,27 @@ const handleRestoreIdOriginal = async () => {
                   </>
                 )}
               </Button>
-              <Button onClick={() => onOpenChange(false)}>
+              <Button
+                variant="secondary"
+                onClick={handleMarkPendingVerification}
+                disabled={markingPendingVerification || sendingFollowUp}
+              >
+                {markingPendingVerification ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Mark as Pending Verification
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={() => onOpenChange(false)}
+                disabled={markingPendingVerification || sendingFollowUp}
+              >
                 Close
               </Button>
             </DialogFooter>

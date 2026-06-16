@@ -120,6 +120,24 @@ interface Trainee {
 
 type TemplateType = "participation" | "completion" | "excellence"
 
+function getScheduleStatusPillClass(status: string) {
+  const normalized = status?.toLowerCase().trim()
+  switch (normalized) {
+    case "finished":
+    case "completed":
+      return "border-emerald-500/30 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300"
+    case "confirmed":
+    case "ongoing":
+      return "border-primary/25 bg-primary/10 text-primary dark:text-primary-foreground/90"
+    case "cancelled":
+      return "border-destructive/30 bg-destructive/10 text-destructive"
+    case "planned":
+      return "border-amber-500/30 bg-amber-500/15 text-amber-900 dark:text-amber-200"
+    default:
+      return "border-border/60 bg-muted/50 text-muted-foreground"
+  }
+}
+
 const TEMPLATE_OPTIONS = [
   { value: "participation" as TemplateType, label: "Participation", icon: Award },
   { value: "completion" as TemplateType, label: "Completion", icon: CalendarCheck },
@@ -388,30 +406,34 @@ export default function ParticipantDirectoryDialog({
 
   const handleFitToScreen = useCallback(() => {
     if (!previewContainerRef.current) return
-    const isID = isIdTemplateSelected
-    const canvasW = isID ? 1350 : 842
-    const canvasH = isID ? 850 : 595
 
-    // Use container dimensions, with a fallback if they are too small initially
+    const canvasW = canvasSize.w
+    const canvasH = canvasSize.h
+
     const containerW = Math.max(previewContainerRef.current.clientWidth, 400)
     const containerH = Math.max(previewContainerRef.current.clientHeight, 400)
 
-    // Add 40px padding
     const scaleW = (containerW - 40) / canvasW
     const scaleH = (containerH - 40) / canvasH
     const fitScale = Math.min(scaleW, scaleH, 1.0)
 
     setPreviewZoom(Number(fitScale.toFixed(2)))
-  }, [isIdTemplateSelected])
+  }, [canvasSize.w, canvasSize.h])
 
-  // Auto-fit on open or template change
+  // Auto-fit on open, template change, or page size change
   useEffect(() => {
     if (isCertificateViewerOpen) {
-      // Delay slightly to ensure container is rendered and has dimensions
-      const timer = setTimeout(handleFitToScreen, 100);
-      return () => clearTimeout(timer);
+      const timer = setTimeout(handleFitToScreen, 100)
+      return () => clearTimeout(timer)
     }
-  }, [isCertificateViewerOpen, isIdTemplateSelected, handleFitToScreen])
+  }, [
+    isCertificateViewerOpen,
+    isIdTemplateSelected,
+    certificatePageSize,
+    canvasSize.w,
+    canvasSize.h,
+    handleFitToScreen,
+  ])
 
   const getFontString = (field: TemplateField, canvasH: number) => {
     const px = Math.max(1, (field.fontSize || 0.02) * canvasH)
@@ -2461,21 +2483,36 @@ export default function ParticipantDirectoryDialog({
           </div>
         )}
 
-        <div className="bg-yellow-400 dark:bg-blue-950 dark:text-white p-4 rounded-md">
-          <div className="text-sm font-semibold uppercase mb-1">
-            <Badge variant={getStatusBadgeVariant(scheduleStatus)} className="text-xs">
-              {scheduleStatus}
-            </Badge>
-          </div>
-          <div className="text-xl font-bold">
-            {courseName}
-            {batchNumber && (
-              <span className="ml-2 text-lg font-normal">
-                • Batch #{batchNumber}
+        <div className="overflow-hidden rounded-xl border border-border/75 bg-card shadow-none">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 bg-muted/5 px-4 py-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="shrink-0 rounded-xl border border-emerald-500/20 bg-emerald-500/15 p-2.5 text-emerald-700 shadow-none dark:text-emerald-300">
+                <CalendarCheck className="h-5 w-5" aria-hidden />
+              </div>
+              <div className="min-w-0 leading-tight">
+                <p className="truncate text-base font-semibold tracking-tight text-foreground">
+                  {courseName}
+                </p>
+                {scheduleRange ? (
+                  <p className="mt-0.5 truncate text-xs leading-snug text-muted-foreground">
+                    {scheduleRange}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {batchNumber != null && (
+                <span className="inline-flex h-8 items-center rounded-xl border border-border/60 bg-background/80 px-3 text-xs font-medium text-muted-foreground shadow-none">
+                  Batch #{batchNumber}
+                </span>
+              )}
+              <span
+                className={`inline-flex h-8 items-center rounded-xl border px-3 text-[11px] font-semibold uppercase tracking-wide shadow-none ${getScheduleStatusPillClass(scheduleStatus)}`}
+              >
+                {scheduleStatus || "planned"}
               </span>
-            )}
+            </div>
           </div>
-          <div className="text-sm">{scheduleRange}</div>
         </div>
 
         <div className="space-y-2 border rounded-lg p-4 bg-muted/50">
@@ -2865,7 +2902,13 @@ export default function ParticipantDirectoryDialog({
                       <span className="text-sm">Preparing Previews...</span>
                     </div>
                   ) : (
-                    <div className="relative shadow-2xl transition-transform duration-200">
+                    <div
+                      className="relative shadow-2xl transition-[width,height] duration-200"
+                      style={{
+                        width: canvasSize.w * previewZoom,
+                        height: canvasSize.h * previewZoom,
+                      }}
+                    >
                       {/* Direct Editor Layer (Canvas) */}
                       {(() => {
                         const isShowingBack = isIdTemplateSelected && idCardSide === "back"
@@ -2874,11 +2917,10 @@ export default function ParticipantDirectoryDialog({
                       })() && (
                         <canvas
                           ref={previewCanvasRef}
-                          className="cursor-crosshair bg-white"
+                          className="cursor-crosshair bg-white block"
                           style={{
-                            transform: `scale(${previewZoom})`,
-                            transformOrigin: "center center",
-                            transition: dragStateRef.current.mode === "pan" ? "none" : "transform 0.1s ease-out"
+                            width: canvasSize.w * previewZoom,
+                            height: canvasSize.h * previewZoom,
                           }}
                           onMouseDown={handlePreviewCanvasMouseDown}
                           onMouseMove={handlePreviewCanvasMouseMove}
