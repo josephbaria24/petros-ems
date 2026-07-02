@@ -19,6 +19,7 @@ import {
 import { ArrowUpDown, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -40,6 +41,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { type PostgrestSingleResponse } from "@supabase/supabase-js"
 import { toast } from "sonner"
 import ParticipantDirectoryDialog from "@/components/trainee-directory-dialog"
@@ -108,11 +116,22 @@ type Participant = {
   sortDate?: Date | null
   scheduleMonth?: string
   trainerName?: string
+  totalTrainingAmount: number
+  totalAmountPaid: number
+  sessionDays: number
 }
 
 interface ParticipantsTableProps {
   status: "all" | "planned" | "ongoing" | "confirmed" | "cancelled" | "finished"
   refreshTrigger?: number
+}
+
+const COST_CALC_STORAGE_KEY = "participants-table-cost-calculator-v1"
+const COST_CALC_DB_KEY = "participants_table_cost_calculator"
+type CostCalcSetting = {
+  trainerFeePerDay: number
+  idCostPerParticipant: number
+  certificateCostPerParticipant: number
 }
 
 export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableProps) {
@@ -121,6 +140,194 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const [data, setData] = React.useState<Participant[]>([])
   const [loading, setLoading] = React.useState(true)
   const [globalFilter, setGlobalFilter] = React.useState("")
+  const [trainerFeePerDay, setTrainerFeePerDay] = React.useState<number>(0)
+  const [idCostPerParticipant, setIdCostPerParticipant] = React.useState<number>(0)
+  const [certificateCostPerParticipant, setCertificateCostPerParticipant] = React.useState<number>(0)
+  const [dialogTrainerFeePerDay, setDialogTrainerFeePerDay] = React.useState<number>(0)
+  const [dialogIdCostPerParticipant, setDialogIdCostPerParticipant] = React.useState<number>(0)
+  const [dialogCertificateCostPerParticipant, setDialogCertificateCostPerParticipant] = React.useState<number>(0)
+  const [costSettingsBySchedule, setCostSettingsBySchedule] = React.useState<Record<string, CostCalcSetting>>({})
+  const [costSettingsLoaded, setCostSettingsLoaded] = React.useState(false)
+
+  const formatCurrency = React.useCallback((value: number) => {
+    return Number(value || 0).toLocaleString("en-PH", {
+      style: "currency",
+      currency: "PHP",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  }, [])
+
+  const getCostSettingsForSchedule = React.useCallback(
+    (scheduleId: string): CostCalcSetting => {
+      return (
+        costSettingsBySchedule[scheduleId] || {
+          trainerFeePerDay,
+          idCostPerParticipant,
+          certificateCostPerParticipant,
+        }
+      )
+    },
+    [costSettingsBySchedule, trainerFeePerDay, idCostPerParticipant, certificateCostPerParticipant]
+  )
+
+  const getProceedAssessment = React.useCallback(
+    (receivables: number, estimatedCost: number, hasAnyCostSetup: boolean) => {
+      const r = Number(receivables || 0)
+      const c = Number(estimatedCost || 0)
+      const net = r - c
+      const netRatio = r > 0 ? net / r : -1
+
+      if (!hasAnyCostSetup && r <= 0) {
+        return {
+          label: "Undefined",
+          className: "bg-slate-100 text-slate-700 border-slate-300",
+          netRatio: 0,
+        }
+      }
+      if (!hasAnyCostSetup && r > 0) {
+        return {
+          label: "Undefined Cost",
+          className: "bg-slate-100 text-slate-700 border-slate-300",
+          netRatio: 0,
+        }
+      }
+
+      if (c > r) {
+        return {
+          label: "Loss if Proceed",
+          className: "bg-red-100 text-red-800 border-red-300",
+          netRatio,
+        }
+      }
+      if (netRatio >= 0.3) {
+        return {
+          label: "Safe to Proceed",
+          className: "bg-emerald-100 text-emerald-800 border-emerald-300",
+          netRatio,
+        }
+      }
+      return {
+        label: "Can Proceed",
+        className: "bg-amber-100 text-amber-900 border-amber-300",
+        netRatio,
+      }
+    },
+    []
+  )
+
+  React.useEffect(() => {
+    let cancelled = false
+    const loadCostSettings = async () => {
+      try {
+        const { data } = await tmsDb
+          .from("system_settings")
+          .select("setting_value")
+          .eq("setting_key", COST_CALC_DB_KEY)
+          .maybeSingle()
+
+        const dbSettings = data?.setting_value as
+          | {
+              trainerFeePerDay?: number
+              idCostPerParticipant?: number
+              certificateCostPerParticipant?: number
+              defaults?: {
+                trainerFeePerDay?: number
+                idCostPerParticipant?: number
+                certificateCostPerParticipant?: number
+              }
+              bySchedule?: Record<string, CostCalcSetting>
+            }
+          | undefined
+
+        let loadedFromDb = false
+        if (dbSettings && typeof dbSettings === "object") {
+          const defaults = dbSettings.defaults || dbSettings
+          if (typeof defaults.trainerFeePerDay === "number") setTrainerFeePerDay(defaults.trainerFeePerDay)
+          if (typeof defaults.idCostPerParticipant === "number") setIdCostPerParticipant(defaults.idCostPerParticipant)
+          if (typeof defaults.certificateCostPerParticipant === "number") setCertificateCostPerParticipant(defaults.certificateCostPerParticipant)
+          if (dbSettings.bySchedule && typeof dbSettings.bySchedule === "object") {
+            setCostSettingsBySchedule(dbSettings.bySchedule)
+          }
+          loadedFromDb = true
+        }
+
+        if (!loadedFromDb && typeof window !== "undefined") {
+          const raw = window.localStorage.getItem(COST_CALC_STORAGE_KEY)
+          if (raw) {
+            const parsed = JSON.parse(raw) as {
+              trainerFeePerDay?: number
+              idCostPerParticipant?: number
+              certificateCostPerParticipant?: number
+              defaults?: {
+                trainerFeePerDay?: number
+                idCostPerParticipant?: number
+                certificateCostPerParticipant?: number
+              }
+              bySchedule?: Record<string, CostCalcSetting>
+            }
+            const defaults = parsed.defaults || parsed
+            if (typeof defaults.trainerFeePerDay === "number") setTrainerFeePerDay(defaults.trainerFeePerDay)
+            if (typeof defaults.idCostPerParticipant === "number") setIdCostPerParticipant(defaults.idCostPerParticipant)
+            if (typeof defaults.certificateCostPerParticipant === "number") setCertificateCostPerParticipant(defaults.certificateCostPerParticipant)
+            if (parsed.bySchedule && typeof parsed.bySchedule === "object") {
+              setCostSettingsBySchedule(parsed.bySchedule)
+            }
+          }
+        }
+      } catch (error) {
+        console.warn("Failed to load cost calculator settings:", error)
+      } finally {
+        if (!cancelled) setCostSettingsLoaded(true)
+      }
+    }
+
+    loadCostSettings()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (!costSettingsLoaded) return
+
+    const payload = {
+      defaults: {
+        trainerFeePerDay,
+        idCostPerParticipant,
+        certificateCostPerParticipant,
+      },
+      bySchedule: costSettingsBySchedule,
+    }
+
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(COST_CALC_STORAGE_KEY, JSON.stringify(payload))
+      }
+    } catch (error) {
+      console.warn("Failed to save local cost calculator settings:", error)
+    }
+
+    const timer = window.setTimeout(async () => {
+      const { error } = await tmsDb
+        .from("system_settings")
+        .upsert(
+          [{ setting_key: COST_CALC_DB_KEY, setting_value: payload }],
+          { onConflict: "setting_key" }
+        )
+      if (error) {
+        console.warn("Failed to save cost calculator settings to DB:", error)
+      }
+    }, 400)
+
+    return () => window.clearTimeout(timer)
+  }, [
+    costSettingsLoaded,
+    trainerFeePerDay,
+    idCostPerParticipant,
+    certificateCostPerParticipant,
+    costSettingsBySchedule,
+  ])
 
   // Alert dialog states
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
@@ -134,6 +341,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const [directoryOpen, setDirectoryOpen] = React.useState(false)
   const [evaluationsOpen, setEvaluationsOpen] = React.useState(false)
   const [passersDialogOpen, setPassersDialogOpen] = React.useState(false)
+  const [costDialogOpen, setCostDialogOpen] = React.useState(false)
+  const [costDialogParticipant, setCostDialogParticipant] = React.useState<Participant | null>(null)
   const [directoryScheduleId, setDirectoryScheduleId] = React.useState<string | null>(null)
   const [directoryCourseName, setDirectoryCourseName] = React.useState("")
   const [directoryRange, setDirectoryRange] = React.useState("")
@@ -385,7 +594,11 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         trainer_name,
         day_trainers,
         courses (
-          name
+          name,
+          training_fee,
+          online_fee,
+          face_to_face_fee,
+          elearning_fee
         ),
         schedule_ranges (
           start_date,
@@ -396,7 +609,12 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         ),
         trainings (
           id,
-          training_type
+          training_type,
+          amount_paid,
+          has_discount,
+          discounted_fee,
+          add_pvc_id,
+          pvc_fee
         )
       `)
       .order("created_at", { ascending: false })
@@ -427,12 +645,16 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           let scheduleDisplay = ""
           let sortDate: Date | null = null
           let scheduleMonth: string | undefined = undefined
+          let sessionDays = 0
 
           if (schedule.schedule_type === "regular" && schedule.schedule_ranges?.length) {
             const range = schedule.schedule_ranges[0]
             scheduleDisplay = formatScheduleDateRange(range.start_date, range.end_date)
             sortDate = new Date(range.start_date)
             scheduleMonth = getScheduleMonth(sortDate)
+            const start = new Date(range.start_date)
+            const end = new Date(range.end_date)
+            sessionDays = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1)
           } else if (schedule.schedule_type === "staggered" && schedule.schedule_dates?.length) {
             scheduleDisplay = schedule.schedule_dates
               .map((d: { date: string }) =>
@@ -441,7 +663,34 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               .join(", ")
             sortDate = new Date(schedule.schedule_dates[0].date)
             scheduleMonth = getScheduleMonth(sortDate)
+            sessionDays = schedule.schedule_dates.length
           }
+
+          const eventType = String(schedule.event_type || "").toLowerCase()
+          const baseFee =
+            eventType === "online"
+              ? Number(schedule.courses?.online_fee ?? 0)
+              : eventType === "face-to-face"
+                ? Number(schedule.courses?.face_to_face_fee ?? 0)
+                : eventType === "elearning"
+                  ? Number(schedule.courses?.elearning_fee ?? 0)
+                  : Number(schedule.courses?.training_fee ?? 0)
+
+          const totals = (schedule.trainings || []).reduce(
+            (acc: { training: number; paid: number }, t: any) => {
+              const hasDiscount = Boolean(t?.has_discount)
+              const discountedFee =
+                hasDiscount && t?.discounted_fee != null
+                  ? Number(t.discounted_fee)
+                  : null
+              const pvcFee = t?.add_pvc_id ? Number(t?.pvc_fee ?? 0) : 0
+              const perTraineeTotal = (discountedFee ?? baseFee) + pvcFee
+              acc.training += perTraineeTotal
+              acc.paid += Number(t?.amount_paid ?? 0)
+              return acc
+            },
+            { training: 0, paid: 0 }
+          )
 
           return {
             id: schedule.id,
@@ -453,6 +702,9 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
             submissionCount: schedule.trainings?.length ?? 0,
             sortDate,
             scheduleMonth,
+            sessionDays,
+            totalTrainingAmount: totals.training,
+            totalAmountPaid: totals.paid,
             trainerName: schedule.day_trainers && Object.keys(schedule.day_trainers).length > 0
               ? Array.from(new Set(Object.values(schedule.day_trainers as Record<string, string>).filter(Boolean)))
                 .join(", ")
@@ -507,20 +759,23 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const columns: ColumnDef<Participant>[] = [
     {
       accessorKey: "course",
-      header: "Course",
+      header: () => <div className="w-[220px]">Course</div>,
       cell: ({ row }) => {
         const submissionCount = row.original.submissionCount
         const isCancelled = row.original.status === 'cancelled'
 
         return (
-          <div className="space-y-2">
-            <div className={`font-medium text-card-foreground ${isCancelled ? 'line-through text-muted-foreground' : ''}`}>
+          <div className="w-[220px] space-y-1.5">
+            <div
+              className={`font-medium text-card-foreground truncate ${isCancelled ? 'line-through text-muted-foreground' : ''}`}
+              title={String(row.getValue("course"))}
+            >
               {row.getValue("course")}
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-1">
               <Link
                 href={`/submissions?scheduleId=${row.original.id}&from=${status}`}
-                className="flex items-center gap-1 text-xs hover:bg-muted rounded-md px-2 py-1.5 cursor-pointer"
+                className="flex items-center gap-1 text-[10px] hover:bg-muted rounded-md px-1.5 py-1 cursor-pointer"
                 onClick={(e) => e.stopPropagation()}
               >
                 <SubmissionIcon className="h-3 w-3" />
@@ -535,7 +790,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1 text-xs hover:bg-muted cursor-pointer"
+                className="h-6 gap-1 px-1.5 text-[10px] hover:bg-muted cursor-pointer"
                 onClick={(e) => {
                   e.stopPropagation()
                   setDirectoryScheduleId(row.original.id)
@@ -550,7 +805,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
 
               <Link
                 href={`/training-schedules/attendance?scheduleId=${row.original.id}&from=${status}`}
-                className="inline-flex h-7 items-center gap-1 rounded-md px-2 py-1.5 text-xs text-foreground hover:bg-muted cursor-pointer"
+                className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-foreground hover:bg-muted cursor-pointer"
                 onClick={(e) => e.stopPropagation()}
               >
                 <AttendanceIcon className="h-3.5 w-3.5" />
@@ -578,8 +833,15 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     },
     {
       accessorKey: "branch",
-      header: "Branch",
-      cell: ({ row }) => <div className="text-card-foreground">{row.getValue("branch")}</div>,
+      header: () => <div className="w-[100px]">Branch</div>,
+      cell: ({ row }) => {
+        const branch = String(row.getValue("branch") ?? "—")
+        return (
+          <div className="w-[100px] text-card-foreground truncate text-xs" title={branch}>
+            {branch}
+          </div>
+        )
+      },
     },
     {
       accessorKey: "schedule",
@@ -629,6 +891,92 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           <Badge variant="outline" className="bg-muted">
             {type}
           </Badge>
+        )
+      },
+    },
+    {
+      id: "amounts",
+      header: "Training / Paid",
+      cell: ({ row }) => {
+        const p = row.original
+        return (
+          <div className="space-y-1 text-xs">
+            <div className="font-medium text-card-foreground">
+              {formatCurrency(p.totalTrainingAmount)}
+            </div>
+            <div className="text-muted-foreground">
+              Paid: {formatCurrency(p.totalAmountPaid)}
+            </div>
+          </div>
+        )
+      },
+    },
+    {
+      id: "costCalculator",
+      header: "Cost Calculator",
+      cell: ({ row }) => {
+        const p = row.original
+        const setting = getCostSettingsForSchedule(p.id)
+        const trainerCost = setting.trainerFeePerDay * (p.sessionDays || 0)
+        const participantCost = (setting.idCostPerParticipant + setting.certificateCostPerParticipant) * (p.submissionCount || 0)
+        const totalCost = trainerCost + participantCost
+        return (
+          <button
+            type="button"
+            className="w-full rounded-md border border-border bg-muted/20 px-2 py-1.5 text-left space-y-1 text-xs cursor-pointer transition-colors hover:bg-muted/60 hover:border-primary/40 active:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            onClick={(e) => {
+              e.stopPropagation()
+              setCostDialogParticipant(p)
+              const selected = getCostSettingsForSchedule(p.id)
+              setDialogTrainerFeePerDay(selected.trainerFeePerDay)
+              setDialogIdCostPerParticipant(selected.idCostPerParticipant)
+              setDialogCertificateCostPerParticipant(selected.certificateCostPerParticipant)
+              setCostDialogOpen(true)
+            }}
+            title="Click to open cost calculator"
+          >
+            <div className="text-muted-foreground">
+              Fee: {formatCurrency(trainerCost)}
+            </div>
+            <div className="text-muted-foreground">
+              IDs/Cert: {formatCurrency(participantCost)}
+            </div>
+            <div className="font-semibold text-card-foreground border-t border-border/60 pt-1">
+              Total: {formatCurrency(totalCost)}
+            </div>
+          </button>
+        )
+      },
+    },
+    {
+      id: "proceedTag",
+      header: "Proceed Tag",
+      cell: ({ row }) => {
+        const p = row.original
+        const setting = getCostSettingsForSchedule(p.id)
+        const trainerCost = setting.trainerFeePerDay * (p.sessionDays || 0)
+        const participantCost =
+          (setting.idCostPerParticipant + setting.certificateCostPerParticipant) *
+          (p.submissionCount || 0)
+        const totalCost = trainerCost + participantCost
+        const hasAnyCostSetup =
+          setting.trainerFeePerDay > 0 ||
+          setting.idCostPerParticipant > 0 ||
+          setting.certificateCostPerParticipant > 0
+        const assessment = getProceedAssessment(p.totalTrainingAmount, totalCost, hasAnyCostSetup)
+        const pct = Math.max(0, assessment.netRatio * 100)
+
+        return (
+          <div className="space-y-1 text-xs">
+            <Badge className={`${assessment.className} border`}>
+              {assessment.label}
+            </Badge>
+            <div className="text-muted-foreground">
+              {assessment.label === "Undefined" || assessment.label === "Undefined Cost"
+                ? "Net: —"
+                : `Net: ${pct.toFixed(1)}%`}
+            </div>
+          </div>
         )
       },
     },
@@ -971,6 +1319,35 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           </div>
         </div>
 
+        <div className="mb-3 rounded-md border border-border bg-muted/30 p-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Default Cost Inputs (for trainings without custom values)
+          </div>
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            <Input
+              type="number"
+              min={0}
+              value={trainerFeePerDay || ""}
+              onChange={(e) => setTrainerFeePerDay(Number(e.target.value || 0))}
+              placeholder="Trainer fee / day"
+            />
+            <Input
+              type="number"
+              min={0}
+              value={idCostPerParticipant || ""}
+              onChange={(e) => setIdCostPerParticipant(Number(e.target.value || 0))}
+              placeholder="ID cost / participant"
+            />
+            <Input
+              type="number"
+              min={0}
+              value={certificateCostPerParticipant || ""}
+              onChange={(e) => setCertificateCostPerParticipant(Number(e.target.value || 0))}
+              placeholder="Certificate cost / participant"
+            />
+          </div>
+        </div>
+
         <div className="rounded-md border border-border">
           <Table>
             <TableHeader className="font-bold bg-muted">
@@ -1146,6 +1523,112 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         courseName={selectedParticipant?.course || ""}
         scheduleLabel={selectedParticipant?.schedule || ""}
       />
+
+      <Dialog open={costDialogOpen} onOpenChange={setCostDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Cost Calculator</DialogTitle>
+          </DialogHeader>
+
+          {costDialogParticipant && (
+            <div className="space-y-4">
+              <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                <div className="font-semibold">{costDialogParticipant.course}</div>
+                <div className="text-muted-foreground">{costDialogParticipant.schedule}</div>
+                <div className="text-muted-foreground">
+                  Participants: {costDialogParticipant.submissionCount} • Session days: {costDialogParticipant.sessionDays}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Trainer fee / day</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={dialogTrainerFeePerDay || ""}
+                    onChange={(e) => setDialogTrainerFeePerDay(Number(e.target.value || 0))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">ID cost / participant</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={dialogIdCostPerParticipant || ""}
+                    onChange={(e) => setDialogIdCostPerParticipant(Number(e.target.value || 0))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Certificate cost / participant</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={dialogCertificateCostPerParticipant || ""}
+                    onChange={(e) => setDialogCertificateCostPerParticipant(Number(e.target.value || 0))}
+                  />
+                </div>
+              </div>
+
+              {(() => {
+                const trainerCost = dialogTrainerFeePerDay * costDialogParticipant.sessionDays
+                const idAndCertCost =
+                  (dialogIdCostPerParticipant + dialogCertificateCostPerParticipant) *
+                  costDialogParticipant.submissionCount
+                const totalCost = trainerCost + idAndCertCost
+                return (
+                  <div className="rounded-md border p-3 text-sm space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Training Total</span>
+                      <span className="font-medium">{formatCurrency(costDialogParticipant.totalTrainingAmount)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Amount Paid</span>
+                      <span className="font-medium">{formatCurrency(costDialogParticipant.totalAmountPaid)}</span>
+                    </div>
+                    <div className="h-px bg-border my-1" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Trainer Cost</span>
+                      <span>{formatCurrency(trainerCost)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">IDs + Certificate Cost</span>
+                      <span>{formatCurrency(idAndCertCost)}</span>
+                    </div>
+                    <div className="h-px bg-border my-1" />
+                    <div className="flex items-center justify-between font-semibold">
+                      <span>Estimated Total Cost</span>
+                      <span>{formatCurrency(totalCost)}</span>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCostDialogOpen(false)}>
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                if (!costDialogParticipant) return
+                setCostSettingsBySchedule((prev) => ({
+                  ...prev,
+                  [costDialogParticipant.id]: {
+                    trainerFeePerDay: dialogTrainerFeePerDay,
+                    idCostPerParticipant: dialogIdCostPerParticipant,
+                    certificateCostPerParticipant: dialogCertificateCostPerParticipant,
+                  },
+                }))
+                setCostDialogOpen(false)
+              }}
+            >
+              Apply to This Training
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

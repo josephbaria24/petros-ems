@@ -175,6 +175,12 @@
   }
 }
 
+/* Keep Next.js devtools portal positioning unset (dev-only UI). */
+nextjs-portal {
+  left: unset !important;
+  top: unset !important;
+}
+
 
 
 @layer utilities {
