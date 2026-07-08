@@ -49,6 +49,7 @@ import { createClient } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import Link from "next/link"
 import { formatDistanceToNow } from "date-fns"
+import { CertificateVerifierTools } from "@/components/certificate-verifier-tools"
 
 type CertificateRecord = {
     id: string
@@ -830,6 +831,11 @@ export default function AdminCertificateVerifierPage() {
                         )}
                     </CardContent>
                 </Card>
+
+            <CertificateVerifierTools
+                onRefresh={fetchRecords}
+                logActivity={logActivity}
+            />
 
             {/* Add Dialog */}
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
