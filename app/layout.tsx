@@ -1,6 +1,7 @@
 // app/layout.tsx
 import type { Metadata } from "next"
-import { Geist, Dancing_Script } from "next/font/google"
+import { GeistSans } from "geist/font/sans"
+import { Dancing_Script } from "next/font/google"
 import "./globals.css"
 import "sileo/styles.css"
 import { Analytics } from "@vercel/analytics/next"
@@ -8,15 +9,10 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "sonner"
 import AppShell from "@/components/app-shell"
 
-const poppins = Geist({
+const dancingScript = Dancing_Script({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-})
-
-const dancingScript = Dancing_Script({ 
-  subsets: ['latin'],
-  variable: '--font-welcome',
-  weight: ['400', '700']
+  variable: "--font-welcome",
+  weight: ["400", "700"],
 })
 
 export const metadata: Metadata = {
@@ -33,8 +29,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${poppins.className}`}>
+    <html lang="en" className={dancingScript.variable} suppressHydrationWarning>
+      <body className={GeistSans.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AppShell>{children}</AppShell>
           <Toaster />

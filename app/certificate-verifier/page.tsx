@@ -47,6 +47,8 @@ import {
 } from "lucide-react"
 import { tmsDb } from "@/lib/supabase-client"
 import { createClient } from "@/lib/supabase-client"
+import { findCertificateRecords, formatCertificateHolderName, toVerificationDetails, type CertificateRecord } from "@/lib/certificate-verification"
+import { CertificateMatchPicker } from "@/components/certificate-match-picker"
 import { toast } from "sonner"
 import Link from "next/link"
 import { formatDistanceToNow } from "date-fns"
@@ -1008,6 +1010,7 @@ export default function AdminCertificateVerifierPage() {
 function LiveVerifier() {
     const [certificateId, setCertificateId] = useState("")
     const [isVerifying, setIsVerifying] = useState(false)
+    const [matchOptions, setMatchOptions] = useState<CertificateRecord[] | null>(null)
     const [result, setResult] = useState<{
         status: "valid" | "not-found"
         serial_number?: string
@@ -1018,43 +1021,52 @@ function LiveVerifier() {
         date?: string
     } | null>(null)
 
+    const showResult = (record: CertificateRecord) => {
+        const details = toVerificationDetails(record, certificateId.trim())
+        setMatchOptions(null)
+        setResult({
+            status: "valid",
+            serial_number: details.certificateId,
+            name: details.holderName,
+            training: details.training,
+            course_code: record.course_code ?? undefined,
+            venue: details.venue,
+            date: details.trainingDate,
+        })
+    }
+
     const handleVerify = async () => {
-        const trimmed = certificateId.trim().toUpperCase()
+        const trimmed = certificateId.trim()
         if (!trimmed) return
 
         setIsVerifying(true)
+        setMatchOptions(null)
+        setResult(null)
 
-        const { data: records, error } = await tmsDb
-            .from("certificate_records")
-            .select("*")
-            .or(`serial_number.eq."${trimmed}",last_name.ilike."${trimmed}"`)
-            .limit(1)
+        const { matches, error } = await findCertificateRecords(tmsDb, trimmed)
 
-        const data = records?.[0]
-
-        if (error || !data) {
+        if (error || matches.length === 0) {
             setResult({ status: "not-found" })
+        } else if (matches.length === 1) {
+            showResult(matches[0])
         } else {
-            const fullName = `${data.first_name ?? ""} ${data.middle_name ?? ""} ${data.last_name ?? ""}`.replace(/\s+/g, " ").trim()
-            setResult({
-                status: "valid",
-                serial_number: data.serial_number,
-                name: fullName,
-                training: data.training,
-                course_code: data.course_code,
-                venue: data.training_venue,
-                date: data.training_date,
-            })
+            setMatchOptions(matches)
         }
 
         setIsVerifying(false)
+    }
+
+    const handleReset = () => {
+        setCertificateId("")
+        setMatchOptions(null)
+        setResult(null)
     }
 
     return (
         <div className="space-y-4">
             <div className="flex gap-2">
                 <Input
-                    placeholder="Serial number or last name"
+                    placeholder="PSI-XXXX-XXX-XX-XXX or John Doe"
                     value={certificateId}
                     onChange={(e) => setCertificateId(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleVerify()}
@@ -1065,6 +1077,31 @@ function LiveVerifier() {
                     {isVerifying ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Search className="w-4 h-4" />}
                 </Button>
             </div>
+
+            {matchOptions && (
+                <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">Select a certificate</p>
+                    {matchOptions.map((record, index) => {
+                        const name = formatCertificateHolderName(record)
+                        const key = record.id ?? record.serial_number ?? `${name}-${index}`
+                        return (
+                            <button
+                                key={key}
+                                type="button"
+                                onClick={() => showResult(record)}
+                                className="w-full text-left rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                            >
+                                <p className="text-sm font-medium">{name || "Unknown"}</p>
+                                <p className="text-xs text-muted-foreground">{record.training || "Training not specified"}</p>
+                                <p className="text-xs font-mono text-muted-foreground">{record.serial_number || "No serial number"}</p>
+                            </button>
+                        )
+                    })}
+                    <Button size="sm" variant="outline" onClick={handleReset} className="w-full">
+                        Search Again
+                    </Button>
+                </div>
+            )}
 
             {result && (
                 <div className="rounded-lg border p-4 space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">

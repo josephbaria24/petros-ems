@@ -88,10 +88,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (!isPublicRoute && !isAuthenticated) {
     return null
   }
+  const isGuestCertificateVerifier = pathname.startsWith("/guest-certificate-verifier")
   const isFullBleed =
     pathname.startsWith("/upload-receipt") ||
     pathname.startsWith("/client-upload") ||
-    pathname.startsWith("/guest-certificate-verifier") ||
+    isGuestCertificateVerifier ||
     pathname.startsWith("/evaluation") ||
     pathname.startsWith("/trainer-repository") ||
     pathname.startsWith("/view-material") ||
@@ -106,7 +107,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <main
             className={cn(
               "flex flex-col flex-1 min-h-0",
-              isFullBleed ? "p-0 bg-slate-950" : "p-6 bg-background",
+              isFullBleed
+                ? isGuestCertificateVerifier
+                  ? "p-0 bg-transparent"
+                  : "p-0 bg-slate-950"
+                : "p-6 bg-background",
               pathname.startsWith("/trainer-repository") ? "overflow-hidden" : "overflow-y-auto"
             )}
           >

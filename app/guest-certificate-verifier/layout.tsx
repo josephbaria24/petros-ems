@@ -66,9 +66,9 @@ export default function CertificateVerifierLayout({
     children: React.ReactNode
 }) {
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-background m-0 p-0">
+        <div className="flex min-h-full flex-1 flex-col bg-gradient-to-b from-slate-50 via-white to-slate-100 dark:from-background dark:via-background dark:to-background m-0 p-0">
             <Header />
-            <main className="m-0 p-0">
+            <main className="m-0 flex flex-1 flex-col p-0">
                 {children}
             </main>
         </div>
