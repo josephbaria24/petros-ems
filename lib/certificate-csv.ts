@@ -133,10 +133,6 @@ export function parseCertificateCsv(text: string) {
     throw new Error("No valid rows found in CSV")
   }
 
-  if (rows.length > 1000) {
-    throw new Error("CSV exceeds the maximum of 1000 certificates per upload")
-  }
-
   return rows
 }
 

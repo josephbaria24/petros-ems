@@ -11,16 +11,44 @@ import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import {
   buildCertificateCsvTemplate,
-  csvRowToRecordPayload,
   downloadCsvFile,
   parseCertificateCsv,
   recordsToCsv,
 } from "@/lib/certificate-csv"
 import { Copy, Download, Loader2, Trash2, Upload } from "lucide-react"
+import { CertificateImportReviewDialog } from "@/components/certificate-import-review-dialog"
+import { buildImportPreviewRows, type ImportPreviewRow } from "@/lib/certificate-import-preview"
 
 type CertificateVerifierToolsProps = {
   onRefresh: () => void
   logActivity: (action: string, details: string, serial_number?: string) => Promise<void>
+}
+
+async function fetchExistingSerialNumbers() {
+  const serials = new Set<string>()
+  const pageSize = 1000
+  let from = 0
+
+  while (true) {
+    const { data, error } = await tmsDb
+      .from("certificate_records")
+      .select("serial_number")
+      .range(from, from + pageSize - 1)
+
+    if (error) throw error
+    if (!data?.length) break
+
+    data.forEach((record) => {
+      if (record.serial_number) {
+        serials.add(String(record.serial_number).trim().toUpperCase())
+      }
+    })
+
+    if (data.length < pageSize) break
+    from += pageSize
+  }
+
+  return serials
 }
 
 async function fetchAllCertificateRecords() {
@@ -77,6 +105,9 @@ export function CertificateVerifierTools({
   const [isDeletingAll, setIsDeletingAll] = useState(false)
   const [autoGenerateSerial, setAutoGenerateSerial] = useState(true)
   const [deleteConfirmed, setDeleteConfirmed] = useState(false)
+  const [importReviewOpen, setImportReviewOpen] = useState(false)
+  const [importPreviewRows, setImportPreviewRows] = useState<ImportPreviewRow[]>([])
+  const [existingSerials, setExistingSerials] = useState<Set<string>>(new Set())
 
   const verifierUrl =
     typeof window !== "undefined"
@@ -111,7 +142,7 @@ export function CertificateVerifierTools({
     setSelectedFile(file)
   }
 
-  const handleImportCsv = async () => {
+  const handlePrepareImport = async () => {
     if (!selectedFile) {
       toast.error("Please choose a CSV file first")
       return
@@ -122,37 +153,26 @@ export function CertificateVerifierTools({
     try {
       const text = await selectedFile.text()
       const rows = parseCertificateCsv(text)
-      const payloads = rows.map((row, index) => {
-        const payload = csvRowToRecordPayload(row, index, autoGenerateSerial)
-        if (!payload.serial_number) {
-          throw new Error(
-            `Row ${index + 2} is missing serial_number. Enable auto-generate or add a serial in the CSV.`
-          )
-        }
-        return payload
-      })
+      const serials = await fetchExistingSerialNumbers()
+      const previewRows = buildImportPreviewRows(rows, serials, autoGenerateSerial)
 
-      const chunkSize = 100
-      let imported = 0
-
-      for (let i = 0; i < payloads.length; i += chunkSize) {
-        const chunk = payloads.slice(i, i + chunkSize)
-        const { error } = await tmsDb.from("certificate_records").insert(chunk)
-        if (error) throw error
-        imported += chunk.length
-      }
-
-      await logActivity("IMPORT", `Imported ${imported} certificate records from CSV`)
-      toast.success(`Successfully imported ${imported} certificate records`)
-      setSelectedFile(null)
-      if (fileInputRef.current) fileInputRef.current.value = ""
-      onRefresh()
+      setExistingSerials(serials)
+      setImportPreviewRows(previewRows)
+      setImportReviewOpen(true)
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Import failed"
       toast.error(message)
     } finally {
       setIsImporting(false)
     }
+  }
+
+  const handleImportCompleted = () => {
+    setSelectedFile(null)
+    setImportPreviewRows([])
+    setExistingSerials(new Set())
+    if (fileInputRef.current) fileInputRef.current.value = ""
+    onRefresh()
   }
 
   const handleCopyVerifierLink = async () => {
@@ -235,7 +255,7 @@ export function CertificateVerifierTools({
             title="Massive Load"
             description={
               <>
-                Up to 1000 certificates in a .csv file.{" "}
+                Upload a .csv file, review duplicates, then import selected rows.{" "}
                 <button
                   type="button"
                   onClick={handleDownloadTemplate}
@@ -270,13 +290,13 @@ export function CertificateVerifierTools({
                   Generate serial number automatically
                 </Label>
               </div>
-              <Button disabled={isImporting || !selectedFile} onClick={handleImportCsv}>
+              <Button disabled={isImporting || !selectedFile} onClick={handlePrepareImport}>
                 {isImporting ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <Upload className="mr-2 h-4 w-4" />
                 )}
-                Load Data
+                Review Import
               </Button>
             </div>
           </ToolRow>
@@ -306,6 +326,16 @@ export function CertificateVerifierTools({
           </ToolRow> */}
         </CardContent>
       </Card>
+
+      <CertificateImportReviewDialog
+        open={importReviewOpen}
+        onOpenChange={setImportReviewOpen}
+        rows={importPreviewRows}
+        existingSerials={existingSerials}
+        onRowsChange={setImportPreviewRows}
+        onImported={handleImportCompleted}
+        logActivity={logActivity}
+      />
 
       {/* <Card className="border-destructive/30">
         <CardHeader className="pb-2">
