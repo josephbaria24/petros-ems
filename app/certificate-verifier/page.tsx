@@ -38,7 +38,6 @@ import {
     ExternalLink,
     ChevronLeft,
     ChevronRight,
-    ShieldCheck,
     Clock,
     Filter,
     ArrowUpDown,
@@ -47,8 +46,6 @@ import {
 } from "lucide-react"
 import { tmsDb } from "@/lib/supabase-client"
 import { createClient } from "@/lib/supabase-client"
-import { findCertificateRecords, formatCertificateHolderName, toVerificationDetails, type CertificateRecord } from "@/lib/certificate-verification"
-import { CertificateMatchPicker } from "@/components/certificate-match-picker"
 import { toast } from "sonner"
 import Link from "next/link"
 import { formatDistanceToNow } from "date-fns"
@@ -580,7 +577,7 @@ export default function AdminCertificateVerifierPage() {
                     <Button variant="outline" size="sm" asChild>
                         <Link href="/guest-certificate-verifier" target="_blank">
                             <ExternalLink className="w-4 h-4 mr-2" />
-                            Guest Page
+                            Verify Certificate
                         </Link>
                     </Button>
                     <Button size="sm" onClick={handleAdd}>
@@ -590,10 +587,7 @@ export default function AdminCertificateVerifierPage() {
                 </div>
             </div>
 
-            {/* Main layout: side-by-side */}
-            <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-6 min-w-0">
-                {/* Left: Records Table */}
-                <Card className="min-w-0">
+            <Card className="min-w-0">
                     <CardHeader className="pb-3">
                         <div className="flex items-center justify-between gap-4">
                             <div>
@@ -837,23 +831,6 @@ export default function AdminCertificateVerifierPage() {
                     </CardContent>
                 </Card>
 
-                {/* Right: Live Verifier Preview */}
-                <Card className="h-fit sticky top-6">
-                    <CardHeader className="pb-3">
-                        <div className="flex items-center gap-2">
-                            <ShieldCheck className="w-5 h-5 text-primary" />
-                            <div>
-                                <CardTitle className="text-base">Live Verifier</CardTitle>
-                                <CardDescription className="text-xs">Test certificate verification</CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent>
-                        <LiveVerifier />
-                    </CardContent>
-                </Card>
-            </div>
-
             {/* Add Dialog */}
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
                 <DialogContent className="lg:w-[60vw] w-[90vw]">
@@ -1002,131 +979,6 @@ export default function AdminCertificateVerifierPage() {
                     </div>
                 </DialogContent>
             </Dialog>
-        </div>
-    )
-}
-
-// Embedded mini verifier for admin preview
-function LiveVerifier() {
-    const [certificateId, setCertificateId] = useState("")
-    const [isVerifying, setIsVerifying] = useState(false)
-    const [matchOptions, setMatchOptions] = useState<CertificateRecord[] | null>(null)
-    const [result, setResult] = useState<{
-        status: "valid" | "not-found"
-        serial_number?: string
-        name?: string
-        training?: string
-        course_code?: string
-        venue?: string
-        date?: string
-    } | null>(null)
-
-    const showResult = (record: CertificateRecord) => {
-        const details = toVerificationDetails(record, certificateId.trim())
-        setMatchOptions(null)
-        setResult({
-            status: "valid",
-            serial_number: details.certificateId,
-            name: details.holderName,
-            training: details.training,
-            course_code: record.course_code ?? undefined,
-            venue: details.venue,
-            date: details.trainingDate,
-        })
-    }
-
-    const handleVerify = async () => {
-        const trimmed = certificateId.trim()
-        if (!trimmed) return
-
-        setIsVerifying(true)
-        setMatchOptions(null)
-        setResult(null)
-
-        const { matches, error } = await findCertificateRecords(tmsDb, trimmed)
-
-        if (error || matches.length === 0) {
-            setResult({ status: "not-found" })
-        } else if (matches.length === 1) {
-            showResult(matches[0])
-        } else {
-            setMatchOptions(matches)
-        }
-
-        setIsVerifying(false)
-    }
-
-    const handleReset = () => {
-        setCertificateId("")
-        setMatchOptions(null)
-        setResult(null)
-    }
-
-    return (
-        <div className="space-y-4">
-            <div className="flex gap-2">
-                <Input
-                    placeholder="PSI-XXXX-XXX-XX-XXX or John Doe"
-                    value={certificateId}
-                    onChange={(e) => setCertificateId(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleVerify()}
-                    className="h-9"
-                    disabled={isVerifying}
-                />
-                <Button size="sm" onClick={handleVerify} disabled={!certificateId.trim() || isVerifying} className="h-9">
-                    {isVerifying ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Search className="w-4 h-4" />}
-                </Button>
-            </div>
-
-            {matchOptions && (
-                <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">Select a certificate</p>
-                    {matchOptions.map((record, index) => {
-                        const name = formatCertificateHolderName(record)
-                        const key = record.id ?? record.serial_number ?? `${name}-${index}`
-                        return (
-                            <button
-                                key={key}
-                                type="button"
-                                onClick={() => showResult(record)}
-                                className="w-full text-left rounded-lg border p-3 hover:bg-muted/50 transition-colors"
-                            >
-                                <p className="text-sm font-medium">{name || "Unknown"}</p>
-                                <p className="text-xs text-muted-foreground">{record.training || "Training not specified"}</p>
-                                <p className="text-xs font-mono text-muted-foreground">{record.serial_number || "No serial number"}</p>
-                            </button>
-                        )
-                    })}
-                    <Button size="sm" variant="outline" onClick={handleReset} className="w-full">
-                        Search Again
-                    </Button>
-                </div>
-            )}
-
-            {result && (
-                <div className="rounded-lg border p-4 space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    {result.status === "valid" ? (
-                        <>
-                            <div className="flex items-center gap-2">
-                                <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">VERIFIED</Badge>
-                            </div>
-                            <div className="space-y-1.5 text-sm">
-                                <p><span className="text-muted-foreground">Serial:</span> <span className="font-mono">{result.serial_number}</span></p>
-                                <p><span className="text-muted-foreground">Name:</span> {result.name}</p>
-                                <p><span className="text-muted-foreground">Training:</span> {result.training}</p>
-                                {result.course_code && <p><span className="text-muted-foreground">Course Code:</span> {result.course_code}</p>}
-                                {result.venue && <p><span className="text-muted-foreground">Venue:</span> {result.venue}</p>}
-                                {result.date && <p><span className="text-muted-foreground">Date:</span> {result.date}</p>}
-                            </div>
-                        </>
-                    ) : (
-                        <div className="text-center py-2">
-                            <Badge variant="destructive">NOT FOUND</Badge>
-                            <p className="text-sm text-muted-foreground mt-2">No certificate found</p>
-                        </div>
-                    )}
-                </div>
-            )}
         </div>
     )
 }
