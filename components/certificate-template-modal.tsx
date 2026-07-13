@@ -48,7 +48,7 @@ interface TextField {
   boxHeight?: number
   fontWeight: "normal" | "bold" | "extrabold"
   fontStyle: "normal" | "italic"
-  fontFamily: "Helvetica" | "Montserrat" | "Poppins"
+  fontFamily: "Helvetica" | "Times" | "Montserrat" | "Poppins"
   color: string
   align: "left" | "center" | "right"
   lineHeight?: number
@@ -1771,7 +1771,7 @@ toast.success("Template saved successfully!")
         <Label>Font Family</Label>
         <Select
           value={currentField.fontFamily}
-          onValueChange={(value: "Helvetica" | "Montserrat" | "Poppins") =>
+          onValueChange={(value: "Helvetica" | "Times" | "Montserrat" | "Poppins") =>
             updateField({ fontFamily: value })
           }
         >
@@ -1780,6 +1780,7 @@ toast.success("Template saved successfully!")
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="Helvetica">Helvetica</SelectItem>
+            <SelectItem value="Times">Times</SelectItem>
             <SelectItem value="Montserrat">Montserrat</SelectItem>
             <SelectItem value="Poppins">Poppins</SelectItem>
           </SelectContent>

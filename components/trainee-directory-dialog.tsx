@@ -29,6 +29,14 @@ import {
   type CertificatePageSizeKey,
 } from "@/lib/certificate-page-sizes"
 import {
+  CERTIFICATE_FONT_OPTIONS,
+  CERTIFICATE_FONT_WEIGHT_OPTIONS,
+  canvasFontFamily,
+  formatCertificateHolderDisplayName,
+  type CertificateFontFamily,
+  type CertificateFontWeight,
+} from "@/lib/certificate-name"
+import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -52,6 +60,7 @@ interface DownloadTrainee {
   last_name: string
   middle_initial?: string
   suffix?: string
+  courtesy_title?: string | null
   picture_2x2_url?: string
   schedule_id: string
   status?: string
@@ -68,6 +77,7 @@ interface CertificateGenerationData {
   last_name: string;
   middle_initial?: string;
   suffix?: string;
+  courtesy_title?: string | null;
   certificate_number: string;
   batch_number?: number;
   picture_2x2_url?: string;
@@ -96,7 +106,7 @@ type TemplateField = {
   boxHeight?: number
   fontWeight: "normal" | "bold" | "extrabold"
   fontStyle: "normal" | "italic"
-  fontFamily: "Helvetica" | "Montserrat" | "Poppins"
+  fontFamily: CertificateFontFamily
   color: string
   align: "left" | "center" | "right"
   lineHeight?: number
@@ -108,6 +118,7 @@ interface Trainee {
   last_name: string
   middle_initial?: string
   suffix?: string
+  courtesy_title?: string | null
   picture_2x2_url?: string
   schedule_id: string
   status?: string
@@ -359,6 +370,66 @@ export default function ParticipantDirectoryDialog({
     DEFAULT_CERTIFICATE_PAGE_SIZE
   )
 
+  const nameFieldIds = useMemo(() => {
+    const fields = templateForViewer?.fields || []
+    return fields
+      .filter((field) => (field.value || "").includes("{{trainee_name}}"))
+      .map((field) => field.id)
+  }, [templateForViewer])
+
+  const selectedNameFontFamily = useMemo<CertificateFontFamily>(() => {
+    const firstNameFieldId = nameFieldIds[0]
+    if (firstNameFieldId && typeof fieldOverrides[firstNameFieldId]?.fontFamily === "string") {
+      return fieldOverrides[firstNameFieldId].fontFamily as CertificateFontFamily
+    }
+    const templateField = templateForViewer?.fields?.find((field) => nameFieldIds.includes(field.id))
+    return (templateField?.fontFamily as CertificateFontFamily) || "Helvetica"
+  }, [fieldOverrides, nameFieldIds, templateForViewer])
+
+  const selectedNameFontWeight = useMemo<CertificateFontWeight>(() => {
+    const firstNameFieldId = nameFieldIds[0]
+    if (firstNameFieldId && typeof fieldOverrides[firstNameFieldId]?.fontWeight === "string") {
+      return fieldOverrides[firstNameFieldId].fontWeight as CertificateFontWeight
+    }
+    const templateField = templateForViewer?.fields?.find((field) => nameFieldIds.includes(field.id))
+    return (templateField?.fontWeight as CertificateFontWeight) || "normal"
+  }, [fieldOverrides, nameFieldIds, templateForViewer])
+
+  const applyNameFontStyle = (
+    patch: Partial<{ fontFamily: CertificateFontFamily; fontWeight: CertificateFontWeight }>
+  ) => {
+    if (nameFieldIds.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No name field",
+        description: "This template has no trainee name field to style.",
+      })
+      return
+    }
+
+    setFieldOverrides((prev) => {
+      const next = { ...prev }
+      nameFieldIds.forEach((id) => {
+        next[id] = { ...(next[id] || {}), ...patch }
+      })
+      return next
+    })
+  }
+
+  // Load Google fonts used by certificate canvas preview
+  useEffect(() => {
+    if (!isCertificateViewerOpen) return
+    if (typeof document === "undefined") return
+    if (document.getElementById("certificate-google-fonts")) return
+
+    const link = document.createElement("link")
+    link.id = "certificate-google-fonts"
+    link.rel = "stylesheet"
+    link.href =
+      "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&family=Poppins:wght@400;700;900&display=swap"
+    document.head.appendChild(link)
+  }, [isCertificateViewerOpen])
+
   // ✅ NEW: Performance & Caching State
   const [certificateCache, setCertificateCache] = useState<Map<string, string>>(new Map())
   const [isPreFetching, setIsPreFetching] = useState(false)
@@ -435,16 +506,22 @@ export default function ParticipantDirectoryDialog({
     handleFitToScreen,
   ])
 
-  const getFontString = (field: TemplateField, canvasH: number) => {
+  const getFontString = (
+    field: TemplateField,
+    canvasH: number,
+    overrideFamily?: string,
+    overrideWeight?: string
+  ) => {
     const px = Math.max(1, (field.fontSize || 0.02) * canvasH)
     const italic = field.fontStyle === "italic" ? "italic " : ""
+    const weightValue = overrideWeight || field.fontWeight
     const weight =
-      field.fontWeight === "extrabold"
+      weightValue === "extrabold"
         ? "900 "
-        : field.fontWeight === "bold"
+        : weightValue === "bold"
           ? "bold "
           : ""
-    const family = field.fontFamily || "Helvetica"
+    const family = canvasFontFamily(overrideFamily || field.fontFamily || "Helvetica")
     return `${italic}${weight}${px}px ${family}`
   }
 
@@ -497,8 +574,7 @@ export default function ParticipantDirectoryDialog({
       year: "numeric",
     })
 
-    const sfx = trainee.suffix?.trim()
-    const fullName = `${trainee.first_name || ""} ${trainee.middle_initial ? trainee.middle_initial + ". " : ""}${trainee.last_name || ""}${sfx ? " " + (sfx.endsWith(".") ? sfx : sfx + ".") : ""}`.trim()
+    const fullName = formatCertificateHolderDisplayName(trainee)
     return raw
       .replace(/\{\{trainee_name\}\}/g, fullName || "Trainee Name")
       .replace(/\{\{course_name\}\}/g, courseName)
@@ -603,7 +679,12 @@ export default function ParticipantDirectoryDialog({
           return
         }
 
-        ctx.font = getFontString(f, canvas.height)
+        ctx.font = getFontString(
+          f,
+          canvas.height,
+          typeof fo.fontFamily === "string" ? fo.fontFamily : undefined,
+          typeof fo.fontWeight === "string" ? fo.fontWeight : undefined
+        )
         ctx.fillStyle = (typeof fo.color === "string" ? fo.color : f.color) || "#000000"
         ctx.textAlign = f.align === "center" ? "center" : f.align === "right" ? "right" : "left"
 
@@ -621,7 +702,12 @@ export default function ParticipantDirectoryDialog({
         if (f.id === activeFieldId) {
           ctx.save()
           ctx.textAlign = "left"
-          ctx.font = getFontString({ ...f, fontSize: (typeof fo.fontSize === "number" ? fo.fontSize : f.fontSize) }, canvas.height)
+          ctx.font = getFontString(
+            { ...f, fontSize: (typeof fo.fontSize === "number" ? fo.fontSize : f.fontSize) },
+            canvas.height,
+            typeof fo.fontFamily === "string" ? fo.fontFamily : undefined,
+            typeof fo.fontWeight === "string" ? fo.fontWeight : undefined
+          )
           const maxW = Math.max(...lines.map(l => ctx.measureText(l).width), 10)
           let boxX = x
           if (f.align === "center") boxX = x - maxW / 2
@@ -1461,7 +1547,7 @@ export default function ParticipantDirectoryDialog({
       }
       const { data, error } = await tmsDb
         .from("trainings")
-        .select("id, first_name, last_name, middle_initial, suffix, schedule_id, picture_2x2_url, status, email, certificate_number, course_id, batch_number, custom_data")
+        .select("id, first_name, last_name, middle_initial, suffix, courtesy_title, schedule_id, picture_2x2_url, status, email, certificate_number, course_id, batch_number, custom_data")
         .eq("schedule_id", scheduleId)
         .order("last_name", { ascending: true })
 
@@ -1606,6 +1692,7 @@ export default function ParticipantDirectoryDialog({
               last_name: genData.last_name,
               middle_initial: genData.middle_initial,
               suffix: genData.suffix,
+              courtesy_title: genData.courtesy_title ?? trainees.find((t) => t.id === traineeId)?.courtesy_title,
               picture_2x2_url: genData.picture_2x2_url,
               certificate_number: genData.certificate_number,
               batch_number: genData.batch_number,
@@ -2111,7 +2198,12 @@ export default function ParticipantDirectoryDialog({
         continue
       }
 
-      ctx.font = getFontString(f, canvas.height)
+      ctx.font = getFontString(
+        f,
+        canvas.height,
+        typeof fo.fontFamily === "string" ? fo.fontFamily : undefined,
+        typeof fo.fontWeight === "string" ? fo.fontWeight : undefined
+      )
       ctx.textAlign = "left"
       const text = getDisplayText(f.value || "", current.trainee)
       const lines = text.split("\n")
@@ -2974,7 +3066,9 @@ export default function ParticipantDirectoryDialog({
                   </Avatar>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-bold truncate leading-tight">
-                      {certificatePreviews[activePreviewIndex]?.trainee.last_name}, {certificatePreviews[activePreviewIndex]?.trainee.first_name}
+                      {formatCertificateHolderDisplayName(
+                        certificatePreviews[activePreviewIndex]?.trainee || {}
+                      )}
                     </div>
                     <div className="text-[10px] text-muted-foreground truncate">
                       {selectedTemplateType.charAt(0).toUpperCase() + selectedTemplateType.slice(1)} Template
@@ -3023,6 +3117,52 @@ export default function ParticipantDirectoryDialog({
                     </p>
                   </div>
                 )}
+
+                <div className="space-y-1.5 border-t pt-3">
+                  <Label className="text-[10px] uppercase text-muted-foreground font-bold">
+                    Name Font Family
+                  </Label>
+                  <Select
+                    value={selectedNameFontFamily}
+                    onValueChange={(value) =>
+                      applyNameFontStyle({ fontFamily: value as CertificateFontFamily })
+                    }
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CERTIFICATE_FONT_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Label className="text-[10px] uppercase text-muted-foreground font-bold pt-1">
+                    Name Font Weight
+                  </Label>
+                  <Select
+                    value={selectedNameFontWeight}
+                    onValueChange={(value) =>
+                      applyNameFontStyle({ fontWeight: value as CertificateFontWeight })
+                    }
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CERTIFICATE_FONT_WEIGHT_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[9px] text-muted-foreground leading-snug">
+                    Applies to the certificate name field. Use Save Override to keep it for this trainee.
+                  </p>
+                </div>
 
                 <div className="space-y-2">
                   <Button
@@ -3184,6 +3324,68 @@ export default function ParticipantDirectoryDialog({
 
                     {activeFieldId && (
                       <div className="space-y-3 pt-1 animate-in slide-in-from-top-2 duration-300">
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] uppercase text-muted-foreground font-bold">Field Font Family</Label>
+                          <Select
+                            value={
+                              (fieldOverrides[activeFieldId]?.fontFamily as string) ||
+                              templateForViewer?.fields?.find((f) => f.id === activeFieldId)?.fontFamily ||
+                              "Helvetica"
+                            }
+                            onValueChange={(value) =>
+                              setFieldOverrides((prev) => ({
+                                ...prev,
+                                [activeFieldId]: {
+                                  ...(prev[activeFieldId] || {}),
+                                  fontFamily: value as CertificateFontFamily,
+                                },
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CERTIFICATE_FONT_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] uppercase text-muted-foreground font-bold">Field Font Weight</Label>
+                          <Select
+                            value={
+                              (fieldOverrides[activeFieldId]?.fontWeight as string) ||
+                              templateForViewer?.fields?.find((f) => f.id === activeFieldId)?.fontWeight ||
+                              "normal"
+                            }
+                            onValueChange={(value) =>
+                              setFieldOverrides((prev) => ({
+                                ...prev,
+                                [activeFieldId]: {
+                                  ...(prev[activeFieldId] || {}),
+                                  fontWeight: value as CertificateFontWeight,
+                                },
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="h-8 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CERTIFICATE_FONT_WEIGHT_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
                         <div className="space-y-1.5">
                           <div className="flex justify-between items-center text-[10px] font-medium">
                             <Label className="text-[10px] uppercase text-muted-foreground font-bold">Field X Position</Label>

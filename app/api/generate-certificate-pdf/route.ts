@@ -1,10 +1,14 @@
 // app/api/generate-certificate-pdf/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { PDFDocument, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import fontkit from "@pdf-lib/fontkit";
+import { readFile } from "fs/promises";
+import path from "path";
 import {
   resolveCertificatePageDimensions,
 } from "@/lib/certificate-page-sizes";
+import { formatCertificateHolderDisplayName } from "@/lib/certificate-name";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -94,10 +98,29 @@ interface TextField {
   boxHeight?: number;
   fontWeight: "normal" | "bold" | "extrabold";
   fontStyle: "normal" | "italic";
-  fontFamily: "Helvetica" | "Montserrat" | "Poppins";
+  fontFamily: "Helvetica" | "Times" | "Montserrat" | "Poppins";
   color: string;
   align: "left" | "center" | "right";
   lineHeight?: number;
+}
+
+const customFontCache = new Map<string, Uint8Array>();
+
+const CUSTOM_FONT_FILES: Record<string, string> = {
+  "Montserrat-normal": "Montserrat-Regular.ttf",
+  "Montserrat-bold": "Montserrat-Bold.ttf",
+  "Poppins-normal": "Poppins-Regular.ttf",
+  "Poppins-bold": "Poppins-Bold.ttf",
+};
+
+async function loadCustomFontBytes(key: string) {
+  if (customFontCache.has(key)) return customFontCache.get(key)!;
+  const fileName = CUSTOM_FONT_FILES[key]
+  if (!fileName) throw new Error(`Unknown custom font: ${key}`)
+  const filePath = path.join(process.cwd(), "public", "fonts", fileName)
+  const bytes = await readFile(filePath)
+  customFontCache.set(key, bytes)
+  return bytes
 }
 
 interface CertificateTemplate {
@@ -473,14 +496,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Prepare replacement values
-    const first = capitalize(trainee.first_name);
-    const middle = trainee.middle_initial ? capitalize(trainee.middle_initial) + ". " : "";
-    const last = capitalize(trainee.last_name);
-    const rawSuffix = trainee.suffix?.trim();
-    const suffix = rawSuffix ? " " + (rawSuffix.endsWith(".") ? rawSuffix : rawSuffix + ".") : "";
-    const fullName = `${first} ${middle}${last}${suffix}`;
-
-
+    const fullName = formatCertificateHolderDisplayName(trainee);
 
     // ✅ FIX: Use courseTitle if provided, otherwise fall back to courseName
     const finalCourseTitle = courseTitle || courseName;
@@ -508,10 +524,45 @@ export async function POST(req: NextRequest) {
 
 
     // Embed fonts
-    const helveticaFont = await pdfDoc.embedFont('Helvetica');
-    const helveticaBold = await pdfDoc.embedFont('Helvetica-Bold');
-    const helveticaOblique = await pdfDoc.embedFont('Helvetica-Oblique');
-    const helveticaBoldOblique = await pdfDoc.embedFont('Helvetica-BoldOblique');
+    pdfDoc.registerFontkit(fontkit);
+    const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const helveticaOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+    const helveticaBoldOblique = await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique);
+    const timesFont = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+    const timesBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+    const timesOblique = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+    const timesBoldOblique = await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic);
+
+    const montserratRegular = await pdfDoc.embedFont(await loadCustomFontBytes("Montserrat-normal"));
+    const montserratBold = await pdfDoc.embedFont(await loadCustomFontBytes("Montserrat-bold"));
+    const poppinsRegular = await pdfDoc.embedFont(await loadCustomFontBytes("Poppins-normal"));
+    const poppinsBold = await pdfDoc.embedFont(await loadCustomFontBytes("Poppins-bold"));
+
+    const resolveFont = (family: string | undefined, weight: string | undefined, style: string | undefined) => {
+      const isBold = weight === "bold" || weight === "extrabold";
+      const isItalic = style === "italic";
+
+      if (family === "Times") {
+        if (isBold && isItalic) return timesBoldOblique;
+        if (isBold) return timesBold;
+        if (isItalic) return timesOblique;
+        return timesFont;
+      }
+
+      if (family === "Montserrat") {
+        return isBold ? montserratBold : montserratRegular;
+      }
+
+      if (family === "Poppins") {
+        return isBold ? poppinsBold : poppinsRegular;
+      }
+
+      if (isBold && isItalic) return helveticaBoldOblique;
+      if (isBold) return helveticaBold;
+      if (isItalic) return helveticaOblique;
+      return helveticaFont;
+    };
 
     const drawFields = (pageToDraw: any, fields: TextField[], isBackSide: boolean = false) => {
       logPdf(`✍️ Drawing ${fields.length} text fields for ${isBackSide ? 'Back' : 'Front'}`);
@@ -542,16 +593,9 @@ export async function POST(req: NextRequest) {
 
         const colorHex = typeof fo.color === "string" ? fo.color : field.color;
         const color = hexToRgb(colorHex || "#000000");
-        
-        let selectedFont = helveticaFont;
-        
-        if (field.fontFamily === "Helvetica") {
-          if (field.fontWeight === "bold" || field.fontWeight === "extrabold") {
-            selectedFont = field.fontStyle === "italic" ? helveticaBoldOblique : helveticaBold;
-          } else {
-            selectedFont = field.fontStyle === "italic" ? helveticaOblique : helveticaFont;
-          }
-        }
+        const fontFamily = typeof fo.fontFamily === "string" ? fo.fontFamily : field.fontFamily;
+        const fontWeight = typeof fo.fontWeight === "string" ? fo.fontWeight : field.fontWeight;
+        const selectedFont = resolveFont(fontFamily, fontWeight, field.fontStyle);
 
         const lines = displayText.split('\n');
         
