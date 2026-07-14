@@ -1,277 +1,293 @@
-//components\image-crop-dialog.tsx
-import React, { useState, useRef, useCallback } from 'react';
-import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
-import 'react-image-crop/dist/ReactCrop.css';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Loader2, RotateCw, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
-import { Slider } from '@/components/ui/slider';
+"use client"
+
+import React, { useState, useRef, useCallback, useEffect } from "react"
+import ReactCrop, {
+  Crop,
+  PixelCrop,
+  centerCrop,
+  makeAspectCrop,
+} from "react-image-crop"
+import "react-image-crop/dist/ReactCrop.css"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Loader2, RotateCw, Maximize2, Upload, Crop as CropIcon } from "lucide-react"
+
+export type ImageCropType = "2x2" | "id" | "template" | "free"
 
 interface ImageCropDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  imageType: '2x2' | 'id';
-  onSave: (croppedImageUrl: string, originalImageUrl: string) => Promise<void>;
-  existingImageUrl?: string;
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  imageType?: ImageCropType
+  /** Uploads crop via /api/upload and returns URLs (default trainee photo flow) */
+  onSave?: (croppedImageUrl: string, originalImageUrl: string) => Promise<void>
+  /** Returns a local File + preview without uploading (template editor flow) */
+  onLocalSave?: (file: File, previewDataUrl: string) => Promise<void> | void
+  existingImageUrl?: string
+  title?: string
+  /** Force an aspect ratio (overrides imageType default). Pass null for free crop. */
+  aspect?: number | null
 }
 
-export function ImageCropDialog({ 
-  open, 
-  onOpenChange, 
-  imageType, 
-  onSave,
-  existingImageUrl 
-}: ImageCropDialogProps) {
-  const [uploading, setUploading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [imageSrc, setImageSrc] = useState<string>('');
-  const [crop, setCrop] = useState<Crop>({
-    unit: '%',
-    width: imageType === '2x2' ? 50 : 70,
-    height: imageType === '2x2' ? 50 : 70,
-    x: 25,
-    y: 25,
-  });
-  const [completedCrop, setCompletedCrop] = useState<PixelCrop | null>(null);
-  const [zoom, setZoom] = useState(1);
-  const [rotation, setRotation] = useState(0);
-  const imgRef = useRef<HTMLImageElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [originalFile, setOriginalFile] = useState<File | null>(null);
+function getDefaultAspect(imageType: ImageCropType, aspect?: number | null) {
+  if (aspect === null) return undefined
+  if (typeof aspect === "number") return aspect
+  if (imageType === "2x2") return 1
+  if (imageType === "id") return 3 / 4
+  return undefined
+}
 
-// In ImageCropDialog component, replace the useEffect:
-React.useEffect(() => {
-  if (open && existingImageUrl) {
+function createCenteredCrop(
+  mediaWidth: number,
+  mediaHeight: number,
+  aspect?: number
+): Crop {
+  if (aspect) {
+    return centerCrop(
+      makeAspectCrop(
+        {
+          unit: "%",
+          width: 80,
+        },
+        aspect,
+        mediaWidth,
+        mediaHeight
+      ),
+      mediaWidth,
+      mediaHeight
+    )
+  }
+
+  return centerCrop(
+    {
+      unit: "%",
+      width: 80,
+      height: 80,
+    },
+    mediaWidth,
+    mediaHeight
+  )
+}
+
+export function ImageCropDialog({
+  open,
+  onOpenChange,
+  imageType = "2x2",
+  onSave,
+  onLocalSave,
+  existingImageUrl,
+  title,
+  aspect: aspectProp,
+}: ImageCropDialogProps) {
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [imageSrc, setImageSrc] = useState("")
+  const [crop, setCrop] = useState<Crop>()
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop | null>(null)
+  const [rotation, setRotation] = useState(0)
+  const [lockAspect, setLockAspect] = useState(imageType === "2x2" || imageType === "id")
+  const imgRef = useRef<HTMLImageElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [originalFile, setOriginalFile] = useState<File | null>(null)
+
+  const aspect = lockAspect ? getDefaultAspect(imageType, aspectProp) : undefined
+  const isLocalMode = typeof onLocalSave === "function" && !onSave
+
+  useEffect(() => {
+    if (!open) {
+      if (imageSrc.startsWith("blob:")) URL.revokeObjectURL(imageSrc)
+      setImageSrc("")
+      setOriginalFile(null)
+      setCrop(undefined)
+      setCompletedCrop(null)
+      setRotation(0)
+      setLockAspect(imageType === "2x2" || imageType === "id")
+      return
+    }
+
+    if (!existingImageUrl) return
+
+    let cancelled = false
+    let objectUrl = ""
+
     const loadImage = async () => {
       try {
-        // Try proxy first
-        const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(existingImageUrl)}`;
-        const response = await fetch(proxyUrl);
-        
+        const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(existingImageUrl)}`
+        const response = await fetch(proxyUrl)
         if (!response.ok) {
-          console.warn('Proxy failed, trying direct URL');
-          // Fallback to direct URL (may have CORS issues but worth trying)
-          setImageSrc(existingImageUrl);
-          return;
+          if (!cancelled) setImageSrc(existingImageUrl)
+          return
         }
-        
-        const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        setImageSrc(objectUrl);
-      } catch (error) {
-        console.error('Failed to load image:', error);
-        // Last resort: try direct URL
-        setImageSrc(existingImageUrl);
+        const blob = await response.blob()
+        objectUrl = URL.createObjectURL(blob)
+        if (!cancelled) setImageSrc(objectUrl)
+      } catch {
+        if (!cancelled) setImageSrc(existingImageUrl)
       }
-    };
-    
-    loadImage();
-  } else if (!open) {
-    // Cleanup object URLs
-    if (imageSrc && imageSrc.startsWith('blob:')) {
-      URL.revokeObjectURL(imageSrc);
     }
-    setImageSrc('');
-    setOriginalFile(null);
-    setCrop({
-      unit: '%',
-      width: imageType === '2x2' ? 50 : 70,
-      height: imageType === '2x2' ? 50 : 70,
-      x: 25,
-      y: 25,
-    });
-    setCompletedCrop(null);
-    setZoom(1);
-    setRotation(0);
+
+    loadImage()
+
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, existingImageUrl, imageType])
+
+  const onImageLoad = (event: React.SyntheticEvent<HTMLImageElement>) => {
+    const { width, height } = event.currentTarget
+    const nextCrop = createCenteredCrop(width, height, aspect)
+    setCrop(nextCrop)
   }
-}, [open, existingImageUrl, imageType]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]
+    if (!file) return
 
-    setOriginalFile(file);
-    setUploading(true);
+    setOriginalFile(file)
+    setUploading(true)
+    setCompletedCrop(null)
 
-    const reader = new FileReader();
+    const reader = new FileReader()
     reader.onload = () => {
-      setImageSrc(reader.result as string);
-      setUploading(false);
-    };
-    reader.readAsDataURL(file);
-  };
+      setImageSrc(reader.result as string)
+      setUploading(false)
+      setRotation(0)
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ""
+  }
 
-  // ✅ FIXED: Proper rotation with canvas transformation
   const getCroppedImg = useCallback(
-    (image: HTMLImageElement, crop: PixelCrop): Promise<Blob> => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
+    (image: HTMLImageElement, pixelCrop: PixelCrop): Promise<Blob> => {
+      const canvas = document.createElement("canvas")
+      const ctx = canvas.getContext("2d")
+      if (!ctx) throw new Error("No 2d context")
 
-      if (!ctx) {
-        throw new Error('No 2d context');
-      }
+      const scaleX = image.naturalWidth / image.width
+      const scaleY = image.naturalHeight / image.height
+      const cropWidth = pixelCrop.width * scaleX
+      const cropHeight = pixelCrop.height * scaleY
+      const rotRad = (rotation * Math.PI) / 180
 
-      const scaleX = image.naturalWidth / image.width;
-      const scaleY = image.naturalHeight / image.height;
-
-      // ✅ Calculate rotated dimensions
-      const rotRad = (rotation * Math.PI) / 180;
-      const sin = Math.abs(Math.sin(rotRad));
-      const cos = Math.abs(Math.cos(rotRad));
-
-      const cropWidth = crop.width * scaleX;
-      const cropHeight = crop.height * scaleY;
-
-      // Set canvas size based on rotation
       if (rotation === 90 || rotation === 270) {
-        canvas.width = cropHeight;
-        canvas.height = cropWidth;
+        canvas.width = Math.round(cropHeight)
+        canvas.height = Math.round(cropWidth)
       } else {
-        canvas.width = cropWidth;
-        canvas.height = cropHeight;
+        canvas.width = Math.round(cropWidth)
+        canvas.height = Math.round(cropHeight)
       }
 
-      ctx.imageSmoothingQuality = 'high';
+      ctx.imageSmoothingQuality = "high"
+      ctx.translate(canvas.width / 2, canvas.height / 2)
+      ctx.rotate(rotRad)
 
-      // ✅ Apply rotation transformation
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate(rotRad);
-
-      // Draw image with proper rotation offset
       if (rotation === 90 || rotation === 270) {
         ctx.drawImage(
           image,
-          crop.x * scaleX,
-          crop.y * scaleY,
+          pixelCrop.x * scaleX,
+          pixelCrop.y * scaleY,
           cropWidth,
           cropHeight,
           -cropHeight / 2,
           -cropWidth / 2,
           cropHeight,
           cropWidth
-        );
+        )
       } else {
         ctx.drawImage(
           image,
-          crop.x * scaleX,
-          crop.y * scaleY,
+          pixelCrop.x * scaleX,
+          pixelCrop.y * scaleY,
           cropWidth,
           cropHeight,
           -cropWidth / 2,
           -cropHeight / 2,
           cropWidth,
           cropHeight
-        );
+        )
       }
 
       return new Promise((resolve, reject) => {
         canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              resolve(blob);
-            } else {
-              reject(new Error('Canvas is empty'));
-            }
-          },
-          'image/jpeg',
+          (blob) => (blob ? resolve(blob) : reject(new Error("Canvas is empty"))),
+          "image/jpeg",
           0.95
-        );
-      });
+        )
+      })
     },
     [rotation]
-  );
+  )
 
   const uploadImage = async (blob: Blob, filename: string): Promise<string> => {
-    const formData = new FormData();
-    formData.append('image', blob, filename);
-
-    const response = await fetch('/api/upload', {
-      method: 'POST',
+    const formData = new FormData()
+    formData.append("image", blob, filename)
+    const response = await fetch("/api/upload", {
+      method: "POST",
       body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error('Upload failed');
-    }
-
-    const data = await response.json();
-    return data.url;
-  };
+    })
+    if (!response.ok) throw new Error("Upload failed")
+    const data = await response.json()
+    return data.url
+  }
 
   const handleSave = async () => {
     if (!completedCrop || !imgRef.current) {
-      alert('Please crop the image first');
-      return;
+      alert("Drag and resize the crop box to select part of the image first")
+      return
     }
 
-    setSaving(true);
+    setSaving(true)
     try {
-      let originalUrl = existingImageUrl || '';
+      const croppedBlob = await getCroppedImg(imgRef.current, completedCrop)
+      const fileName = `cropped_${imageType}_${Date.now()}.jpg`
 
-      // Only upload original if we have a new file
-      if (originalFile) {
-        originalUrl = await uploadImage(
-          originalFile,
-          `original_${imageType}_${Date.now()}.jpg`
-        );
+      if (isLocalMode && onLocalSave) {
+        const file = new File([croppedBlob], fileName, { type: "image/jpeg" })
+        const previewDataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = reject
+          reader.readAsDataURL(croppedBlob)
+        })
+        await onLocalSave(file, previewDataUrl)
+      } else if (onSave) {
+        let originalUrl = existingImageUrl || ""
+        if (originalFile) {
+          originalUrl = await uploadImage(originalFile, `original_${imageType}_${Date.now()}.jpg`)
+        }
+        const croppedUrl = await uploadImage(croppedBlob, fileName)
+        await onSave(croppedUrl, originalUrl)
       }
 
-      // Get and upload cropped image
-      const croppedBlob = await getCroppedImg(imgRef.current, completedCrop);
-      const croppedUrl = await uploadImage(
-        croppedBlob,
-        `cropped_${imageType}_${Date.now()}.jpg`
-      );
-
-      // Call parent save handler with both URLs
-      await onSave(croppedUrl, originalUrl);
-
-      // Reset state
-      setImageSrc('');
-      setCrop({
-        unit: '%',
-        width: imageType === '2x2' ? 50 : 70,
-        height: imageType === '2x2' ? 50 : 70,
-        x: 25,
-        y: 25,
-      });
-      setCompletedCrop(null);
-      setZoom(1);
-      setRotation(0);
-      setOriginalFile(null);
-
-      onOpenChange(false);
+      onOpenChange(false)
     } catch (error) {
-      console.error('Error saving image:', error);
-      alert('Failed to save image. Please try again.');
+      console.error("Error saving image:", error)
+      alert("Failed to save image. Please try again.")
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
-  };
+  }
 
-  const handleRotate = () => {
-    setRotation((prev) => (prev + 90) % 360);
-  };
+  const handleResetCrop = () => {
+    if (!imgRef.current) return
+    const next = createCenteredCrop(imgRef.current.width, imgRef.current.height, aspect)
+    setCrop(next)
+  }
 
-  const handleAspectRatio = () => {
-    if (imageType === '2x2') {
-      setCrop({
-        unit: '%',
-        width: 50,
-        height: 50,
-        x: 25,
-        y: 25,
-      });
-    } else {
-      setCrop({
-        unit: '%',
-        width: 70,
-        height: 50,
-        x: 15,
-        y: 25,
-      });
-    }
-  };
+  const dialogTitle =
+    title ||
+    `${existingImageUrl ? "Crop" : "Upload & Crop"} ${
+      imageType === "2x2"
+        ? "2x2 Photo"
+        : imageType === "id"
+          ? "ID Picture"
+          : imageType === "template"
+            ? "Template Image"
+            : "Image"
+    }`
 
   return (
     <>
@@ -284,151 +300,141 @@ React.useEffect(() => {
       />
 
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="lg:w-[50vw] max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="lg:w-[56vw] w-[95vw] max-h-[92vh] overflow-hidden flex flex-col gap-4">
           <DialogHeader>
-            <DialogTitle>
-              {existingImageUrl ? 'Crop' : 'Upload & Crop'} {imageType === '2x2' ? '2x2 Photo' : 'ID Picture'}
+            <DialogTitle className="flex items-center gap-2">
+              <CropIcon className="h-5 w-5" />
+              {dialogTitle}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="flex-1 overflow-auto">
+          <div className="flex-1 min-h-0 overflow-auto space-y-4">
             {!imageSrc ? (
-              <div className="flex flex-col items-center justify-center h-96 border-2 border-dashed rounded-lg">
-                <Button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  size="lg"
-                >
+              <div className="flex flex-col items-center justify-center h-80 border-2 border-dashed rounded-xl bg-muted/30">
+                <Button onClick={() => fileInputRef.current?.click()} disabled={uploading} size="lg">
                   {uploading ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                       Loading...
                     </>
                   ) : (
-                    'Select Image'
+                    <>
+                      <Upload className="mr-2 h-5 w-5" />
+                      Select Image
+                    </>
                   )}
                 </Button>
-                <p className="text-sm text-muted-foreground mt-2">
-                  {imageType === '2x2'
-                    ? 'Upload a passport-style photo'
-                    : 'Upload a valid ID'}
+                <p className="text-sm text-muted-foreground mt-3 text-center px-6">
+                  Choose a photo, then drag the selection box to crop the part you want.
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {/* Crop Controls */}
-                <div className="flex flex-wrap gap-2 p-3 bg-card rounded-lg">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRotate}
-                  >
+              <>
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
+                  <Button variant="outline" size="sm" onClick={() => setRotation((prev) => (prev + 90) % 360)}>
                     <RotateCw className="h-4 w-4 mr-2" />
-                    Rotate 90°
+                    Rotate
                   </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleAspectRatio}
-                  >
+                  <Button variant="outline" size="sm" onClick={handleResetCrop}>
                     <Maximize2 className="h-4 w-4 mr-2" />
-                    Reset Crop
+                    Reset Selection
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Replace Image
                   </Button>
 
-                  <div className="flex items-center gap-2 ml-auto">
-                    <ZoomOut className="h-4 w-4" />
-                    <Slider
-                      value={[zoom]}
-                      onValueChange={(val) => setZoom(val[0])}
-                      min={0.5}
-                      max={3}
-                      step={0.1}
-                      className="w-32"
-                    />
-                    <ZoomIn className="h-4 w-4" />
-                    <span className="text-sm font-medium w-12 text-center">
-                      {Math.round(zoom * 100)}%
-                    </span>
-                  </div>
+                  {imageType !== "2x2" && (
+                    <div className="flex items-center gap-2 ml-auto">
+                      <Switch
+                        id="lock-aspect"
+                        checked={lockAspect}
+                        onCheckedChange={(checked) => {
+                          setLockAspect(checked)
+                          if (imgRef.current) {
+                            const nextAspect = checked
+                              ? getDefaultAspect(imageType, aspectProp)
+                              : undefined
+                            setCrop(
+                              createCenteredCrop(
+                                imgRef.current.width,
+                                imgRef.current.height,
+                                nextAspect
+                              )
+                            )
+                          }
+                        }}
+                      />
+                      <Label htmlFor="lock-aspect" className="text-xs font-medium cursor-pointer">
+                        Lock aspect
+                      </Label>
+                    </div>
+                  )}
 
                   {rotation > 0 && (
-                    <div className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
-                      Rotated: {rotation}°
-                    </div>
+                    <span className="text-xs font-medium px-2 py-1 rounded bg-primary/10 text-primary">
+                      Rotated {rotation}°
+                    </span>
                   )}
                 </div>
 
-                {/* Image Crop Area */}
-                <div className="flex justify-center border rounded-lg p-4 bg-card">
+                <div className="flex justify-center rounded-xl border bg-[#1a1a1a] p-4 overflow-auto">
                   <ReactCrop
                     crop={crop}
                     onChange={(c) => setCrop(c)}
                     onComplete={(c) => setCompletedCrop(c)}
-                    aspect={imageType === '2x2' ? 1 : undefined}
+                    aspect={aspect}
+                    circularCrop={imageType === "2x2"}
+                    keepSelection
+                    ruleOfThirds
+                    className="max-w-full"
                   >
                     <img
                       ref={imgRef}
                       src={imageSrc}
                       alt="Crop preview"
+                      onLoad={onImageLoad}
                       style={{
-                        transform: `scale(${zoom}) rotate(${rotation}deg)`,
-                        maxHeight: '500px',
-                        maxWidth: '100%',
+                        transform: rotation ? `rotate(${rotation}deg)` : undefined,
+                        maxHeight: "520px",
+                        maxWidth: "100%",
+                        display: "block",
                       }}
                     />
                   </ReactCrop>
                 </div>
 
-                {/* Helper Text */}
-                <div className="p-3 bg-card border border-blue-200 rounded-lg">
-                  <p className="text-sm text-blue-800">
-                    <strong>Tips:</strong>
-                  </p>
-                  <ul className="text-sm text-blue-600 list-disc list-inside mt-1">
-                    <li>Drag the crop area to adjust position</li>
-                    <li>Resize corners to adjust crop size</li>
-                    <li>Use zoom slider for precise cropping</li>
-                    <li>Click "Rotate 90°" to rotate the image</li>
-                    {!existingImageUrl && <li>Original image will be saved as backup</li>}
+                <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-900 p-3 text-sm text-blue-900 dark:text-blue-200">
+                  <p className="font-semibold mb-1">How to crop</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-blue-800 dark:text-blue-300">
+                    <li>Drag inside the box to move the selected area</li>
+                    <li>Drag the corner / edge handles to resize</li>
+                    <li>Only the selected area will be saved</li>
                   </ul>
                 </div>
-              </div>
+              </>
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+              Cancel
+            </Button>
             {imageSrc && (
-              <>
-                {!existingImageUrl && (
-                  <Button
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={saving}
-                  >
-                    Choose Different Image
-                  </Button>
+              <Button onClick={handleSave} disabled={saving || !completedCrop}>
+                {saving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save Cropped Image"
                 )}
-                <Button onClick={handleSave} disabled={saving || !completedCrop}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    'Save Cropped Image'
-                  )}
-                </Button>
-              </>
-            )}
-            {!imageSrc && (
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
               </Button>
             )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
-  );
+  )
 }

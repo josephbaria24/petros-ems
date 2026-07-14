@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   Upload, X, Plus, Trash2, Save, Eye, Loader2, Award, CalendarCheck, Trophy,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize, Minimize,
-  ArrowLeftRight, ArrowUpDown, Copy, FlipHorizontal
+  ArrowLeftRight, ArrowUpDown, Copy, FlipHorizontal, CircleHelp
 } from "lucide-react"
 import {
   Tooltip,
@@ -23,6 +23,11 @@ import { Slider } from "@/components/ui/slider"
 import { tmsDb, supabase } from "@/lib/supabase-client"
 import React from "react"
 import { toast } from "sonner"
+import { ImageCropDialog } from "@/components/image-crop-dialog"
+import {
+  PlaceholderChipEditor,
+  formatPlaceholderPreview,
+} from "@/components/placeholder-chip-editor"
 
 function toPercentX(px: number, isID: boolean) {
   return isID ? px / 1350 : px / 842
@@ -276,6 +281,9 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
   const [canvasZoom, setCanvasZoom] = useState(1)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [showTemplateCropDialog, setShowTemplateCropDialog] = useState(false)
+  const [pendingCropTarget, setPendingCropTarget] = useState<"front" | "back">("front")
+  const [existingTemplateCropUrl, setExistingTemplateCropUrl] = useState<string | undefined>(undefined)
   
   const [textFields, setTextFields] = useState<Record<TemplateType, TextField[]>>({
     participation: DEFAULT_FIELDS.participation,
@@ -523,23 +531,38 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
     }
   }
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        const dataUrl = event.target?.result as string
-        // Route to back image if editing back side of ID card
-        if (currentTemplateType === "excellence" && idCardSide === "back") {
-          setBackTemplateImage(dataUrl)
-          setBackTemplateFile(file)
-        } else {
-          setTemplateImage(prev => ({ ...prev, [currentTemplateType]: dataUrl }))
-          setTemplateFile(prev => ({ ...prev, [currentTemplateType]: file }))
-        }
-      }
-      reader.readAsDataURL(file)
+  const applyCroppedTemplateImage = (file: File, previewDataUrl: string) => {
+    if (pendingCropTarget === "back") {
+      setBackTemplateImage(previewDataUrl)
+      setBackTemplateFile(file)
+    } else {
+      setTemplateImage((prev) => ({ ...prev, [currentTemplateType]: previewDataUrl }))
+      setTemplateFile((prev) => ({ ...prev, [currentTemplateType]: file }))
     }
+  }
+
+  const openTemplateCrop = (target: "front" | "back", useExisting = false) => {
+    setPendingCropTarget(target)
+    if (useExisting) {
+      const existing =
+        target === "back" ? backTemplateImage : templateImage[currentTemplateType]
+      setExistingTemplateCropUrl(existing || undefined)
+    } else {
+      setExistingTemplateCropUrl(undefined)
+    }
+    setShowTemplateCropDialog(true)
+  }
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Replaced by ImageCropDialog; keep for fallback compatibility.
+    const file = e.target.files?.[0]
+    if (!file) return
+    const target =
+      currentTemplateType === "excellence" && idCardSide === "back" ? "back" : "front"
+    setPendingCropTarget(target)
+    setExistingTemplateCropUrl(undefined)
+    setShowTemplateCropDialog(true)
+    e.target.value = ""
   }
 
   // Computed: get the active image/fields based on front/back side
@@ -1371,7 +1394,12 @@ toast.success("Template saved successfully!")
           variant="outline" 
           size="sm" 
           className="h-8"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() =>
+            openTemplateCrop(
+              currentTemplateType === "excellence" && idCardSide === "back" ? "back" : "front",
+              false
+            )
+          }
           disabled={uploading}
         >
           {uploading ? (
@@ -1379,10 +1407,25 @@ toast.success("Template saved successfully!")
           ) : (
             <>
               <Upload className="h-4 w-4 mr-2" />
-              Upload Image
+              Upload & Crop
             </>
           )}
         </Button>
+        {activeImage && (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="h-8"
+            onClick={() =>
+              openTemplateCrop(
+                currentTemplateType === "excellence" && idCardSide === "back" ? "back" : "front",
+                true
+              )
+            }
+          >
+            Recrop Image
+          </Button>
+        )}
       </div>
     </div>
     
@@ -1627,7 +1670,7 @@ toast.success("Template saved successfully!")
                 <div className="flex-1">
                   <p className="font-medium text-sm">{field.label}</p>
                   <p className="text-xs text-muted-foreground truncate">
-                    {field.value}
+                    {formatPlaceholderPreview(field.value, PLACEHOLDER_OPTIONS)}
                   </p>
                 </div>
                 <Button
@@ -1662,27 +1705,14 @@ toast.success("Template saved successfully!")
         </p>
       </div>
 
-  {/* ✅ UPDATED: Multi-line textarea with better instructions */}
       <div>
         <Label>Text / Placeholder</Label>
         <div className="space-y-2">
-          <textarea
+          <PlaceholderChipEditor
             value={currentField.value}
-            onChange={(e) => updateField({ value: e.target.value })}
-            placeholder="Enter text or add placeholders below&#10;Press Enter for new lines&#10;&#10;Example for multi-line:&#10;Name: {{trainee_name}}&#10;Course: {{course_title}}"
-            className="w-full min-h-[120px] px-3 py-2 text-sm rounded-md border border-input bg-background resize-y font-mono"
-            rows={5}
+            options={PLACEHOLDER_OPTIONS}
+            onChange={(nextValue) => updateField({ value: nextValue })}
           />
-          
-          {/* ✅ NEW: Visual hint for alignment behavior */}
-          <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded border">
-            <p className="font-medium mb-1">💡 Alignment Guide:</p>
-            <ul className="space-y-1 ml-3">
-              <li><strong>Left:</strong> Text starts at position, extends right (best for labels + names)</li>
-              <li><strong>Center:</strong> Text centers on position</li>
-              <li><strong>Right:</strong> Text ends at position, extends left</li>
-            </ul>
-          </div>
 
           <div className="relative">
             <Button
@@ -1700,13 +1730,16 @@ toast.success("Template saved successfully!")
                 {PLACEHOLDER_OPTIONS.map((option) => (
                   <button
                     key={option.value}
-                    className="w-full px-3 py-2 text-left hover:bg-secondary transition-colors border-b last:border-b-0"
+                    className="w-full px-3 py-2.5 text-left hover:bg-secondary transition-colors border-b last:border-b-0"
                     onClick={() => insertPlaceholder(option.value)}
                     type="button"
                   >
-                    <div className="font-medium text-sm">{option.label}</div>
-                    <div className="text-xs text-muted-foreground">{option.description}</div>
-                    <div className="text-xs text-blue-500 mt-1 font-mono">{option.value}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                        {option.label}
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">{option.description}</div>
                   </button>
                 ))}
               </div>
@@ -1714,8 +1747,9 @@ toast.success("Template saved successfully!")
           </div>
         </div>
         <p className="text-xs text-muted-foreground mt-1">
-          Press <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Enter</kbd> for new lines. 
-          Use placeholders like <code className="text-xs bg-muted px-1 py-0.5 rounded">{'{{trainee_name}}'}</code> for dynamic data.
+          Placeholders appear as buttons. Press{" "}
+          <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Enter</kbd> for new lines,
+          or type normal text around them.
         </p>
       </div>
 
@@ -1740,19 +1774,35 @@ toast.success("Template saved successfully!")
       <div className="grid grid-cols-2 gap-4">
         <div>
           <Label>X Position</Label>
-          <Input
-            type="number"
-            value={Math.round(currentField.x)}
-            onChange={(e) => updateField({ x: Number(e.target.value) })}
-          />
+          <div className="flex items-center gap-1">
+            <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => updateField({ x: (currentField.x || 0) - 2 })}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Input
+              type="number"
+              value={Math.round(currentField.x)}
+              onChange={(e) => updateField({ x: Number(e.target.value) })}
+            />
+            <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => updateField({ x: (currentField.x || 0) + 2 })}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
         <div>
           <Label>Y Position</Label>
-          <Input
-            type="number"
-            value={Math.round(currentField.y)}
-            onChange={(e) => updateField({ y: Number(e.target.value) })}
-          />
+          <div className="flex items-center gap-1">
+            <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => updateField({ y: (currentField.y || 0) - 2 })}>
+              <ChevronUp className="h-4 w-4" />
+            </Button>
+            <Input
+              type="number"
+              value={Math.round(currentField.y)}
+              onChange={(e) => updateField({ y: Number(e.target.value) })}
+            />
+            <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => updateField({ y: (currentField.y || 0) + 2 })}>
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -1767,80 +1817,102 @@ toast.success("Template saved successfully!")
         />
       </div>
 
-      <div>
-        <Label>Font Family</Label>
-        <Select
-          value={currentField.fontFamily}
-          onValueChange={(value: "Helvetica" | "Times" | "Montserrat" | "Poppins") =>
-            updateField({ fontFamily: value })
-          }
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Helvetica">Helvetica</SelectItem>
-            <SelectItem value="Times">Times</SelectItem>
-            <SelectItem value="Montserrat">Montserrat</SelectItem>
-            <SelectItem value="Poppins">Poppins</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label>Font Family</Label>
+          <Select
+            value={currentField.fontFamily}
+            onValueChange={(value: "Helvetica" | "Times" | "Montserrat" | "Poppins") =>
+              updateField({ fontFamily: value })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Helvetica">Helvetica</SelectItem>
+              <SelectItem value="Times">Times</SelectItem>
+              <SelectItem value="Montserrat">Montserrat</SelectItem>
+              <SelectItem value="Poppins">Poppins</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label>Font Weight</Label>
+          <Select
+            value={currentField.fontWeight}
+            onValueChange={(value: "normal" | "bold" | "extrabold") =>
+              updateField({ fontWeight: value })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="normal">Normal</SelectItem>
+              <SelectItem value="bold">Bold</SelectItem>
+              <SelectItem value="extrabold">Extra Bold</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      <div>
-        <Label>Font Weight</Label>
-        <Select
-          value={currentField.fontWeight}
-          onValueChange={(value: "normal" | "bold" | "extrabold") =>
-            updateField({ fontWeight: value })
-          }
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="normal">Normal</SelectItem>
-            <SelectItem value="bold">Bold</SelectItem>
-            <SelectItem value="extrabold">Extra Bold</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <Label>Font Style</Label>
-        <Select
-          value={currentField.fontStyle}
-          onValueChange={(value: "normal" | "italic") =>
-            updateField({ fontStyle: value })
-          }
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="normal">Normal</SelectItem>
-            <SelectItem value="italic">Italic</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <Label>Text Align</Label>
-        <Select
-          value={currentField.align}
-          onValueChange={(value: "left" | "center" | "right") =>
-            updateField({ align: value })
-          }
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="left">Left</SelectItem>
-            <SelectItem value="center">Center</SelectItem>
-            <SelectItem value="right">Right</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <Label>Font Style</Label>
+          <Select
+            value={currentField.fontStyle}
+            onValueChange={(value: "normal" | "italic") =>
+              updateField({ fontStyle: value })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="normal">Normal</SelectItem>
+              <SelectItem value="italic">Italic</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <div className="mb-2 flex items-center gap-1.5">
+            <Label className="mb-0">Align</Label>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                    aria-label="Alignment help"
+                  >
+                    <CircleHelp className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="left" className="max-w-[240px] space-y-1.5 p-3 text-xs">
+                  <p><strong>Left:</strong> Text starts at position, extends right</p>
+                  <p><strong>Center:</strong> Text centers on position</p>
+                  <p><strong>Right:</strong> Text ends at position, extends left</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <Select
+            value={currentField.align}
+            onValueChange={(value: "left" | "center" | "right") =>
+              updateField({ align: value })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="left">Left</SelectItem>
+              <SelectItem value="center">Center</SelectItem>
+              <SelectItem value="right">Right</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div>
@@ -1935,6 +2007,23 @@ toast.success("Template saved successfully!")
       </DialogFooter>
     </DialogContent>
   </Dialog>
+
+  <ImageCropDialog
+    open={showTemplateCropDialog}
+    onOpenChange={setShowTemplateCropDialog}
+    imageType="template"
+    aspect={null}
+    existingImageUrl={existingTemplateCropUrl}
+    title={
+      pendingCropTarget === "back"
+        ? "Crop Back Template Image"
+        : "Crop Certificate Template Image"
+    }
+    onLocalSave={(file, previewDataUrl) => {
+      applyCroppedTemplateImage(file, previewDataUrl)
+      toast.success("Template image cropped. Remember to save the template.")
+    }}
+  />
 </Dialog>
 )
 }

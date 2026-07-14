@@ -17,8 +17,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { tmsDb } from "@/lib/supabase-client"
-import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, Eye, ListOrdered } from "lucide-react"
+import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Eye, ListOrdered, Crop } from "lucide-react"
 import { Slider } from "@/components/ui/slider"
+import { ImageCropDialog } from "@/components/image-crop-dialog"
 import { exportTraineeExcel } from "@/lib/exports/export-excel"
 import { exportCertificatesNew } from "@/lib/exports/export-certificate"
 import { batchAssignCertificateSerials } from "@/lib/certificate-serial"
@@ -284,6 +285,8 @@ export default function ParticipantDirectoryDialog({
   const [scheduleStatus, setScheduleStatus] = useState<string>("planned")
   const [selectedTrainee, setSelectedTrainee] = useState<Trainee | null>(null)
   const [isTraineeDialogOpen, setIsTraineeDialogOpen] = useState(false)
+  const [showPhotoCropDialog, setShowPhotoCropDialog] = useState(false)
+  const [cropExistingPhoto, setCropExistingPhoto] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [selectedTemplateType, setSelectedTemplateType] = useState<TemplateType>("completion")
   const { toast } = useToast()
@@ -1753,73 +1756,86 @@ export default function ParticipantDirectoryDialog({
     }
   }
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !selectedTrainee) return
+  const handleSaveCroppedPhoto = async (croppedImageUrl: string) => {
+    if (!selectedTrainee) return
 
     setIsUploading(true)
-
     try {
-      const formData = new FormData()
-      formData.append("image", file)
+      const { error } = await tmsDb
+        .from("trainings")
+        .update({ picture_2x2_url: croppedImageUrl })
+        .eq("id", selectedTrainee.id)
 
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      })
-
-      const result = await res.json()
-
-      if (result.url) {
-        const { data, error } = await tmsDb
-          .from("trainings")
-          .update({ picture_2x2_url: result.url })
-          .eq("id", selectedTrainee.id)
-          .select()
-          .single()
-
-        if (error) {
-          console.error("❌ Failed to update picture in database:", error)
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Failed to update picture in database: " + error.message,
-          })
-        } else if (data) {
-          console.log("✅ Picture updated successfully:", data)
-
-          setSelectedTrainee((prev: any) => ({
-            ...prev,
-            picture_2x2_url: result.url,
-          }))
-
-          setTrainees((prev) =>
-            prev.map((t) => (t.id === selectedTrainee.id ? { ...t, picture_2x2_url: result.url } : t))
-          )
-
-          toast({
-            title: "Success",
-            description: "Picture updated successfully!",
-          })
-        }
-      } else {
-        console.error("Upload failed:", result.error)
+      if (error) {
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Upload failed: " + result.error,
+          description: "Failed to update picture: " + error.message,
         })
+        return
       }
+
+      setSelectedTrainee((prev: any) => ({
+        ...prev,
+        picture_2x2_url: croppedImageUrl,
+      }))
+      setTrainees((prev) =>
+        prev.map((t) => (t.id === selectedTrainee.id ? { ...t, picture_2x2_url: croppedImageUrl } : t))
+      )
+      setCertificatePreviews((prev) =>
+        prev.map((item) =>
+          item.trainee.id === selectedTrainee.id
+            ? { ...item, trainee: { ...item.trainee, picture_2x2_url: croppedImageUrl }, url: null }
+            : item
+        )
+      )
+      setGenerationDataMap((prev) => {
+        const next = new Map(prev)
+        const existing = next.get(selectedTrainee.id)
+        if (existing) {
+          next.set(selectedTrainee.id, { ...existing, picture_2x2_url: croppedImageUrl })
+        }
+        return next
+      })
+
+      toast({
+        title: "Success",
+        description: "Picture updated successfully!",
+      })
     } catch (error: any) {
-      console.error("Upload error:", error)
       toast({
         variant: "destructive",
         title: "Error",
-        description: "An error occurred during upload: " + error.message,
+        description: error?.message || "Failed to save cropped picture",
       })
     } finally {
       setIsUploading(false)
     }
+  }
+
+  const nudgeLayout = (axis: "offsetX" | "offsetY", delta: number) => {
+    setLayoutOffset((prev) => ({
+      ...prev,
+      [axis]: Math.max(-0.08, Math.min(0.08, Number((prev[axis] + delta).toFixed(4)))),
+    }))
+  }
+
+  const nudgeField = (axis: "x" | "y", delta: number) => {
+    if (!activeFieldId) return
+    setFieldOverrides((prev) => {
+      const current = prev[activeFieldId] || {}
+      const base =
+        typeof current[axis] === "number"
+          ? current[axis]
+          : templateForViewer?.fields?.find((f) => f.id === activeFieldId)?.[axis] || 0
+      return {
+        ...prev,
+        [activeFieldId]: {
+          ...current,
+          [axis]: Math.max(0, Math.min(1, Number((base + delta).toFixed(4)))),
+        },
+      }
+    })
   }
 
   const handleDownloadExcel = async () => {
@@ -2785,15 +2801,43 @@ export default function ParticipantDirectoryDialog({
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Current Picture</Label>
-                  <Avatar className="h-24 w-24">
-                    <AvatarImage src={selectedTrainee.picture_2x2_url} alt="Current Picture" />
-                    <AvatarFallback>{selectedTrainee.first_name?.[0]}{selectedTrainee.last_name?.[0]}</AvatarFallback>
-                  </Avatar>
-                </div>
-                <div className="space-y-2">
-                  <Label>Upload New Picture</Label>
-                  <Input type="file" accept="image/*" onChange={handleImageUpload} disabled={isUploading} />
-                  {isUploading && <p className="text-sm text-muted-foreground">Uploading and saving...</p>}
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-24 w-24">
+                      <AvatarImage src={selectedTrainee.picture_2x2_url} alt="Current Picture" />
+                      <AvatarFallback>{selectedTrainee.first_name?.[0]}{selectedTrainee.last_name?.[0]}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isUploading}
+                        onClick={() => {
+                          setCropExistingPhoto(false)
+                          setShowPhotoCropDialog(true)
+                        }}
+                      >
+                        <Crop className="h-4 w-4 mr-2" />
+                        Upload & Crop
+                      </Button>
+                      {selectedTrainee.picture_2x2_url && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={isUploading}
+                          onClick={() => {
+                            setCropExistingPhoto(true)
+                            setShowPhotoCropDialog(true)
+                          }}
+                        >
+                          <Crop className="h-4 w-4 mr-2" />
+                          Recrop Current
+                        </Button>
+                      )}
+                      {isUploading && <p className="text-sm text-muted-foreground">Saving...</p>}
+                    </div>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Last Name</Label>
@@ -3234,15 +3278,30 @@ export default function ParticipantDirectoryDialog({
                       className="justify-start gap-1 text-[11px] h-8"
                       onClick={() => {
                         const current = certificatePreviews[activePreviewIndex]
-                        if (!current?.url) return
-                        window.open(current.url, "_blank")
+                        if (!current) return
+                        setSelectedTrainee(current.trainee as any)
+                        setCropExistingPhoto(!!current.trainee.picture_2x2_url)
+                        setShowPhotoCropDialog(true)
                       }}
-                      disabled={!certificatePreviews[activePreviewIndex]?.url}
                     >
-                      <Download className="h-3 w-3" />
-                      PDF View
+                      <Crop className="h-3 w-3" />
+                      Crop Photo
                     </Button>
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start gap-1 text-[11px] h-8"
+                    onClick={() => {
+                      const current = certificatePreviews[activePreviewIndex]
+                      if (!current?.url) return
+                      window.open(current.url, "_blank")
+                    }}
+                    disabled={!certificatePreviews[activePreviewIndex]?.url}
+                  >
+                    <Download className="h-3 w-3" />
+                    PDF View
+                  </Button>
                 </div>
               </div>
 
@@ -3266,10 +3325,35 @@ export default function ParticipantDirectoryDialog({
                   <div className="space-y-3 py-1">
                     <div className="space-y-1.5">
                       <div className="flex justify-between items-center text-[10px] font-medium">
-                        <Label className="text-[10px] uppercase text-muted-foreground font-bold">Global X Offset</Label>
-                        <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-primary">
-                          {(layoutOffset.offsetX * 100).toFixed(1)}%
+                        <Label className="text-[10px] uppercase text-muted-foreground font-bold">Move All (X / Y)</Label>
+                        <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-primary text-[10px]">
+                          {(layoutOffset.offsetX * 100).toFixed(1)}% / {(layoutOffset.offsetY * 100).toFixed(1)}%
                         </span>
+                      </div>
+                      <div className="flex items-center justify-center gap-2 py-1">
+                        <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => nudgeLayout("offsetX", -0.005)}>
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <div className="flex flex-col gap-1">
+                          <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => nudgeLayout("offsetY", -0.005)}>
+                            <ChevronUp className="h-4 w-4" />
+                          </Button>
+                          <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => nudgeLayout("offsetY", 0.005)}>
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => nudgeLayout("offsetX", 0.005)}>
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-[10px]"
+                          onClick={() => setLayoutOffset({ offsetX: 0, offsetY: 0 })}
+                        >
+                          Reset
+                        </Button>
                       </div>
                       <Slider
                         value={[layoutOffset.offsetX]}
@@ -3277,24 +3361,15 @@ export default function ParticipantDirectoryDialog({
                         min={-0.05}
                         max={0.05}
                         step={0.002}
-                        className="py-2"
+                        className="py-1"
                       />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-center text-[10px] font-medium">
-                        <Label className="text-[10px] uppercase text-muted-foreground font-bold">Global Y Offset</Label>
-                        <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-primary">
-                          {(layoutOffset.offsetY * 100).toFixed(1)}%
-                        </span>
-                      </div>
                       <Slider
                         value={[layoutOffset.offsetY]}
                         onValueChange={([v]) => setLayoutOffset(prev => ({ ...prev, offsetY: v }))}
                         min={-0.05}
                         max={0.05}
                         step={0.002}
-                        className="py-2"
+                        className="py-1"
                       />
                     </div>
                   </div>
@@ -3388,13 +3463,39 @@ export default function ParticipantDirectoryDialog({
 
                         <div className="space-y-1.5">
                           <div className="flex justify-between items-center text-[10px] font-medium">
-                            <Label className="text-[10px] uppercase text-muted-foreground font-bold">Field X Position</Label>
-                            <span className="font-mono bg-primary/10 px-1.5 py-0.5 rounded text-primary">
-                              {((fieldOverrides[activeFieldId]?.x ?? 0) * 100).toFixed(1)}%
+                            <Label className="text-[10px] uppercase text-muted-foreground font-bold">Field Position</Label>
+                            <span className="font-mono bg-primary/10 px-1.5 py-0.5 rounded text-primary text-[10px]">
+                              {((fieldOverrides[activeFieldId]?.x ??
+                                templateForViewer?.fields?.find((f) => f.id === activeFieldId)?.x ??
+                                0) * 100).toFixed(1)}%
+                              {" / "}
+                              {((fieldOverrides[activeFieldId]?.y ??
+                                templateForViewer?.fields?.find((f) => f.id === activeFieldId)?.y ??
+                                0) * 100).toFixed(1)}%
                             </span>
                           </div>
+                          <div className="flex items-center justify-center gap-2 py-1">
+                            <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => nudgeField("x", -0.005)}>
+                              <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <div className="flex flex-col gap-1">
+                              <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => nudgeField("y", -0.005)}>
+                                <ChevronUp className="h-4 w-4" />
+                              </Button>
+                              <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => nudgeField("y", 0.005)}>
+                                <ChevronDown className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <Button type="button" variant="outline" size="icon" className="h-8 w-8" onClick={() => nudgeField("x", 0.005)}>
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
+                          </div>
                           <Slider
-                            value={[fieldOverrides[activeFieldId]?.x ?? 0]}
+                            value={[
+                              fieldOverrides[activeFieldId]?.x ??
+                                templateForViewer?.fields?.find((f) => f.id === activeFieldId)?.x ??
+                                0,
+                            ]}
                             onValueChange={([v]) =>
                               setFieldOverrides((prev) => ({
                                 ...prev,
@@ -3404,19 +3505,14 @@ export default function ParticipantDirectoryDialog({
                             min={0}
                             max={1}
                             step={0.002}
-                            className="py-2"
+                            className="py-1"
                           />
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between items-center text-[10px] font-medium">
-                            <Label className="text-[10px] uppercase text-muted-foreground font-bold">Field Y Position</Label>
-                            <span className="font-mono bg-primary/10 px-1.5 py-0.5 rounded text-primary">
-                              {((fieldOverrides[activeFieldId]?.y ?? 0) * 100).toFixed(1)}%
-                            </span>
-                          </div>
                           <Slider
-                            value={[fieldOverrides[activeFieldId]?.y ?? 0]}
+                            value={[
+                              fieldOverrides[activeFieldId]?.y ??
+                                templateForViewer?.fields?.find((f) => f.id === activeFieldId)?.y ??
+                                0,
+                            ]}
                             onValueChange={([v]) =>
                               setFieldOverrides((prev) => ({
                                 ...prev,
@@ -3426,7 +3522,7 @@ export default function ParticipantDirectoryDialog({
                             min={0}
                             max={1}
                             step={0.002}
-                            className="py-2"
+                            className="py-1"
                           />
                         </div>
                       </div>
@@ -3526,6 +3622,17 @@ export default function ParticipantDirectoryDialog({
         recipientCount={getSelectedTrainees().length}
         availableTemplates={Array.from(availableTemplates)}
         selectedTemplateType={selectedTemplateType}
+      />
+
+      <ImageCropDialog
+        open={showPhotoCropDialog}
+        onOpenChange={setShowPhotoCropDialog}
+        imageType="2x2"
+        existingImageUrl={
+          cropExistingPhoto ? selectedTrainee?.picture_2x2_url || undefined : undefined
+        }
+        onSave={handleSaveCroppedPhoto}
+        title={cropExistingPhoto ? "Crop Participant Photo" : "Upload & Crop Participant Photo"}
       />
     </Dialog>
   )
