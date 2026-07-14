@@ -1608,7 +1608,7 @@ export default function GuestTrainingRegistration() {
                           id="courtesy_title"
                           name="courtesy_title"
                           onChange={handleChange}
-                          placeholder="e.g., Mr., Ms., Engr., Dr."
+                          placeholder="Optional (e.g. Engr., Dr.)"
                         />
                       </div>
                       <div className="space-y-2">

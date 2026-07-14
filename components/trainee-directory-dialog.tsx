@@ -32,10 +32,14 @@ import {
 import {
   CERTIFICATE_FONT_OPTIONS,
   CERTIFICATE_FONT_WEIGHT_OPTIONS,
+  COURTESY_POSITION_OPTIONS,
+  COURTESY_POSITION_OVERRIDE_KEY,
   canvasFontFamily,
   formatCertificateHolderDisplayName,
+  resolveCourtesyTitlePosition,
   type CertificateFontFamily,
   type CertificateFontWeight,
+  type CourtesyTitlePosition,
 } from "@/lib/certificate-name"
 import {
   Tooltip,
@@ -117,18 +121,99 @@ interface Trainee {
   id: string
   first_name: string
   last_name: string
-  middle_initial?: string
-  suffix?: string
+  middle_initial?: string | null
+  suffix?: string | null
   courtesy_title?: string | null
-  picture_2x2_url?: string
+  professional_title?: string | null
+  picture_2x2_url?: string | null
+  id_picture_url?: string | null
   schedule_id: string
-  status?: string
-  email?: string
-  certificate_number?: string
+  status?: string | null
+  email?: string | null
+  phone_number?: string | null
+  gender?: string | null
+  age?: number | null
+  mailing_street?: string | null
+  mailing_city?: string | null
+  mailing_province?: string | null
+  region?: string | null
+  employment_status?: string | null
+  is_student?: boolean | null
+  school_name?: string | null
+  company_name?: string | null
+  company_position?: string | null
+  company_industry?: string | null
+  company_email?: string | null
+  company_landline?: string | null
+  company_city?: string | null
+  company_region?: string | null
+  total_workers?: number | null
+  certificate_number?: string | null
+  training_provider?: string | null
+  training_type?: string | null
+  training_program?: string | null
+  training_status?: string | null
   course_id: string
-  batch_number?: number
+  batch_number?: number | null
+  food_restriction?: string | null
+  physical_cert_status?: string | null
+  e_id_status?: string | null
+  add_pvc_id?: boolean | null
+  pvc_fee?: number | null
+  payment_method?: string | null
+  payment_status?: string | null
+  amount_paid?: number | null
   custom_data?: Record<string, any>
 }
+
+const TRAINEE_DIRECTORY_SELECT = [
+  "id",
+  "first_name",
+  "last_name",
+  "middle_initial",
+  "suffix",
+  "courtesy_title",
+  "professional_title",
+  "schedule_id",
+  "picture_2x2_url",
+  "id_picture_url",
+  "status",
+  "email",
+  "phone_number",
+  "gender",
+  "age",
+  "mailing_street",
+  "mailing_city",
+  "mailing_province",
+  "region",
+  "employment_status",
+  "is_student",
+  "school_name",
+  "company_name",
+  "company_position",
+  "company_industry",
+  "company_email",
+  "company_landline",
+  "company_city",
+  "company_region",
+  "total_workers",
+  "certificate_number",
+  "training_provider",
+  "training_type",
+  "training_program",
+  "training_status",
+  "course_id",
+  "batch_number",
+  "food_restriction",
+  "physical_cert_status",
+  "e_id_status",
+  "add_pvc_id",
+  "pvc_fee",
+  "payment_method",
+  "payment_status",
+  "amount_paid",
+  "custom_data",
+].join(", ")
 
 type TemplateType = "participation" | "completion" | "excellence"
 
@@ -372,6 +457,22 @@ export default function ParticipantDirectoryDialog({
   const [certificatePageSize, setCertificatePageSize] = useState<CertificatePageSizeKey>(
     DEFAULT_CERTIFICATE_PAGE_SIZE
   )
+  const [inlineFieldEdit, setInlineFieldEdit] = useState<{
+    fieldId: string
+    kind: "name" | "certificate_number" | "email" | "batch_number"
+    overlayStyle: { left: number; top: number; minWidth: number }
+    draft: {
+      courtesy_title: string
+      first_name: string
+      middle_initial: string
+      last_name: string
+      suffix: string
+      certificate_number: string
+      email: string
+      batch_number: string
+    }
+  } | null>(null)
+  const [isSavingInlineEdit, setIsSavingInlineEdit] = useState(false)
 
   const nameFieldIds = useMemo(() => {
     const fields = templateForViewer?.fields || []
@@ -398,6 +499,11 @@ export default function ParticipantDirectoryDialog({
     return (templateField?.fontWeight as CertificateFontWeight) || "normal"
   }, [fieldOverrides, nameFieldIds, templateForViewer])
 
+  const selectedCourtesyPosition = useMemo<CourtesyTitlePosition>(
+    () => resolveCourtesyTitlePosition(fieldOverrides),
+    [fieldOverrides]
+  )
+
   const applyNameFontStyle = (
     patch: Partial<{ fontFamily: CertificateFontFamily; fontWeight: CertificateFontWeight }>
   ) => {
@@ -417,6 +523,13 @@ export default function ParticipantDirectoryDialog({
       })
       return next
     })
+  }
+
+  const applyCourtesyPosition = (position: CourtesyTitlePosition) => {
+    setFieldOverrides((prev) => ({
+      ...prev,
+      [COURTESY_POSITION_OVERRIDE_KEY]: position,
+    }))
   }
 
   // Load Google fonts used by certificate canvas preview
@@ -493,6 +606,12 @@ export default function ParticipantDirectoryDialog({
 
     setPreviewZoom(Number(fitScale.toFixed(2)))
   }, [canvasSize.w, canvasSize.h])
+
+  // Close inline editor when switching participants or closing viewer
+  useEffect(() => {
+    setInlineFieldEdit(null)
+  }, [activePreviewIndex, isCertificateViewerOpen, selectedTemplateType, idCardSide])
+
 
   // Auto-fit on open, template change, or page size change
   useEffect(() => {
@@ -577,7 +696,9 @@ export default function ParticipantDirectoryDialog({
       year: "numeric",
     })
 
-    const fullName = formatCertificateHolderDisplayName(trainee)
+    const fullName = formatCertificateHolderDisplayName(trainee, {
+      courtesyPosition: resolveCourtesyTitlePosition(fieldOverrides),
+    })
     return raw
       .replace(/\{\{trainee_name\}\}/g, fullName || "Trainee Name")
       .replace(/\{\{course_name\}\}/g, courseName)
@@ -1550,7 +1671,7 @@ export default function ParticipantDirectoryDialog({
       }
       const { data, error } = await tmsDb
         .from("trainings")
-        .select("id, first_name, last_name, middle_initial, suffix, courtesy_title, schedule_id, picture_2x2_url, status, email, certificate_number, course_id, batch_number, custom_data")
+        .select(TRAINEE_DIRECTORY_SELECT)
         .eq("schedule_id", scheduleId)
         .order("last_name", { ascending: true })
 
@@ -1625,7 +1746,12 @@ export default function ParticipantDirectoryDialog({
         data.forEach((item: any) => {
           // Keep only the override for the currently selected template type if available
           if (!item.override_template_type || item.override_template_type === selectedTemplateType) {
-            newMap.set(item.training_id, item as CertificateGenerationData)
+            const fromTrainings = trainees.find((t) => t.id === item.training_id)
+            // Never invent Mr./Ms. from gender — only use the stored trainings.courtesy_title
+            newMap.set(item.training_id, {
+              ...(item as CertificateGenerationData),
+              courtesy_title: fromTrainings?.courtesy_title || null,
+            })
           }
         })
         setGenerationDataMap(newMap)
@@ -1695,7 +1821,7 @@ export default function ParticipantDirectoryDialog({
               last_name: genData.last_name,
               middle_initial: genData.middle_initial,
               suffix: genData.suffix,
-              courtesy_title: genData.courtesy_title ?? trainees.find((t) => t.id === traineeId)?.courtesy_title,
+              courtesy_title: trainees.find((t) => t.id === traineeId)?.courtesy_title || null,
               picture_2x2_url: genData.picture_2x2_url,
               certificate_number: genData.certificate_number,
               batch_number: genData.batch_number,
@@ -2381,25 +2507,247 @@ export default function ParticipantDirectoryDialog({
     dragStateRef.current = { fieldId: null, mode: "move", dx: 0, dy: 0 }
   }
 
+  const resolveEditableFieldKind = (
+    value: string | undefined
+  ): "name" | "certificate_number" | "email" | "batch_number" | null => {
+    if (!value) return null
+    if (value.includes("{{trainee_name}}")) return "name"
+    if (value.includes("{{certificate_number}}")) return "certificate_number"
+    if (value.includes("{{email}}")) return "email"
+    if (value.includes("{{batch_number}}")) return "batch_number"
+    return null
+  }
+
+  const applySavedTraineeToLocalState = (saved: Trainee) => {
+    setTrainees((prev) => prev.map((t) => (t.id === saved.id ? { ...t, ...saved } : t)))
+    setCertificatePreviews((prev) =>
+      prev.map((item) =>
+        item.trainee.id === saved.id
+          ? {
+              ...item,
+              trainee: {
+                ...item.trainee,
+                first_name: saved.first_name,
+                last_name: saved.last_name,
+                middle_initial: saved.middle_initial || undefined,
+                suffix: saved.suffix || undefined,
+                courtesy_title: saved.courtesy_title,
+                email: saved.email || undefined,
+                certificate_number: saved.certificate_number || undefined,
+                picture_2x2_url: saved.picture_2x2_url || undefined,
+                batch_number: saved.batch_number || undefined,
+                custom_data: saved.custom_data,
+              },
+              url: null,
+            }
+          : item
+      )
+    )
+    setGenerationDataMap((prev) => {
+      const next = new Map(prev)
+      const existing = next.get(saved.id)
+      if (existing) {
+        next.set(saved.id, {
+          ...existing,
+          first_name: saved.first_name,
+          last_name: saved.last_name,
+          middle_initial: saved.middle_initial || undefined,
+          suffix: saved.suffix || undefined,
+          courtesy_title: saved.courtesy_title,
+          certificate_number: saved.certificate_number || existing.certificate_number,
+          picture_2x2_url: saved.picture_2x2_url || undefined,
+          batch_number: saved.batch_number || undefined,
+        })
+      }
+      return next
+    })
+    setCertificateCache((prev) => {
+      const next = new Map(prev)
+      for (const key of Array.from(next.keys())) {
+        if (key.startsWith(`${saved.id}:`)) next.delete(key)
+      }
+      return next
+    })
+    setSelectedTrainee((prev) => (prev?.id === saved.id ? { ...prev, ...saved } : prev))
+  }
+
+  const handlePreviewCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragStateRef.current = { fieldId: null, mode: "move", dx: 0, dy: 0 }
+
+    const canvas = previewCanvasRef.current
+    const current = certificatePreviews[activePreviewIndex]
+    const isShowingBack = isIdTemplateSelected && idCardSide === "back"
+    const activeTemplate = isShowingBack ? backTemplateForViewer : templateForViewer
+    if (!canvas || !current?.trainee || !activeTemplate) return
+
+    const rect = canvas.getBoundingClientRect()
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+    const x = (e.clientX - rect.left) * scaleX
+    const y = (e.clientY - rect.top) * scaleY
+
+    const hit = hitTestFieldAt(x, y)
+    if (!hit) {
+      setInlineFieldEdit(null)
+      return
+    }
+
+    const field = activeTemplate.fields.find((f) => f.id === hit.id)
+    if (!field) return
+
+    const kind = resolveEditableFieldKind(field.value)
+    if (!kind) {
+      toast({
+        title: "Not editable here",
+        description: "Double-click name, certificate number, email, or batch fields to edit trainee info.",
+      })
+      setActiveFieldId(hit.id)
+      return
+    }
+
+    setActiveFieldId(hit.id)
+    const trainee = current.trainee
+    const wrapper = canvas.parentElement?.getBoundingClientRect()
+    const left = e.clientX - (wrapper?.left ?? rect.left) + 8
+    const top = e.clientY - (wrapper?.top ?? rect.top) + 8
+
+    setInlineFieldEdit({
+      fieldId: hit.id,
+      kind,
+      overlayStyle: {
+        left: Math.max(8, Math.min(left, (wrapper?.width ?? rect.width) - 320)),
+        top: Math.max(8, Math.min(top, (wrapper?.height ?? rect.height) - 160)),
+        minWidth: kind === "name" ? 300 : 220,
+      },
+      draft: {
+        courtesy_title: trainee.courtesy_title || "",
+        first_name: trainee.first_name || "",
+        middle_initial: trainee.middle_initial || "",
+        last_name: trainee.last_name || "",
+        suffix: trainee.suffix || "",
+        certificate_number: trainee.certificate_number || "",
+        email: trainee.email || "",
+        batch_number: trainee.batch_number != null ? String(trainee.batch_number) : "",
+      },
+    })
+  }
+
+  const handleSaveInlineFieldEdit = async () => {
+    if (!inlineFieldEdit) return
+    const current = certificatePreviews[activePreviewIndex]
+    if (!current?.trainee?.id) return
+
+    setIsSavingInlineEdit(true)
+    const draft = inlineFieldEdit.draft
+    const updates: Record<string, unknown> =
+      inlineFieldEdit.kind === "name"
+        ? {
+            courtesy_title: draft.courtesy_title.trim() || null,
+            first_name: draft.first_name.trim(),
+            middle_initial: draft.middle_initial.trim() || null,
+            last_name: draft.last_name.trim(),
+            suffix: draft.suffix.trim() || null,
+          }
+        : inlineFieldEdit.kind === "certificate_number"
+          ? { certificate_number: draft.certificate_number.trim() || null }
+          : inlineFieldEdit.kind === "email"
+            ? { email: draft.email.trim() || null }
+            : {
+                batch_number: draft.batch_number.trim() === "" ? null : Number(draft.batch_number),
+              }
+
+    if (inlineFieldEdit.kind === "name" && (!draft.first_name.trim() || !draft.last_name.trim())) {
+      toast({
+        variant: "destructive",
+        title: "Name required",
+        description: "First name and last name are required.",
+      })
+      setIsSavingInlineEdit(false)
+      return
+    }
+
+    const { data, error } = await tmsDb
+      .from("trainings")
+      .update(updates)
+      .eq("id", current.trainee.id)
+      .select(TRAINEE_DIRECTORY_SELECT)
+      .single()
+
+    setIsSavingInlineEdit(false)
+
+    if (error || !data) {
+      console.error("❌ Inline trainee edit failed:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to save trainee info. Please try again.",
+      })
+      return
+    }
+
+    applySavedTraineeToLocalState(data as Trainee)
+    setInlineFieldEdit(null)
+    toast({
+      title: "Saved",
+      description: "Trainee info updated.",
+    })
+  }
+
   const handleSaveTrainee = async () => {
     if (!selectedTrainee) return
 
     console.log("Submitting update for:", selectedTrainee)
 
     const updates: Record<string, unknown> = {
+      courtesy_title: selectedTrainee.courtesy_title || null,
       first_name: selectedTrainee.first_name,
       last_name: selectedTrainee.last_name,
-      middle_initial: selectedTrainee.middle_initial,
+      middle_initial: selectedTrainee.middle_initial || null,
       suffix: selectedTrainee.suffix || null,
+      professional_title: selectedTrainee.professional_title || null,
       email: selectedTrainee.email || null,
+      phone_number: selectedTrainee.phone_number || null,
+      gender: selectedTrainee.gender || null,
+      age: selectedTrainee.age == null ? null : Number(selectedTrainee.age),
+      mailing_street: selectedTrainee.mailing_street || null,
+      mailing_city: selectedTrainee.mailing_city || null,
+      mailing_province: selectedTrainee.mailing_province || null,
+      region: selectedTrainee.region || null,
+      employment_status: selectedTrainee.employment_status || null,
+      is_student: !!selectedTrainee.is_student,
+      school_name: selectedTrainee.school_name || null,
+      company_name: selectedTrainee.company_name || null,
+      company_position: selectedTrainee.company_position || null,
+      company_industry: selectedTrainee.company_industry || null,
+      company_email: selectedTrainee.company_email || null,
+      company_landline: selectedTrainee.company_landline || null,
+      company_city: selectedTrainee.company_city || null,
+      company_region: selectedTrainee.company_region || null,
+      total_workers: selectedTrainee.total_workers == null ? null : Number(selectedTrainee.total_workers),
       certificate_number: selectedTrainee.certificate_number || null,
+      training_provider: selectedTrainee.training_provider || null,
+      training_type: selectedTrainee.training_type || null,
+      training_program: selectedTrainee.training_program || null,
+      training_status: selectedTrainee.training_status || null,
+      batch_number: selectedTrainee.batch_number == null ? null : Number(selectedTrainee.batch_number),
+      food_restriction: selectedTrainee.food_restriction || null,
+      status: selectedTrainee.status || null,
+      physical_cert_status: selectedTrainee.physical_cert_status || null,
+      e_id_status: selectedTrainee.e_id_status || null,
+      add_pvc_id: !!selectedTrainee.add_pvc_id,
+      pvc_fee: selectedTrainee.pvc_fee == null ? null : Number(selectedTrainee.pvc_fee),
+      payment_method: selectedTrainee.payment_method || null,
+      payment_status: selectedTrainee.payment_status || null,
+      amount_paid: selectedTrainee.amount_paid == null ? null : Number(selectedTrainee.amount_paid),
     }
 
     const { data, error } = await tmsDb
       .from("trainings")
       .update(updates)
       .eq("id", selectedTrainee.id)
-      .select()
+      .select(TRAINEE_DIRECTORY_SELECT)
       .single()
 
     if (error) {
@@ -2410,15 +2758,32 @@ export default function ParticipantDirectoryDialog({
         description: "Failed to save changes. Please try again.",
       })
     } else if (data) {
+      applySavedTraineeToLocalState(data as Trainee)
       setIsTraineeDialogOpen(false)
-      setTrainees((prev) =>
-        prev.map((t) => (t.id === selectedTrainee.id ? data as Trainee : t))
-      )
       toast({
         title: "Saved",
         description: "Participant details updated successfully.",
       })
     }
+  }
+
+  const openEditTraineeDialog = async (trainee: Trainee | { id: string }) => {
+    setSelectedTrainee(trainee as Trainee)
+    setIsTraineeDialogOpen(true)
+
+    const { data, error } = await tmsDb
+      .from("trainings")
+      .select(TRAINEE_DIRECTORY_SELECT)
+      .eq("id", trainee.id)
+      .single()
+
+    if (!error && data) {
+      setSelectedTrainee(data as Trainee)
+    }
+  }
+
+  const patchSelectedTrainee = <K extends keyof Trainee>(key: K, value: Trainee[K]) => {
+    setSelectedTrainee((prev) => (prev ? { ...prev, [key]: value } : prev))
   }
 
   const startLongOperation = (title: string, message: string = "") => {
@@ -2711,21 +3076,21 @@ export default function ParticipantDirectoryDialog({
                         aria-label={`Select ${trainee.first_name} ${trainee.last_name}`}
                       />
                     </TableCell>
-                    <TableCell className="dark:text-white capitalize cursor-pointer" onClick={() => { setSelectedTrainee(trainee); setIsTraineeDialogOpen(true) }}>
+                    <TableCell className="dark:text-white capitalize cursor-pointer" onClick={() => openEditTraineeDialog(trainee)}>
                       {trainee.last_name}
                     </TableCell>
-                    <TableCell className="dark:text-white capitalize cursor-pointer" onClick={() => { setSelectedTrainee(trainee); setIsTraineeDialogOpen(true) }}>
+                    <TableCell className="dark:text-white capitalize cursor-pointer" onClick={() => openEditTraineeDialog(trainee)}>
                       {trainee.first_name}
                     </TableCell>
-                    <TableCell className="dark:text-white capitalize cursor-pointer" onClick={() => { setSelectedTrainee(trainee); setIsTraineeDialogOpen(true) }}>
+                    <TableCell className="dark:text-white capitalize cursor-pointer" onClick={() => openEditTraineeDialog(trainee)}>
                       {trainee.middle_initial ?? "-"}
                     </TableCell>
-                    <TableCell onClick={() => { setSelectedTrainee(trainee); setIsTraineeDialogOpen(true) }}>
+                    <TableCell onClick={() => openEditTraineeDialog(trainee)}>
                       <Badge variant={getStatusBadgeVariant(trainee.status || "pending")}>
                         {trainee.status ?? "pending"}
                       </Badge>
                     </TableCell>
-                    <TableCell onClick={() => { setSelectedTrainee(trainee); setIsTraineeDialogOpen(true) }}>
+                    <TableCell onClick={() => openEditTraineeDialog(trainee)}>
                       {sentCertificateIds.has(trainee.id) ? (
                         <Badge className="h-5 rounded-full bg-emerald-600 px-2 text-[10px] text-white hover:bg-emerald-600">
                           Sent
@@ -2738,9 +3103,9 @@ export default function ParticipantDirectoryDialog({
                         <span className="text-xs text-muted-foreground">Not sent</span>
                       )}
                     </TableCell>
-                    <TableCell onClick={() => { setSelectedTrainee(trainee); setIsTraineeDialogOpen(true) }}>
+                    <TableCell onClick={() => openEditTraineeDialog(trainee)}>
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={trainee.picture_2x2_url} alt="ID Picture" />
+                        <AvatarImage src={trainee.picture_2x2_url || undefined} alt="ID Picture" />
                         <AvatarFallback>{trainee.first_name?.[0]}{trainee.last_name?.[0]}</AvatarFallback>
                       </Avatar>
                     </TableCell>
@@ -2793,17 +3158,17 @@ export default function ParticipantDirectoryDialog({
       </DialogContent>
 
       <Dialog open={isTraineeDialogOpen} onOpenChange={setIsTraineeDialogOpen}>
-        <DialogContent className="lg:w-[40vw] sm:w-[90vw]">
+        <DialogContent className="lg:w-[56vw] sm:w-[95vw] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Edit Participant Details</DialogTitle>
             </DialogHeader>
             {selectedTrainee && (
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div className="space-y-2">
                   <Label>Current Picture</Label>
                   <div className="flex items-center gap-4">
                     <Avatar className="h-24 w-24">
-                      <AvatarImage src={selectedTrainee.picture_2x2_url} alt="Current Picture" />
+                      <AvatarImage src={selectedTrainee.picture_2x2_url || undefined} alt="Current Picture" />
                       <AvatarFallback>{selectedTrainee.first_name?.[0]}{selectedTrainee.last_name?.[0]}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col gap-2">
@@ -2839,45 +3204,399 @@ export default function ParticipantDirectoryDialog({
                     </div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Last Name</Label>
-                  <Input value={selectedTrainee.last_name} onChange={(e) => setSelectedTrainee({ ...selectedTrainee, last_name: e.target.value })} />
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold border-b pb-1">Personal</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Courtesy Title</Label>
+                      <Input
+                        placeholder="Optional (e.g. Engr., Dr.)"
+                        value={selectedTrainee.courtesy_title || ""}
+                        onChange={(e) => patchSelectedTrainee("courtesy_title", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Professional Title</Label>
+                      <Input
+                        placeholder="RN, MD, etc."
+                        value={selectedTrainee.professional_title || ""}
+                        onChange={(e) => patchSelectedTrainee("professional_title", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>First Name</Label>
+                      <Input
+                        value={selectedTrainee.first_name}
+                        onChange={(e) => patchSelectedTrainee("first_name", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Last Name</Label>
+                      <Input
+                        value={selectedTrainee.last_name}
+                        onChange={(e) => patchSelectedTrainee("last_name", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Middle Initial</Label>
+                      <Input
+                        value={selectedTrainee.middle_initial || ""}
+                        onChange={(e) => patchSelectedTrainee("middle_initial", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Suffix</Label>
+                      <Input
+                        placeholder="e.g. Jr., Sr., III"
+                        value={selectedTrainee.suffix || ""}
+                        onChange={(e) => patchSelectedTrainee("suffix", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Gender</Label>
+                      <Select
+                        value={selectedTrainee.gender || undefined}
+                        onValueChange={(value) => {
+                          // Gender must never auto-fill courtesy title (Mr./Ms.)
+                          patchSelectedTrainee("gender", value)
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Age</Label>
+                      <Input
+                        type="number"
+                        value={selectedTrainee.age ?? ""}
+                        onChange={(e) =>
+                          patchSelectedTrainee(
+                            "age",
+                            e.target.value === "" ? null : Number(e.target.value)
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>First Name</Label>
-                  <Input value={selectedTrainee.first_name} onChange={(e) => setSelectedTrainee({ ...selectedTrainee, first_name: e.target.value })} />
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold border-b pb-1">Contact</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Email</Label>
+                      <Input
+                        type="email"
+                        placeholder="participant@email.com"
+                        value={selectedTrainee.email || ""}
+                        onChange={(e) => patchSelectedTrainee("email", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Phone Number</Label>
+                      <Input
+                        value={selectedTrainee.phone_number || ""}
+                        onChange={(e) => patchSelectedTrainee("phone_number", e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Middle Initial</Label>
-                  <Input value={selectedTrainee.middle_initial || ""} onChange={(e) => setSelectedTrainee({ ...selectedTrainee, middle_initial: e.target.value })} />
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold border-b pb-1">Mailing Address</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Street</Label>
+                      <Input
+                        value={selectedTrainee.mailing_street || ""}
+                        onChange={(e) => patchSelectedTrainee("mailing_street", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>City</Label>
+                      <Input
+                        value={selectedTrainee.mailing_city || ""}
+                        onChange={(e) => patchSelectedTrainee("mailing_city", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Province</Label>
+                      <Input
+                        value={selectedTrainee.mailing_province || ""}
+                        onChange={(e) => patchSelectedTrainee("mailing_province", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Region</Label>
+                      <Input
+                        value={selectedTrainee.region || ""}
+                        onChange={(e) => patchSelectedTrainee("region", e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Suffix</Label>
-                  <Input
-                    placeholder="e.g. Jr., Sr., III"
-                    value={selectedTrainee.suffix || ""}
-                    onChange={(e) => setSelectedTrainee({ ...selectedTrainee, suffix: e.target.value })}
-                  />
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold border-b pb-1">Employment</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Employment Status</Label>
+                      <Select
+                        value={selectedTrainee.employment_status || undefined}
+                        onValueChange={(value) => patchSelectedTrainee("employment_status", value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Employed">Employed</SelectItem>
+                          <SelectItem value="Unemployed">Unemployed</SelectItem>
+                          <SelectItem value="Self-Employed">Self-Employed</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Food Restriction / Allergies</Label>
+                      <Input
+                        value={selectedTrainee.food_restriction || ""}
+                        onChange={(e) => patchSelectedTrainee("food_restriction", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <Checkbox
+                      id="edit_is_student"
+                      checked={!!selectedTrainee.is_student}
+                      onCheckedChange={(checked) => patchSelectedTrainee("is_student", !!checked)}
+                    />
+                    <Label htmlFor="edit_is_student" className="cursor-pointer">Student</Label>
+                  </div>
+                  {selectedTrainee.is_student && (
+                    <div className="space-y-2">
+                      <Label>School / University</Label>
+                      <Input
+                        value={selectedTrainee.school_name || ""}
+                        onChange={(e) => patchSelectedTrainee("school_name", e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-2">
+                      <Label>Company Name</Label>
+                      <Input
+                        value={selectedTrainee.company_name || ""}
+                        onChange={(e) => patchSelectedTrainee("company_name", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Position</Label>
+                      <Input
+                        value={selectedTrainee.company_position || ""}
+                        onChange={(e) => patchSelectedTrainee("company_position", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Industry</Label>
+                      <Input
+                        value={selectedTrainee.company_industry || ""}
+                        onChange={(e) => patchSelectedTrainee("company_industry", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Company Email</Label>
+                      <Input
+                        type="email"
+                        value={selectedTrainee.company_email || ""}
+                        onChange={(e) => patchSelectedTrainee("company_email", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Company Landline</Label>
+                      <Input
+                        value={selectedTrainee.company_landline || ""}
+                        onChange={(e) => patchSelectedTrainee("company_landline", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Company City</Label>
+                      <Input
+                        value={selectedTrainee.company_city || ""}
+                        onChange={(e) => patchSelectedTrainee("company_city", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Company Region</Label>
+                      <Input
+                        value={selectedTrainee.company_region || ""}
+                        onChange={(e) => patchSelectedTrainee("company_region", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Total Workers</Label>
+                      <Input
+                        type="number"
+                        value={selectedTrainee.total_workers ?? ""}
+                        onChange={(e) =>
+                          patchSelectedTrainee(
+                            "total_workers",
+                            e.target.value === "" ? null : Number(e.target.value)
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Email</Label>
-                  <Input
-                    type="email"
-                    placeholder="participant@email.com"
-                    value={selectedTrainee.email || ""}
-                    onChange={(e) => setSelectedTrainee({ ...selectedTrainee, email: e.target.value })}
-                  />
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold border-b pb-1">Training & Certificate</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Certificate Number</Label>
+                      <Input
+                        placeholder="e.g. PSI-COURSE-000001"
+                        value={selectedTrainee.certificate_number || ""}
+                        onChange={(e) => patchSelectedTrainee("certificate_number", e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Editing this will change the serial number on the participant&apos;s certificate.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Batch Number</Label>
+                      <Input
+                        type="number"
+                        value={selectedTrainee.batch_number ?? ""}
+                        onChange={(e) =>
+                          patchSelectedTrainee(
+                            "batch_number",
+                            e.target.value === "" ? null : Number(e.target.value)
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Training Status</Label>
+                      <Select
+                        value={selectedTrainee.training_status || undefined}
+                        onValueChange={(value) => patchSelectedTrainee("training_status", value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="First Timer">First Timer</SelectItem>
+                          <SelectItem value="Renewal">Renewal</SelectItem>
+                          <SelectItem value="Remedial">Remedial</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Training Provider</Label>
+                      <Input
+                        value={selectedTrainee.training_provider || ""}
+                        onChange={(e) => patchSelectedTrainee("training_provider", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Training Type</Label>
+                      <Input
+                        value={selectedTrainee.training_type || ""}
+                        onChange={(e) => patchSelectedTrainee("training_type", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Training Program</Label>
+                      <Input
+                        value={selectedTrainee.training_program || ""}
+                        onChange={(e) => patchSelectedTrainee("training_program", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Registration Status</Label>
+                      <Input
+                        value={selectedTrainee.status || ""}
+                        onChange={(e) => patchSelectedTrainee("status", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Physical Cert Status</Label>
+                      <Input
+                        value={selectedTrainee.physical_cert_status || ""}
+                        onChange={(e) => patchSelectedTrainee("physical_cert_status", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>E-ID Status</Label>
+                      <Input
+                        value={selectedTrainee.e_id_status || ""}
+                        onChange={(e) => patchSelectedTrainee("e_id_status", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2 flex items-end gap-2 pb-1">
+                      <Checkbox
+                        id="edit_add_pvc_id"
+                        checked={!!selectedTrainee.add_pvc_id}
+                        onCheckedChange={(checked) => patchSelectedTrainee("add_pvc_id", !!checked)}
+                      />
+                      <Label htmlFor="edit_add_pvc_id" className="cursor-pointer">Add PVC ID</Label>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>PVC Fee</Label>
+                      <Input
+                        type="number"
+                        value={selectedTrainee.pvc_fee ?? ""}
+                        onChange={(e) =>
+                          patchSelectedTrainee(
+                            "pvc_fee",
+                            e.target.value === "" ? null : Number(e.target.value)
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Certificate Number</Label>
-                  <Input
-                    placeholder="e.g. PSI-COURSE-000001"
-                    value={selectedTrainee.certificate_number || ""}
-                    onChange={(e) => setSelectedTrainee({ ...selectedTrainee, certificate_number: e.target.value })}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Editing this will change the serial number on the participant&apos;s certificate.
-                  </p>
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold border-b pb-1">Payment</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-2">
+                      <Label>Payment Method</Label>
+                      <Input
+                        value={selectedTrainee.payment_method || ""}
+                        onChange={(e) => patchSelectedTrainee("payment_method", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Payment Status</Label>
+                      <Input
+                        value={selectedTrainee.payment_status || ""}
+                        onChange={(e) => patchSelectedTrainee("payment_status", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Amount Paid</Label>
+                      <Input
+                        type="number"
+                        value={selectedTrainee.amount_paid ?? ""}
+                        onChange={(e) =>
+                          patchSelectedTrainee(
+                            "amount_paid",
+                            e.target.value === "" ? null : Number(e.target.value)
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -3062,7 +3781,183 @@ export default function ParticipantDirectoryDialog({
                           onMouseMove={handlePreviewCanvasMouseMove}
                           onMouseUp={handlePreviewCanvasMouseUp}
                           onMouseLeave={handlePreviewCanvasMouseUp}
+                          onDoubleClick={handlePreviewCanvasDoubleClick}
                         />
+                      )}
+                      {inlineFieldEdit && (
+                        <div
+                          className="absolute z-40 rounded-lg border bg-background p-3 shadow-xl"
+                          style={{
+                            left: inlineFieldEdit.overlayStyle.left,
+                            top: inlineFieldEdit.overlayStyle.top,
+                            minWidth: inlineFieldEdit.overlayStyle.minWidth,
+                          }}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onDoubleClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                            {inlineFieldEdit.kind === "name"
+                              ? "Edit Trainee Name"
+                              : inlineFieldEdit.kind === "certificate_number"
+                                ? "Edit Certificate Number"
+                                : inlineFieldEdit.kind === "email"
+                                  ? "Edit Email"
+                                  : "Edit Batch Number"}
+                          </div>
+
+                          {inlineFieldEdit.kind === "name" ? (
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <Label className="text-[10px]">Courtesy</Label>
+                                <Input
+                                  className="h-8 text-xs"
+                                  autoFocus
+                                  value={inlineFieldEdit.draft.courtesy_title}
+                                  onChange={(e) =>
+                                    setInlineFieldEdit((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            draft: { ...prev.draft, courtesy_title: e.target.value },
+                                          }
+                                        : prev
+                                    )
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") handleSaveInlineFieldEdit()
+                                    if (e.key === "Escape") setInlineFieldEdit(null)
+                                  }}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px]">Suffix</Label>
+                                <Input
+                                  className="h-8 text-xs"
+                                  value={inlineFieldEdit.draft.suffix}
+                                  onChange={(e) =>
+                                    setInlineFieldEdit((prev) =>
+                                      prev
+                                        ? { ...prev, draft: { ...prev.draft, suffix: e.target.value } }
+                                        : prev
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px]">First Name</Label>
+                                <Input
+                                  className="h-8 text-xs"
+                                  value={inlineFieldEdit.draft.first_name}
+                                  onChange={(e) =>
+                                    setInlineFieldEdit((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            draft: { ...prev.draft, first_name: e.target.value },
+                                          }
+                                        : prev
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[10px]">M.I.</Label>
+                                <Input
+                                  className="h-8 text-xs"
+                                  value={inlineFieldEdit.draft.middle_initial}
+                                  onChange={(e) =>
+                                    setInlineFieldEdit((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            draft: { ...prev.draft, middle_initial: e.target.value },
+                                          }
+                                        : prev
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1 col-span-2">
+                                <Label className="text-[10px]">Last Name</Label>
+                                <Input
+                                  className="h-8 text-xs"
+                                  value={inlineFieldEdit.draft.last_name}
+                                  onChange={(e) =>
+                                    setInlineFieldEdit((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            draft: { ...prev.draft, last_name: e.target.value },
+                                          }
+                                        : prev
+                                    )
+                                  }
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <Input
+                              className="h-8 text-xs"
+                              autoFocus
+                              type={inlineFieldEdit.kind === "email" ? "email" : "text"}
+                              value={
+                                inlineFieldEdit.kind === "certificate_number"
+                                  ? inlineFieldEdit.draft.certificate_number
+                                  : inlineFieldEdit.kind === "email"
+                                    ? inlineFieldEdit.draft.email
+                                    : inlineFieldEdit.draft.batch_number
+                              }
+                              onChange={(e) =>
+                                setInlineFieldEdit((prev) => {
+                                  if (!prev) return prev
+                                  const key =
+                                    prev.kind === "certificate_number"
+                                      ? "certificate_number"
+                                      : prev.kind === "email"
+                                        ? "email"
+                                        : "batch_number"
+                                  return {
+                                    ...prev,
+                                    draft: { ...prev.draft, [key]: e.target.value },
+                                  }
+                                })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleSaveInlineFieldEdit()
+                                if (e.key === "Escape") setInlineFieldEdit(null)
+                              }}
+                            />
+                          )}
+
+                          <div className="mt-3 flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => setInlineFieldEdit(null)}
+                              disabled={isSavingInlineEdit}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={handleSaveInlineFieldEdit}
+                              disabled={isSavingInlineEdit}
+                            >
+                              {isSavingInlineEdit ? (
+                                <>
+                                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                  Saving
+                                </>
+                              ) : (
+                                "Save"
+                              )}
+                            </Button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
@@ -3090,7 +3985,7 @@ export default function ParticipantDirectoryDialog({
                   Editor Mode Active
                 </span>
                 <span className="text-[10px] text-muted-foreground italic">
-                  Drag markers to adjust field positions. Scroll to pan.
+                  Drag to move fields. Double-click text to edit trainee info.
                 </span>
               </div>
             </div>
@@ -3111,7 +4006,8 @@ export default function ParticipantDirectoryDialog({
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-bold truncate leading-tight">
                       {formatCertificateHolderDisplayName(
-                        certificatePreviews[activePreviewIndex]?.trainee || {}
+                        certificatePreviews[activePreviewIndex]?.trainee || {},
+                        { courtesyPosition: selectedCourtesyPosition }
                       )}
                     </div>
                     <div className="text-[10px] text-muted-foreground truncate">
@@ -3203,6 +4099,26 @@ export default function ParticipantDirectoryDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  <Label className="text-[10px] uppercase text-muted-foreground font-bold pt-1">
+                    Courtesy Title Position
+                  </Label>
+                  <Select
+                    value={selectedCourtesyPosition}
+                    onValueChange={(value) =>
+                      applyCourtesyPosition(value as CourtesyTitlePosition)
+                    }
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COURTESY_POSITION_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <p className="text-[9px] text-muted-foreground leading-snug">
                     Applies to the certificate name field. Use Save Override to keep it for this trainee.
                   </p>
@@ -3265,8 +4181,7 @@ export default function ParticipantDirectoryDialog({
                       onClick={() => {
                         const current = certificatePreviews[activePreviewIndex]
                         if (!current) return
-                        setSelectedTrainee(current.trainee as any)
-                        setIsTraineeDialogOpen(true)
+                        openEditTraineeDialog(current.trainee)
                       }}
                     >
                       <PenSquare className="h-3 w-3" />

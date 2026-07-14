@@ -8,7 +8,7 @@ import path from "path";
 import {
   resolveCertificatePageDimensions,
 } from "@/lib/certificate-page-sizes";
-import { formatCertificateHolderDisplayName } from "@/lib/certificate-name";
+import { formatCertificateHolderDisplayName, resolveCourtesyTitlePosition } from "@/lib/certificate-name";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -496,7 +496,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Prepare replacement values
-    const fullName = formatCertificateHolderDisplayName(trainee);
+    const fullName = formatCertificateHolderDisplayName(trainee, {
+      courtesyPosition: resolveCourtesyTitlePosition(fieldOverrides),
+    });
 
     // ✅ FIX: Use courseTitle if provided, otherwise fall back to courseName
     const finalCourseTitle = courseTitle || courseName;

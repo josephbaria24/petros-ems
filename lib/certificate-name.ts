@@ -8,6 +8,10 @@ export type CertificateNameParts = {
 
 export type CertificateFontFamily = "Helvetica" | "Times" | "Montserrat" | "Poppins"
 export type CertificateFontWeight = "normal" | "bold" | "extrabold"
+export type CourtesyTitlePosition = "before" | "after"
+
+/** Stored in certificate_layout_overrides.field_overrides */
+export const COURTESY_POSITION_OVERRIDE_KEY = "__courtesyPosition"
 
 export const CERTIFICATE_FONT_OPTIONS: { value: CertificateFontFamily; label: string }[] = [
   { value: "Helvetica", label: "Helvetica" },
@@ -22,13 +26,29 @@ export const CERTIFICATE_FONT_WEIGHT_OPTIONS: { value: CertificateFontWeight; la
   { value: "extrabold", label: "Extra Bold" },
 ]
 
+export const COURTESY_POSITION_OPTIONS: { value: CourtesyTitlePosition; label: string }[] = [
+  { value: "before", label: "Before name (default)" },
+  { value: "after", label: "After name" },
+]
+
 function capitalize(value?: string | null) {
   const trimmed = value?.trim()
   if (!trimmed) return ""
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
 }
 
-export function formatCertificateHolderDisplayName(trainee: CertificateNameParts) {
+export function resolveCourtesyTitlePosition(
+  fieldOverrides?: Record<string, any> | null
+): CourtesyTitlePosition {
+  const value = fieldOverrides?.[COURTESY_POSITION_OVERRIDE_KEY]
+  return value === "after" ? "after" : "before"
+}
+
+export function formatCertificateHolderDisplayName(
+  trainee: CertificateNameParts,
+  options?: { courtesyPosition?: CourtesyTitlePosition }
+) {
+  // Only use an explicitly stored courtesy title — never invent Mr./Ms. from gender
   const title = trainee.courtesy_title?.trim() || ""
   const first = capitalize(trainee.first_name)
   const middleRaw = trainee.middle_initial?.trim()
@@ -44,6 +64,11 @@ export function formatCertificateHolderDisplayName(trainee: CertificateNameParts
   const fullName = `${first} ${middle}${last}${suffix}`.replace(/\s+/g, " ").trim()
   if (!fullName) return title || "Trainee Name"
   if (!title) return fullName
+
+  const position = options?.courtesyPosition === "after" ? "after" : "before"
+  if (position === "after") {
+    return `${fullName} ${title}`.replace(/\s+/g, " ").trim()
+  }
   return `${title} ${fullName}`.replace(/\s+/g, " ").trim()
 }
 

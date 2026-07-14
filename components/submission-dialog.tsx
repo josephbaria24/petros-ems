@@ -2456,7 +2456,7 @@ const handleRestoreIdOriginal = async () => {
             id="courtesy_title"
             value={newDetails.courtesy_title}
             onChange={(e) => setNewDetails(prev => ({ ...prev, courtesy_title: e.target.value }))}
-            placeholder="Mr., Ms., Dr."
+            placeholder="Optional (e.g. Engr., Dr.)"
             className="h-9"
           />
         </div>
