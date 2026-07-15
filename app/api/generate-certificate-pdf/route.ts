@@ -23,6 +23,29 @@ const logPdf = (...args: any[]) => {
   if (DEBUG_PDF_LOGS) console.log(...args);
 };
 
+/** Headers only accept byte strings — strip fancy punctuation / non-ASCII from filenames. */
+function toAsciiFileName(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[^\x20-\x7E]/g, "")
+    .replace(/[<>:"/\\|?*]+/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "") || "certificate";
+}
+
+/** Helvetica/Times (WinAnsi) cannot encode curly quotes and similar Unicode punctuation. */
+function toWinAnsiSafeText(value: string) {
+  return value
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/\u00A0/g, " ");
+}
+
 
 function formatScheduleRange(dates: Date[]): string {
   if (!dates.length) return "";
@@ -496,7 +519,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Prepare replacement values
-    const fullName = formatCertificateHolderDisplayName(trainee);
+    const fullName = toWinAnsiSafeText(formatCertificateHolderDisplayName(trainee));
 
     // ✅ FIX: Use courseTitle if provided, otherwise fall back to courseName
     const finalCourseTitle = courseTitle || courseName;
@@ -510,8 +533,8 @@ export async function POST(req: NextRequest) {
 
     const replacements: Record<string, string> = {
       "{{trainee_name}}": fullName,
-      "{{course_name}}": courseName,
-      "{{course_title}}": finalCourseTitle,
+      "{{course_name}}": toWinAnsiSafeText(courseName || ""),
+      "{{course_title}}": toWinAnsiSafeText(finalCourseTitle || ""),
       "{{completion_date}}": computedGivenDate,  // still used in some templates
       "{{certificate_number}}": trainee.certificate_number || "",
       "{{batch_number}}": trainee.batch_number?.toString() || "",
@@ -575,6 +598,13 @@ export async function POST(req: NextRequest) {
           displayText = displayText.replace(new RegExp(key, 'g'), val);
         });
 
+        const fontFamily = typeof fo.fontFamily === "string" ? fo.fontFamily : field.fontFamily;
+        const fontWeight = typeof fo.fontWeight === "string" ? fo.fontWeight : field.fontWeight;
+        // Standard PDF fonts can't encode curly quotes / many Unicode chars
+        if (fontFamily !== "Montserrat" && fontFamily !== "Poppins") {
+          displayText = toWinAnsiSafeText(displayText);
+        }
+
         // base position with global offset
         let normX = field.x + offsetX;
         let normY = field.y + offsetY;
@@ -593,8 +623,6 @@ export async function POST(req: NextRequest) {
 
         const colorHex = typeof fo.color === "string" ? fo.color : field.color;
         const color = hexToRgb(colorHex || "#000000");
-        const fontFamily = typeof fo.fontFamily === "string" ? fo.fontFamily : field.fontFamily;
-        const fontWeight = typeof fo.fontWeight === "string" ? fo.fontWeight : field.fontWeight;
         const selectedFont = resolveFont(fontFamily, fontWeight, field.fontStyle);
 
         const lines = displayText.split('\n');
@@ -649,9 +677,10 @@ export async function POST(req: NextRequest) {
     const pdfBytes = await pdfDoc.save();
     logPdf("✅ PDF generated successfully, size:", pdfBytes.length, "bytes");
 
-    const fileName = isIDTemplate 
+    const rawFileName = isIDTemplate 
       ? `ID_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`
       : `Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`;
+    const fileName = toAsciiFileName(rawFileName);
 
     return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
