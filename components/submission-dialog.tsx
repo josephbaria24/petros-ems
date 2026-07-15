@@ -126,7 +126,7 @@ const [discountMode, setDiscountMode] = useState<'voucher' | 'manual'>('voucher'
   const [pvcIdFee, setPvcIdFee] = useState<number>(0);
 
 const [newDetails, setNewDetails] = useState({
-  courtesy_title: trainee?.courtesy_title || "",
+  professional_title: trainee?.professional_title || "",
   first_name: trainee?.first_name || "",
   middle_initial: trainee?.middle_initial || "",
   last_name: trainee?.last_name || "",
@@ -159,7 +159,7 @@ useEffect(() => {
 useEffect(() => {
   if (trainee) {
     setNewDetails({
-      courtesy_title: trainee.courtesy_title || "",
+      professional_title: trainee.professional_title || "",
       first_name: trainee.first_name || "",
       middle_initial: trainee.middle_initial || "",
       last_name: trainee.last_name || "",
@@ -1819,7 +1819,7 @@ const handleSavePersonalDetails = async () => {
     const { error } = await supabase
       .from("trainings")
       .update({
-        courtesy_title: newDetails.courtesy_title || null,
+        professional_title: newDetails.professional_title || null,
         first_name: newDetails.first_name,
         middle_initial: newDetails.middle_initial || null,
         last_name: newDetails.last_name,
@@ -2451,14 +2451,19 @@ const handleRestoreIdOriginal = async () => {
       {/* Name Section */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div className="space-y-2">
-          <Label htmlFor="courtesy_title" className="text-xs">Courtesy Title</Label>
+          <Label htmlFor="professional_title" className="text-xs">
+            Professional Title <span className="text-muted-foreground font-normal">(optional)</span>
+          </Label>
           <Input
-            id="courtesy_title"
-            value={newDetails.courtesy_title}
-            onChange={(e) => setNewDetails(prev => ({ ...prev, courtesy_title: e.target.value }))}
-            placeholder="Optional (e.g. Engr., Dr.)"
+            id="professional_title"
+            value={newDetails.professional_title}
+            onChange={(e) => setNewDetails(prev => ({ ...prev, professional_title: e.target.value }))}
+            placeholder="e.g. RN, MD, Engr."
             className="h-9"
           />
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            Appears at the end of the name on the certificate (e.g. Juan Dela Cruz, RN).
+          </p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="first_name" className="text-xs">First Name *</Label>
@@ -2731,12 +2736,12 @@ const handleRestoreIdOriginal = async () => {
         <div className="text-xs text-muted-foreground mb-1">Full Name</div>
         <div className="font-semibold text-base">
           {[
-            trainee?.courtesy_title,
             trainee?.first_name,
             trainee?.middle_initial && trainee?.middle_initial + '.',
             trainee?.last_name,
-            trainee?.suffix
-          ].filter(Boolean).join(' ') || 'N/A'}
+            trainee?.suffix,
+            trainee?.professional_title && `, ${trainee.professional_title}`,
+          ].filter(Boolean).join(' ').replace(/\s+,/g, ',') || 'N/A'}
         </div>
       </div>
 

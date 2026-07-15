@@ -134,7 +134,7 @@ export default function ACLSRegistrationForm() {
             return false
         }
         if (step === 3) {
-            if (!form.first_name || !form.last_name || !form.professional_title) {
+            if (!form.first_name || !form.last_name) {
                 toast.error("Please complete all required name fields")
                 return false
             }
@@ -423,16 +423,21 @@ export default function ACLSRegistrationForm() {
 
                                         <div>
                                             <Label htmlFor="professional_title" className="text-base">
-                                                6. PROFESSIONAL TITLE <span className="text-sm text-muted-foreground">(e.g. RN, MSN, MD)</span> <span className="text-red-600">*</span>
+                                                6. PROFESSIONAL TITLE{" "}
+                                                <span className="text-sm text-muted-foreground font-normal">(optional)</span>
                                             </Label>
                                             <Input
                                                 id="professional_title"
                                                 name="professional_title"
                                                 value={form.professional_title}
                                                 onChange={handleChange}
-                                                placeholder="RN"
+                                                placeholder="e.g. RN, MSN, MD"
                                                 className="mt-2"
                                             />
+                                            <p className="mt-1.5 text-sm text-muted-foreground">
+                                                If provided, this title will be added at the end of your name on the certificate
+                                                (e.g. Juan Dela Cruz, RN).
+                                            </p>
                                         </div>
                                     </div>
                                 </div>

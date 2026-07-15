@@ -394,7 +394,8 @@ export default function GuestTrainingRegistration() {
       last_name: existingData.last_name || "",
       middle_initial: existingData.middle_initial || "",
       suffix: existingData.suffix || "",
-      courtesy_title: existingData.courtesy_title || "",
+      courtesy_title: null,
+      professional_title: existingData.professional_title || "",
       email: existingData.email || "",
       phone_number: normalizeToLocalPhone(existingData.phone_number || ""),
       gender: existingData.gender || "",
@@ -1043,7 +1044,8 @@ export default function GuestTrainingRegistration() {
           ? form.payment_status || (resolvedPaymentMethod === "COUNTER" ? "pending" : "awaiting receipt")
           : (resolvedPaymentMethod === "COUNTER" ? "pending" : "awaiting receipt"),
         amount_paid: isEditMode ? form.amount_paid || 0 : 0,
-        courtesy_title: form.courtesy_title || mainData.courtesy_title || null,
+        courtesy_title: null,
+        professional_title: form.professional_title || mainData.professional_title || null,
         discounted_fee: discount > 0 ? (getApplicableFee() || 0) - discount : mainData.discounted_fee || null,
         has_discount: discount > 0 || !!mainData.has_discount,
         add_pvc_id: form.add_pvc_id || mainData.add_pvc_id || false,
@@ -1601,15 +1603,20 @@ export default function GuestTrainingRegistration() {
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="courtesy_title" className="text-sm font-medium">
-                          Courtesy Title
+                        <Label htmlFor="professional_title" className="text-sm font-medium">
+                          Professional Title <span className="text-muted-foreground font-normal">(optional)</span>
                         </Label>
                         <Input
-                          id="courtesy_title"
-                          name="courtesy_title"
+                          id="professional_title"
+                          name="professional_title"
+                          value={form.professional_title || ""}
                           onChange={handleChange}
-                          placeholder="Optional (e.g. Engr., Dr.)"
+                          placeholder="e.g. RN, MD, Engr."
                         />
+                        <p className="text-xs text-muted-foreground">
+                          If provided, this will appear at the end of your name on the certificate
+                          (e.g. Juan Dela Cruz, RN).
+                        </p>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="first_name" className="text-sm font-medium">First Name *</Label>

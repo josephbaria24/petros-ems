@@ -32,14 +32,10 @@ import {
 import {
   CERTIFICATE_FONT_OPTIONS,
   CERTIFICATE_FONT_WEIGHT_OPTIONS,
-  COURTESY_POSITION_OPTIONS,
-  COURTESY_POSITION_OVERRIDE_KEY,
   canvasFontFamily,
   formatCertificateHolderDisplayName,
-  resolveCourtesyTitlePosition,
   type CertificateFontFamily,
   type CertificateFontWeight,
-  type CourtesyTitlePosition,
 } from "@/lib/certificate-name"
 import {
   Tooltip,
@@ -65,7 +61,7 @@ interface DownloadTrainee {
   last_name: string
   middle_initial?: string
   suffix?: string
-  courtesy_title?: string | null
+  professional_title?: string | null
   picture_2x2_url?: string
   schedule_id: string
   status?: string
@@ -82,7 +78,7 @@ interface CertificateGenerationData {
   last_name: string;
   middle_initial?: string;
   suffix?: string;
-  courtesy_title?: string | null;
+  professional_title?: string | null;
   certificate_number: string;
   batch_number?: number;
   picture_2x2_url?: string;
@@ -123,7 +119,6 @@ interface Trainee {
   last_name: string
   middle_initial?: string | null
   suffix?: string | null
-  courtesy_title?: string | null
   professional_title?: string | null
   picture_2x2_url?: string | null
   id_picture_url?: string | null
@@ -172,7 +167,6 @@ const TRAINEE_DIRECTORY_SELECT = [
   "last_name",
   "middle_initial",
   "suffix",
-  "courtesy_title",
   "professional_title",
   "schedule_id",
   "picture_2x2_url",
@@ -462,7 +456,7 @@ export default function ParticipantDirectoryDialog({
     kind: "name" | "certificate_number" | "email" | "batch_number"
     overlayStyle: { left: number; top: number; minWidth: number }
     draft: {
-      courtesy_title: string
+      professional_title: string
       first_name: string
       middle_initial: string
       last_name: string
@@ -499,11 +493,6 @@ export default function ParticipantDirectoryDialog({
     return (templateField?.fontWeight as CertificateFontWeight) || "normal"
   }, [fieldOverrides, nameFieldIds, templateForViewer])
 
-  const selectedCourtesyPosition = useMemo<CourtesyTitlePosition>(
-    () => resolveCourtesyTitlePosition(fieldOverrides),
-    [fieldOverrides]
-  )
-
   const applyNameFontStyle = (
     patch: Partial<{ fontFamily: CertificateFontFamily; fontWeight: CertificateFontWeight }>
   ) => {
@@ -523,13 +512,6 @@ export default function ParticipantDirectoryDialog({
       })
       return next
     })
-  }
-
-  const applyCourtesyPosition = (position: CourtesyTitlePosition) => {
-    setFieldOverrides((prev) => ({
-      ...prev,
-      [COURTESY_POSITION_OVERRIDE_KEY]: position,
-    }))
   }
 
   // Load Google fonts used by certificate canvas preview
@@ -696,9 +678,7 @@ export default function ParticipantDirectoryDialog({
       year: "numeric",
     })
 
-    const fullName = formatCertificateHolderDisplayName(trainee, {
-      courtesyPosition: resolveCourtesyTitlePosition(fieldOverrides),
-    })
+    const fullName = formatCertificateHolderDisplayName(trainee)
     return raw
       .replace(/\{\{trainee_name\}\}/g, fullName || "Trainee Name")
       .replace(/\{\{course_name\}\}/g, courseName)
@@ -1747,10 +1727,9 @@ export default function ParticipantDirectoryDialog({
           // Keep only the override for the currently selected template type if available
           if (!item.override_template_type || item.override_template_type === selectedTemplateType) {
             const fromTrainings = trainees.find((t) => t.id === item.training_id)
-            // Never invent Mr./Ms. from gender — only use the stored trainings.courtesy_title
             newMap.set(item.training_id, {
               ...(item as CertificateGenerationData),
-              courtesy_title: fromTrainings?.courtesy_title || null,
+              professional_title: fromTrainings?.professional_title || null,
             })
           }
         })
@@ -1821,7 +1800,7 @@ export default function ParticipantDirectoryDialog({
               last_name: genData.last_name,
               middle_initial: genData.middle_initial,
               suffix: genData.suffix,
-              courtesy_title: trainees.find((t) => t.id === traineeId)?.courtesy_title || null,
+              professional_title: trainees.find((t) => t.id === traineeId)?.professional_title || null,
               picture_2x2_url: genData.picture_2x2_url,
               certificate_number: genData.certificate_number,
               batch_number: genData.batch_number,
@@ -2531,7 +2510,7 @@ export default function ParticipantDirectoryDialog({
                 last_name: saved.last_name,
                 middle_initial: saved.middle_initial || undefined,
                 suffix: saved.suffix || undefined,
-                courtesy_title: saved.courtesy_title,
+                professional_title: saved.professional_title,
                 email: saved.email || undefined,
                 certificate_number: saved.certificate_number || undefined,
                 picture_2x2_url: saved.picture_2x2_url || undefined,
@@ -2553,7 +2532,7 @@ export default function ParticipantDirectoryDialog({
           last_name: saved.last_name,
           middle_initial: saved.middle_initial || undefined,
           suffix: saved.suffix || undefined,
-          courtesy_title: saved.courtesy_title,
+          professional_title: saved.professional_title,
           certificate_number: saved.certificate_number || existing.certificate_number,
           picture_2x2_url: saved.picture_2x2_url || undefined,
           batch_number: saved.batch_number || undefined,
@@ -2622,7 +2601,7 @@ export default function ParticipantDirectoryDialog({
         minWidth: kind === "name" ? 300 : 220,
       },
       draft: {
-        courtesy_title: trainee.courtesy_title || "",
+        professional_title: trainee.professional_title || "",
         first_name: trainee.first_name || "",
         middle_initial: trainee.middle_initial || "",
         last_name: trainee.last_name || "",
@@ -2644,7 +2623,7 @@ export default function ParticipantDirectoryDialog({
     const updates: Record<string, unknown> =
       inlineFieldEdit.kind === "name"
         ? {
-            courtesy_title: draft.courtesy_title.trim() || null,
+            professional_title: draft.professional_title.trim() || null,
             first_name: draft.first_name.trim(),
             middle_initial: draft.middle_initial.trim() || null,
             last_name: draft.last_name.trim(),
@@ -2701,12 +2680,11 @@ export default function ParticipantDirectoryDialog({
     console.log("Submitting update for:", selectedTrainee)
 
     const updates: Record<string, unknown> = {
-      courtesy_title: selectedTrainee.courtesy_title || null,
+      professional_title: selectedTrainee.professional_title || null,
       first_name: selectedTrainee.first_name,
       last_name: selectedTrainee.last_name,
       middle_initial: selectedTrainee.middle_initial || null,
       suffix: selectedTrainee.suffix || null,
-      professional_title: selectedTrainee.professional_title || null,
       email: selectedTrainee.email || null,
       phone_number: selectedTrainee.phone_number || null,
       gender: selectedTrainee.gender || null,
@@ -3208,21 +3186,19 @@ export default function ParticipantDirectoryDialog({
                 <div className="space-y-3">
                   <h4 className="text-sm font-semibold border-b pb-1">Personal</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label>Courtesy Title</Label>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>
+                        Professional Title{" "}
+                        <span className="text-muted-foreground font-normal">(optional)</span>
+                      </Label>
                       <Input
-                        placeholder="Optional (e.g. Engr., Dr.)"
-                        value={selectedTrainee.courtesy_title || ""}
-                        onChange={(e) => patchSelectedTrainee("courtesy_title", e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Professional Title</Label>
-                      <Input
-                        placeholder="RN, MD, etc."
+                        placeholder="e.g. RN, MD, Engr."
                         value={selectedTrainee.professional_title || ""}
                         onChange={(e) => patchSelectedTrainee("professional_title", e.target.value)}
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Appears at the end of the name on the certificate (e.g. Juan Dela Cruz, RN).
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label>First Name</Label>
@@ -3257,10 +3233,7 @@ export default function ParticipantDirectoryDialog({
                       <Label>Gender</Label>
                       <Select
                         value={selectedTrainee.gender || undefined}
-                        onValueChange={(value) => {
-                          // Gender must never auto-fill courtesy title (Mr./Ms.)
-                          patchSelectedTrainee("gender", value)
-                        }}
+                        onValueChange={(value) => patchSelectedTrainee("gender", value)}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select gender" />
@@ -3807,18 +3780,19 @@ export default function ParticipantDirectoryDialog({
 
                           {inlineFieldEdit.kind === "name" ? (
                             <div className="grid grid-cols-2 gap-2">
-                              <div className="space-y-1">
-                                <Label className="text-[10px]">Courtesy</Label>
+                              <div className="space-y-1 col-span-2">
+                                <Label className="text-[10px]">Professional Title (optional)</Label>
                                 <Input
                                   className="h-8 text-xs"
                                   autoFocus
-                                  value={inlineFieldEdit.draft.courtesy_title}
+                                  placeholder="e.g. RN, MD"
+                                  value={inlineFieldEdit.draft.professional_title}
                                   onChange={(e) =>
                                     setInlineFieldEdit((prev) =>
                                       prev
                                         ? {
                                             ...prev,
-                                            draft: { ...prev.draft, courtesy_title: e.target.value },
+                                            draft: { ...prev.draft, professional_title: e.target.value },
                                           }
                                         : prev
                                     )
@@ -3828,6 +3802,9 @@ export default function ParticipantDirectoryDialog({
                                     if (e.key === "Escape") setInlineFieldEdit(null)
                                   }}
                                 />
+                                <p className="text-[9px] text-muted-foreground">
+                                  Added at the end of the name on the certificate.
+                                </p>
                               </div>
                               <div className="space-y-1">
                                 <Label className="text-[10px]">Suffix</Label>
@@ -4006,8 +3983,7 @@ export default function ParticipantDirectoryDialog({
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-bold truncate leading-tight">
                       {formatCertificateHolderDisplayName(
-                        certificatePreviews[activePreviewIndex]?.trainee || {},
-                        { courtesyPosition: selectedCourtesyPosition }
+                        certificatePreviews[activePreviewIndex]?.trainee || {}
                       )}
                     </div>
                     <div className="text-[10px] text-muted-foreground truncate">
@@ -4099,28 +4075,8 @@ export default function ParticipantDirectoryDialog({
                       ))}
                     </SelectContent>
                   </Select>
-                  <Label className="text-[10px] uppercase text-muted-foreground font-bold pt-1">
-                    Courtesy Title Position
-                  </Label>
-                  <Select
-                    value={selectedCourtesyPosition}
-                    onValueChange={(value) =>
-                      applyCourtesyPosition(value as CourtesyTitlePosition)
-                    }
-                  >
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {COURTESY_POSITION_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                   <p className="text-[9px] text-muted-foreground leading-snug">
-                    Applies to the certificate name field. Use Save Override to keep it for this trainee.
+                    Applies to the certificate name field. Professional title is always shown at the end of the name when set. Use Save Override to keep font settings for this trainee.
                   </p>
                 </div>
 

@@ -1,4 +1,6 @@
 export type CertificateNameParts = {
+  professional_title?: string | null
+  /** @deprecated Prefer professional_title; kept for legacy data only */
   courtesy_title?: string | null
   first_name?: string | null
   middle_initial?: string | null
@@ -8,10 +10,6 @@ export type CertificateNameParts = {
 
 export type CertificateFontFamily = "Helvetica" | "Times" | "Montserrat" | "Poppins"
 export type CertificateFontWeight = "normal" | "bold" | "extrabold"
-export type CourtesyTitlePosition = "before" | "after"
-
-/** Stored in certificate_layout_overrides.field_overrides */
-export const COURTESY_POSITION_OVERRIDE_KEY = "__courtesyPosition"
 
 export const CERTIFICATE_FONT_OPTIONS: { value: CertificateFontFamily; label: string }[] = [
   { value: "Helvetica", label: "Helvetica" },
@@ -26,30 +24,23 @@ export const CERTIFICATE_FONT_WEIGHT_OPTIONS: { value: CertificateFontWeight; la
   { value: "extrabold", label: "Extra Bold" },
 ]
 
-export const COURTESY_POSITION_OPTIONS: { value: CourtesyTitlePosition; label: string }[] = [
-  { value: "before", label: "Before name (default)" },
-  { value: "after", label: "After name" },
-]
-
 function capitalize(value?: string | null) {
   const trimmed = value?.trim()
   if (!trimmed) return ""
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
 }
 
-export function resolveCourtesyTitlePosition(
-  fieldOverrides?: Record<string, any> | null
-): CourtesyTitlePosition {
-  const value = fieldOverrides?.[COURTESY_POSITION_OVERRIDE_KEY]
-  return value === "after" ? "after" : "before"
+/** Optional credential shown after the name on certificates (e.g. RN, MD). */
+export function resolveProfessionalTitle(trainee: CertificateNameParts) {
+  return trainee.professional_title?.trim() || ""
 }
 
-export function formatCertificateHolderDisplayName(
-  trainee: CertificateNameParts,
-  options?: { courtesyPosition?: CourtesyTitlePosition }
-) {
-  // Only use an explicitly stored courtesy title — never invent Mr./Ms. from gender
-  const title = trainee.courtesy_title?.trim() || ""
+/**
+ * Formats holder name for certificates.
+ * Professional title is appended at the end as an extension when present.
+ * Example: "Edward D. Morales, RN"
+ */
+export function formatCertificateHolderDisplayName(trainee: CertificateNameParts) {
   const first = capitalize(trainee.first_name)
   const middleRaw = trainee.middle_initial?.trim()
   const middle = middleRaw
@@ -62,14 +53,11 @@ export function formatCertificateHolderDisplayName(
     : ""
 
   const fullName = `${first} ${middle}${last}${suffix}`.replace(/\s+/g, " ").trim()
-  if (!fullName) return title || "Trainee Name"
-  if (!title) return fullName
+  if (!fullName) return "Trainee Name"
 
-  const position = options?.courtesyPosition === "after" ? "after" : "before"
-  if (position === "after") {
-    return `${fullName} ${title}`.replace(/\s+/g, " ").trim()
-  }
-  return `${title} ${fullName}`.replace(/\s+/g, " ").trim()
+  const professional = resolveProfessionalTitle(trainee)
+  if (!professional) return fullName
+  return `${fullName}, ${professional}`.replace(/\s+/g, " ").trim()
 }
 
 export function canvasFontFamily(family?: string | null) {
