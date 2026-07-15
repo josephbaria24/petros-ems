@@ -48,9 +48,7 @@ export function formatCertificateHolderDisplayName(trainee: CertificateNameParts
     : ""
   const last = capitalize(trainee.last_name)
   const suffixRaw = trainee.suffix?.trim()
-  const suffix = suffixRaw
-    ? ` ${suffixRaw.endsWith(".") ? suffixRaw : `${suffixRaw}.`}`
-    : ""
+  const suffix = suffixRaw ? ` ${suffixRaw}` : ""
 
   const fullName = `${first} ${middle}${last}${suffix}`.replace(/\s+/g, " ").trim()
   if (!fullName) return "Trainee Name"
