@@ -16,7 +16,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table"
-import { ArrowUpDown, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode, Download } from "lucide-react"
+import { ArrowUpDown, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode, Download, CalendarClock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -119,6 +119,29 @@ type Participant = {
   totalTrainingAmount: number
   totalAmountPaid: number
   sessionDays: number
+}
+
+/** Empty schedules starting in 1 day, or ongoing with no participants — offer reschedule. */
+function shouldOfferReschedule(participant: Participant): boolean {
+  if ((participant.submissionCount || 0) > 0) return false
+  const status = (participant.status || "").toLowerCase()
+  if (status === "cancelled" || status === "finished") return false
+
+  if (status === "ongoing") return true
+
+  if (status === "planned" || status === "confirmed") {
+    if (!participant.sortDate) return false
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const start = new Date(participant.sortDate)
+    start.setHours(0, 0, 0, 0)
+    const dayMs = 24 * 60 * 60 * 1000
+    const daysUntilStart = Math.round((start.getTime() - today.getTime()) / dayMs)
+    // Only when there is exactly 1 day left before the training starts
+    return daysUntilStart === 1
+  }
+
+  return false
 }
 
 interface ParticipantsTableProps {
@@ -334,6 +357,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const [viewDialogOpen, setViewDialogOpen] = React.useState(false)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
   const [cancelDialogOpen, setCancelDialogOpen] = React.useState(false)
+  const [reschedulePromptOpen, setReschedulePromptOpen] = React.useState(false)
   const [selectedParticipant, setSelectedParticipant] = React.useState<Participant | null>(null)
   const [isDeleting, setIsDeleting] = React.useState(false)
   const [isCancelling, setIsCancelling] = React.useState(false)
@@ -476,6 +500,18 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const handleEdit = (participant: Participant) => {
     setSelectedParticipant(participant)
     setEditDialogOpen(true)
+  }
+
+  const handleReschedulePrompt = (participant: Participant) => {
+    setSelectedParticipant(participant)
+    setReschedulePromptOpen(true)
+  }
+
+  const handleConfirmReschedule = () => {
+    setReschedulePromptOpen(false)
+    if (selectedParticipant) {
+      setEditDialogOpen(true)
+    }
   }
 
   const handleManageEvaluations = (participant: Participant) => {
@@ -863,6 +899,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
       header: "Status",
       cell: ({ row }) => {
         const statusValue = row.getValue("status") as string
+        const participant = row.original
+        const showReschedule = shouldOfferReschedule(participant)
 
         // Color-coded badges based on status
         const statusStyles = {
@@ -876,9 +914,27 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         const style = statusStyles[statusValue as keyof typeof statusStyles] || "bg-gray-100 text-gray-800 border-gray-300"
 
         return (
-          <Badge className={`${style} border`}>
-            {statusValue.charAt(0).toUpperCase() + statusValue.slice(1)}
-          </Badge>
+          <div className="flex flex-col items-start gap-1.5">
+            <Badge className={`${style} border`}>
+              {statusValue.charAt(0).toUpperCase() + statusValue.slice(1)}
+            </Badge>
+            {showReschedule && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 gap-1 px-2 text-[10px] border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 hover:text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleReschedulePrompt(participant)
+                }}
+                title="No participants yet — consider rescheduling"
+              >
+                <CalendarClock className="h-3 w-3" />
+                Reschedule?
+              </Button>
+            )}
+          </div>
         )
       },
     },
@@ -1417,6 +1473,35 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         scheduleId={selectedParticipant?.id || null}
         onScheduleUpdated={fetchTrainings}
       />
+
+      <AlertDialog open={reschedulePromptOpen} onOpenChange={setReschedulePromptOpen}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reschedule this training?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  <span className="font-medium text-foreground">
+                    {selectedParticipant?.course}
+                  </span>
+                  {" "}({selectedParticipant?.schedule || "No dates"}) still has{" "}
+                  <span className="font-medium text-foreground">no participants</span>.
+                </p>
+                <p>
+                  Would you like to reschedule it to a new date?
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Not now</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmReschedule}>
+              Yes, reschedule
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Cancel Schedule Options Dialog */}
       <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
         <AlertDialogContent className="sm:max-w-lg">
