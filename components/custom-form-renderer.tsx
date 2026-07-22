@@ -408,6 +408,12 @@ export function CustomFormRenderer({
               <Upload className="h-5 w-5 text-primary" />
               <h3 className="font-bold text-lg">{comp.label}</h3>
             </div>
+            {uploadFields.includes('photo') && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <strong>2x2 photo instruction:</strong> Please upload a passport-style photo with a{" "}
+                <strong>plain white background</strong> only. This photo is used on your training certificate and ID card.
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {uploadFields.includes('govt_id') && (
                 <div className={`border-2 border-dashed rounded-lg p-6 text-center bg-muted/30 ${validationErrors.govt_id ? "border-red-500" : ""}`}>
@@ -428,7 +434,12 @@ export function CustomFormRenderer({
               {uploadFields.includes('photo') && (
                 <div className={`border-2 border-dashed rounded-lg p-6 text-center bg-muted/30 ${validationErrors.photo ? "border-red-500" : ""}`}>
                   <p className="text-sm font-bold">2x2 Picture</p>
-                  <p className="text-[10px] text-muted-foreground mb-3 italic">White background preferred</p>
+                  <p className="text-[10px] text-amber-700 mb-1 font-semibold">
+                    Upload with a plain white background only
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mb-3 italic">
+                    Required for your training certificate and ID card
+                  </p>
                   <Button 
                     variant={formData.photo ? "secondary" : "outline"} 
                     size="sm" 

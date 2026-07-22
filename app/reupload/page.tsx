@@ -363,6 +363,9 @@ const validateAndFetchTrainee = async () => {
                       <label htmlFor="2x2-upload" className="cursor-pointer">
                         <Upload className="h-12 w-12 mx-auto text-gray-400 mb-2" />
                         <p className="text-sm text-gray-600">Click to upload 2x2 photo</p>
+                        <p className="text-xs text-amber-700 mt-1 font-semibold">
+                          Must have a plain white background
+                        </p>
                         <p className="text-xs text-gray-400 mt-1">PNG, JPG (max 5MB)</p>
                       </label>
                     </div>
@@ -376,6 +379,7 @@ const validateAndFetchTrainee = async () => {
                 <strong>Photo Requirements:</strong>
                 <ul className="list-disc list-inside mt-2 text-sm space-y-1">
                   <li>Clear, well-lit photos</li>
+                  <li><strong>2x2 photo must have a plain white background</strong></li>
                   <li>Face must be clearly visible</li>
                   <li>No blurry or pixelated images</li>
                   <li>Professional appearance</li>

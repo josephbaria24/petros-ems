@@ -1938,7 +1938,7 @@ export default function GuestTrainingRegistration() {
                         </p>
                         <ul className="text-sm text-amber-800 list-disc list-inside space-y-1 mt-2">
                           <li>Clear and high-quality (not blurry)</li>
-                          <li>Recent photo with white or light-colored background</li>
+                          <li><strong>Must have a plain white background</strong> (required for certificate &amp; ID card)</li>
                           <li>Formal attire (business casual or professional)</li>
                           <li>Face clearly visible (no sunglasses or face coverings)</li>
                           <li>Proper 2x2 dimensions (passport-style photo)</li>
@@ -1984,7 +1984,7 @@ export default function GuestTrainingRegistration() {
                     <div className="space-y-3">
                       <Label htmlFor="picture_2x2" className="text-sm font-medium">
                         2x2 Photo *
-                        <span className="text-amber-600 ml-1">(For Certificate & ID)</span>
+                        <span className="text-amber-600 ml-1">(For Certificate &amp; ID — white background required)</span>
                       </Label>
                       <div className="border-2 border-dashed border-amber-300 rounded-xl p-6 text-center hover:border-amber-500 transition-colors bg-amber-50/30">
                         <Input
@@ -2017,7 +2017,10 @@ export default function GuestTrainingRegistration() {
                               </div>
                               <p className="text-sm font-medium text-gray-900">Click to upload your 2x2 photo</p>
                               <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 10MB</p>
-                              <p className="text-xs text-amber-600 mt-2 font-medium">
+                              <p className="text-xs text-amber-700 mt-2 font-semibold">
+                                Use a plain white background only
+                              </p>
+                              <p className="text-xs text-amber-600 mt-1 font-medium">
                                 ⚠️ This will appear on your certificate
                               </p>
                             </div>

@@ -1981,12 +1981,17 @@ export default function ParticipantDirectoryDialog({
       if (!photoRes.ok) {
         throw new Error("Could not load the 2×2 photo for processing")
       }
-      const source = await photoRes.blob()
+      const rawSource = await photoRes.blob()
+
+      // Downscale large camera photos first — keeps AI output under hosting upload limits (413)
+      setBgRemoveProgress("Preparing photo…")
+      const { compressPngBlob } = await import("@/lib/compress-image-blob")
+      const source = await compressPngBlob(rawSource, 1280)
 
       setBgRemoveProgress("Removing background…")
       // publicPath must be same-origin: staticimgly.com does not send CORS headers
       const publicPath = `${window.location.origin}/bg-removal-data/`
-      const resultBlob = await removeBackground(source, {
+      const rawResultBlob = await removeBackground(source, {
         publicPath,
         model: "isnet_fp16",
         output: {
@@ -1999,6 +2004,9 @@ export default function ParticipantDirectoryDialog({
         },
       })
 
+      setBgRemoveProgress("Optimizing photo for upload…")
+      const resultBlob = await compressPngBlob(rawResultBlob, 1024)
+
       setBgRemoveProgress("Uploading…")
       const formData = new FormData()
       formData.append("image", resultBlob, `2x2_nobg_${Date.now()}.png`)
@@ -2007,6 +2015,11 @@ export default function ParticipantDirectoryDialog({
         body: formData,
       })
       if (!uploadRes.ok) {
+        if (uploadRes.status === 413) {
+          throw new Error(
+            "Processed photo is still too large for the server. Try cropping the photo smaller first, then remove the background again.",
+          )
+        }
         throw new Error("Failed to upload processed photo")
       }
       const uploadData = await uploadRes.json()
