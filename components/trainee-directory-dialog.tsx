@@ -17,7 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { tmsDb } from "@/lib/supabase-client"
-import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Eye, ListOrdered, Crop } from "lucide-react"
+import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Eye, ListOrdered, Crop, Eraser, Minus, Plus, RotateCcw } from "lucide-react"
 import { Slider } from "@/components/ui/slider"
 import { ImageCropDialog } from "@/components/image-crop-dialog"
 import { exportTraineeExcel } from "@/lib/exports/export-excel"
@@ -63,6 +63,7 @@ interface DownloadTrainee {
   suffix?: string
   professional_title?: string | null
   picture_2x2_url?: string
+  picture_2x2_original?: string | null
   schedule_id: string
   status?: string
   email?: string
@@ -121,6 +122,7 @@ interface Trainee {
   suffix?: string | null
   professional_title?: string | null
   picture_2x2_url?: string | null
+  picture_2x2_original?: string | null
   id_picture_url?: string | null
   schedule_id: string
   status?: string | null
@@ -170,6 +172,7 @@ const TRAINEE_DIRECTORY_SELECT = [
   "professional_title",
   "schedule_id",
   "picture_2x2_url",
+  "picture_2x2_original",
   "id_picture_url",
   "status",
   "email",
@@ -367,6 +370,8 @@ export default function ParticipantDirectoryDialog({
   const [showPhotoCropDialog, setShowPhotoCropDialog] = useState(false)
   const [cropExistingPhoto, setCropExistingPhoto] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [isRemovingBg, setIsRemovingBg] = useState(false)
+  const [bgRemoveProgress, setBgRemoveProgress] = useState("")
   const [selectedTemplateType, setSelectedTemplateType] = useState<TemplateType>("completion")
   const { toast } = useToast()
   const [isGenerating, setIsGenerating] = useState(false)
@@ -691,6 +696,18 @@ export default function ParticipantDirectoryDialog({
       .replace(/\{\{schedule_range\}\}/g, displayScheduleRange)
   }
 
+  const previewTrainee = certificatePreviews[activePreviewIndex]?.trainee
+  const previewRedrawKey = [
+    previewTrainee?.id ?? "",
+    previewTrainee?.picture_2x2_url ?? "",
+    previewTrainee?.first_name ?? "",
+    previewTrainee?.last_name ?? "",
+    previewTrainee?.middle_initial ?? "",
+    previewTrainee?.suffix ?? "",
+    previewTrainee?.professional_title ?? "",
+    previewTrainee?.certificate_number ?? "",
+  ].join("|")
+
   // Draw draggable preview (client-side) so you can drag instead of sliders
   useEffect(() => {
     if (!isCertificateViewerOpen) return
@@ -708,6 +725,8 @@ export default function ParticipantDirectoryDialog({
     canvas.height = canvasSize.h
     const ctx = canvas.getContext("2d")
     if (!ctx) return
+
+    let cancelled = false
 
     const drawImageCover = (
       image: HTMLImageElement,
@@ -729,17 +748,27 @@ export default function ParticipantDirectoryDialog({
       ctx.drawImage(image, sx, sy, sw, sh, dx, dy, dWidth, dHeight)
     }
 
+    const photoUrl = current.trainee.picture_2x2_url || ""
+    // Same-origin proxy avoids CORS and ensures a fresh fetch after BG removal / crop
+    const photoSrc = photoUrl
+      ? `/api/image-proxy?url=${encodeURIComponent(photoUrl)}&t=${encodeURIComponent(photoUrl)}`
+      : ""
+
     const img = new Image()
     img.crossOrigin = "anonymous"
     img.onload = () => {
+      if (cancelled) return
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
 
       const traineePhoto = new Image()
-      const hasPhoto = !!current.trainee.picture_2x2_url
+      const hasPhoto = !!photoSrc
 
       const fields = activeTemplate.fields
-      const drawFields = () => fields.forEach((f) => {
+      const drawFields = (photoEl?: HTMLImageElement) => {
+        if (cancelled) return
+        const photoToDraw = photoEl || traineePhoto
+        fields.forEach((f) => {
         const fo = fieldOverrides[f.id] || {}
         let normX = f.x + layoutOffset.offsetX
         let normY = f.y + layoutOffset.offsetY
@@ -762,12 +791,12 @@ export default function ParticipantDirectoryDialog({
           ctx.setLineDash([])
 
           // Draw actual trainee photo if available and loaded
-          if (hasPhoto && (traineePhoto.complete && (traineePhoto.naturalWidth || traineePhoto.width))) {
+          if (hasPhoto && (photoToDraw.complete && (photoToDraw.naturalWidth || photoToDraw.width))) {
             ctx.save()
             ctx.beginPath()
             ctx.rect(x, y, w, h)
             ctx.clip()
-            drawImageCover(traineePhoto, x, y, w, h)
+            drawImageCover(photoToDraw, x, y, w, h)
             ctx.restore()
           } else {
             // Fallback placeholder (helps debug CORS / missing photos)
@@ -822,66 +851,55 @@ export default function ParticipantDirectoryDialog({
           ctx.restore()
         }
       })
+      }
 
       if (hasPhoto) {
         traineePhoto.onload = () => {
+          if (cancelled) return
           // redraw background and fields once photo is loaded
           ctx.clearRect(0, 0, canvas.width, canvas.height)
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-          drawFields()
+          drawFields(traineePhoto)
         }
         traineePhoto.onerror = () => {
-          // Try again without any special settings (some hosts break when crossOrigin is set)
-          // If this still fails, we keep the placeholder text in the photo box.
+          if (cancelled) return
+          // Direct URL fallback if proxy fails
           try {
             const retry = new Image()
+            retry.crossOrigin = "anonymous"
             retry.onload = () => {
-              // swap in successful image and redraw
-              ; (traineePhoto as any).src = retry.src
+              if (cancelled) return
               ctx.clearRect(0, 0, canvas.width, canvas.height)
               ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-              // drawFields will now see retry-loaded dimensions via traineePhoto.complete check on next tick
-              drawImageCover(retry, 0, 0, 1, 1) // no-op warm-up
-              // draw with retry directly
-              fields.forEach((f) => {
-                if (!f.value?.includes("{{trainee_picture}}")) return
-                const fo = fieldOverrides[f.id] || {}
-                let normX = f.x + layoutOffset.offsetX
-                let normY = f.y + layoutOffset.offsetY
-                if (typeof fo.x === "number") normX = fo.x
-                if (typeof fo.y === "number") normY = fo.y
-                const x = normX * canvas.width
-                const y = normY * canvas.height
-                const size = (typeof fo.fontSize === "number" ? fo.fontSize : f.fontSize) * canvas.height
-                ctx.save()
-                ctx.beginPath()
-                ctx.rect(x, y, size, size)
-                ctx.clip()
-                drawImageCover(retry, x, y, size, size)
-                ctx.restore()
-              })
-              drawFields()
+              drawFields(retry)
             }
             retry.onerror = () => {
+              if (cancelled) return
               drawFields()
             }
-            retry.src = current.trainee.picture_2x2_url!
+            retry.src = photoUrl
           } catch {
             drawFields()
           }
         }
-        traineePhoto.src = current.trainee.picture_2x2_url!
+        traineePhoto.src = photoSrc
       }
 
       drawFields()
     }
     img.src = activeTemplate.imageUrl
+
+    return () => {
+      cancelled = true
+    }
   }, [
     isCertificateViewerOpen,
     activePreviewIndex,
+    previewRedrawKey,
     templateForViewer,
     backTemplateForViewer,
     idCardSide,
+    isIdTemplateSelected,
     fieldOverrides,
     layoutOffset.offsetX,
     layoutOffset.offsetY,
@@ -1861,6 +1879,47 @@ export default function ParticipantDirectoryDialog({
     }
   }
 
+  const applyUpdatedPhotoUrl = (
+    traineeId: string,
+    photoUrl: string,
+    extras?: { picture_2x2_original?: string | null },
+  ) => {
+    const patch = {
+      picture_2x2_url: photoUrl,
+      ...(extras?.picture_2x2_original !== undefined
+        ? { picture_2x2_original: extras.picture_2x2_original }
+        : {}),
+    }
+    setSelectedTrainee((prev: any) =>
+      prev?.id === traineeId ? { ...prev, ...patch } : prev
+    )
+    setTrainees((prev) =>
+      prev.map((t) => (t.id === traineeId ? { ...t, ...patch } : t))
+    )
+    setCertificatePreviews((prev) =>
+      prev.map((item) =>
+        item.trainee.id === traineeId
+          ? { ...item, trainee: { ...item.trainee, ...patch }, url: null }
+          : item
+      )
+    )
+    setGenerationDataMap((prev) => {
+      const next = new Map(prev)
+      const existing = next.get(traineeId)
+      if (existing) {
+        next.set(traineeId, { ...existing, picture_2x2_url: photoUrl })
+      }
+      return next
+    })
+    setCertificateCache((prev) => {
+      const next = new Map(prev)
+      for (const key of Array.from(next.keys())) {
+        if (key.startsWith(`${traineeId}:`)) next.delete(key)
+      }
+      return next
+    })
+  }
+
   const handleSaveCroppedPhoto = async (croppedImageUrl: string) => {
     if (!selectedTrainee) return
 
@@ -1880,28 +1939,7 @@ export default function ParticipantDirectoryDialog({
         return
       }
 
-      setSelectedTrainee((prev: any) => ({
-        ...prev,
-        picture_2x2_url: croppedImageUrl,
-      }))
-      setTrainees((prev) =>
-        prev.map((t) => (t.id === selectedTrainee.id ? { ...t, picture_2x2_url: croppedImageUrl } : t))
-      )
-      setCertificatePreviews((prev) =>
-        prev.map((item) =>
-          item.trainee.id === selectedTrainee.id
-            ? { ...item, trainee: { ...item.trainee, picture_2x2_url: croppedImageUrl }, url: null }
-            : item
-        )
-      )
-      setGenerationDataMap((prev) => {
-        const next = new Map(prev)
-        const existing = next.get(selectedTrainee.id)
-        if (existing) {
-          next.set(selectedTrainee.id, { ...existing, picture_2x2_url: croppedImageUrl })
-        }
-        return next
-      })
+      applyUpdatedPhotoUrl(selectedTrainee.id, croppedImageUrl)
 
       toast({
         title: "Success",
@@ -1912,6 +1950,150 @@ export default function ParticipantDirectoryDialog({
         variant: "destructive",
         title: "Error",
         description: error?.message || "Failed to save cropped picture",
+      })
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleRemovePhotoBackground = async () => {
+    const current = certificatePreviews[activePreviewIndex]
+    const trainee = current?.trainee
+    if (!trainee?.id || !trainee.picture_2x2_url) {
+      toast({
+        variant: "destructive",
+        title: "No photo",
+        description: "This participant has no 2x2 photo to process.",
+      })
+      return
+    }
+    if (!isIdTemplateSelected) return
+
+    setIsRemovingBg(true)
+    setBgRemoveProgress("Loading AI model (first time may take a minute)…")
+    try {
+      const { removeBackground } = await import("@imgly/background-removal")
+
+      // Always load via same-origin proxy — direct Supabase/CDN fetches can fail CORS
+      const photoRes = await fetch(
+        `/api/image-proxy?url=${encodeURIComponent(trainee.picture_2x2_url)}`,
+      )
+      if (!photoRes.ok) {
+        throw new Error("Could not load the 2×2 photo for processing")
+      }
+      const source = await photoRes.blob()
+
+      setBgRemoveProgress("Removing background…")
+      // publicPath must be same-origin: staticimgly.com does not send CORS headers
+      const publicPath = `${window.location.origin}/bg-removal-data/`
+      const resultBlob = await removeBackground(source, {
+        publicPath,
+        model: "isnet_fp16",
+        output: {
+          format: "image/png",
+        },
+        progress: (key, current, total) => {
+          if (total > 0) {
+            setBgRemoveProgress(`Downloading model: ${key} (${Math.round((current / total) * 100)}%)`)
+          }
+        },
+      })
+
+      setBgRemoveProgress("Uploading…")
+      const formData = new FormData()
+      formData.append("image", resultBlob, `2x2_nobg_${Date.now()}.png`)
+      const uploadRes = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      })
+      if (!uploadRes.ok) {
+        throw new Error("Failed to upload processed photo")
+      }
+      const uploadData = await uploadRes.json()
+      const photoUrl = uploadData.url as string
+      if (!photoUrl) throw new Error("Upload did not return a URL")
+
+      // Keep a backup so "Revert to original" can restore the pre-BG-removal photo
+      const originalBackup = trainee.picture_2x2_original || trainee.picture_2x2_url
+      const updatePayload: Record<string, string> = { picture_2x2_url: photoUrl }
+      if (!trainee.picture_2x2_original && trainee.picture_2x2_url) {
+        updatePayload.picture_2x2_original = trainee.picture_2x2_url
+      }
+
+      const { error } = await tmsDb
+        .from("trainings")
+        .update(updatePayload)
+        .eq("id", trainee.id)
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      setSelectedTrainee(trainee as any)
+      applyUpdatedPhotoUrl(trainee.id, photoUrl, {
+        picture_2x2_original: originalBackup || null,
+      })
+
+      toast({
+        title: "Background removed",
+        description: "2×2 photo updated. Certificate preview will refresh.",
+      })
+    } catch (error: any) {
+      console.error("Background removal failed:", error)
+      toast({
+        variant: "destructive",
+        title: "Background removal failed",
+        description: error?.message || "Please try again. First run downloads a free AI model.",
+      })
+    } finally {
+      setIsRemovingBg(false)
+      setBgRemoveProgress("")
+    }
+  }
+
+  const handleRevertOriginalPhoto = async () => {
+    const current = certificatePreviews[activePreviewIndex]
+    const trainee = current?.trainee
+    const originalUrl = trainee?.picture_2x2_original
+    if (!trainee?.id || !originalUrl) {
+      toast({
+        variant: "destructive",
+        title: "No original photo",
+        description: "No backup of the original 2×2 photo was found for this participant.",
+      })
+      return
+    }
+    if (originalUrl === trainee.picture_2x2_url) {
+      toast({
+        title: "Already original",
+        description: "The current photo is already the original.",
+      })
+      return
+    }
+
+    setIsUploading(true)
+    try {
+      const { error } = await tmsDb
+        .from("trainings")
+        .update({ picture_2x2_url: originalUrl })
+        .eq("id", trainee.id)
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      applyUpdatedPhotoUrl(trainee.id, originalUrl)
+
+      toast({
+        title: "Original photo restored",
+        description: "2×2 photo reverted. Certificate preview will refresh.",
+      })
+    } catch (error: any) {
+      console.error("Revert original photo failed:", error)
+      toast({
+        variant: "destructive",
+        title: "Revert failed",
+        description: error?.message || "Could not restore the original photo.",
       })
     } finally {
       setIsUploading(false)
@@ -1941,6 +2123,59 @@ export default function ParticipantDirectoryDialog({
         },
       }
     })
+  }
+
+  const activeTemplateField = useMemo(
+    () => templateForViewer?.fields?.find((f) => f.id === activeFieldId) || null,
+    [templateForViewer, activeFieldId]
+  )
+
+  const activeFieldIsPhoto = !!(
+    activeTemplateField?.value &&
+    activeTemplateField.value.includes("{{trainee_picture}}")
+  )
+
+  const getActivePhotoSizeNorm = () => {
+    if (!activeTemplateField) return 0.12
+    const fo = (activeFieldId && fieldOverrides[activeFieldId]) || {}
+    if (typeof fo.boxWidth === "number") return fo.boxWidth
+    if (typeof fo.boxHeight === "number") return fo.boxHeight
+    if (typeof activeTemplateField.boxWidth === "number") return activeTemplateField.boxWidth
+    if (typeof activeTemplateField.boxHeight === "number") return activeTemplateField.boxHeight
+    if (typeof activeTemplateField.fontSize === "number") return activeTemplateField.fontSize
+    return 0.12
+  }
+
+  const setActivePhotoSize = (size: number) => {
+    if (!activeFieldId || !activeFieldIsPhoto) return
+    const next = Math.max(0.04, Math.min(0.55, Number(size.toFixed(4))))
+    const base = activeTemplateField
+    const baseW =
+      typeof base?.boxWidth === "number"
+        ? base.boxWidth
+        : typeof base?.fontSize === "number"
+          ? base.fontSize
+          : 0.12
+    const baseH =
+      typeof base?.boxHeight === "number"
+        ? base.boxHeight
+        : typeof base?.fontSize === "number"
+          ? base.fontSize
+          : 0.12
+    // Keep original aspect ratio while scaling by the larger side
+    const scale = next / Math.max(baseW, baseH, 0.0001)
+    setFieldOverrides((prev) => ({
+      ...prev,
+      [activeFieldId]: {
+        ...(prev[activeFieldId] || {}),
+        boxWidth: Math.max(0.04, Math.min(0.55, Number((baseW * scale).toFixed(4)))),
+        boxHeight: Math.max(0.04, Math.min(0.55, Number((baseH * scale).toFixed(4)))),
+      },
+    }))
+  }
+
+  const nudgePhotoSize = (delta: number) => {
+    setActivePhotoSize(getActivePhotoSizeNorm() + delta)
   }
 
   const handleDownloadExcel = async () => {
@@ -4159,6 +4394,60 @@ export default function ParticipantDirectoryDialog({
                       Crop Photo
                     </Button>
                   </div>
+                  {isIdTemplateSelected && (
+                    <div className="space-y-1">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="justify-start gap-1 text-[11px] h-8 border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
+                          onClick={handleRemovePhotoBackground}
+                          disabled={
+                            isRemovingBg ||
+                            isUploading ||
+                            !certificatePreviews[activePreviewIndex]?.trainee.picture_2x2_url
+                          }
+                        >
+                          {isRemovingBg ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Eraser className="h-3 w-3" />
+                          )}
+                          {isRemovingBg ? "Removing…" : "Remove Photo BG"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="justify-start gap-1 text-[11px] h-8"
+                          onClick={handleRevertOriginalPhoto}
+                          disabled={
+                            isRemovingBg ||
+                            isUploading ||
+                            !certificatePreviews[activePreviewIndex]?.trainee.picture_2x2_original ||
+                            certificatePreviews[activePreviewIndex]?.trainee.picture_2x2_original ===
+                              certificatePreviews[activePreviewIndex]?.trainee.picture_2x2_url
+                          }
+                        >
+                          {isUploading ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RotateCcw className="h-3 w-3" />
+                          )}
+                          Revert Original
+                        </Button>
+                      </div>
+                      {bgRemoveProgress && (
+                        <p className="text-[9px] text-muted-foreground leading-snug px-0.5">
+                          {bgRemoveProgress}
+                        </p>
+                      )}
+                      {!bgRemoveProgress && (
+                        <p className="text-[9px] text-muted-foreground leading-snug px-0.5">
+                          Free in-browser AI for the 2×2 photo (ID template only). First run downloads a model. Revert restores the backup taken before BG removal.
+                        </p>
+                      )}
+                    </div>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -4270,67 +4559,134 @@ export default function ParticipantDirectoryDialog({
 
                     {activeFieldId && (
                       <div className="space-y-3 pt-1 animate-in slide-in-from-top-2 duration-300">
-                        <div className="space-y-1.5">
-                          <Label className="text-[10px] uppercase text-muted-foreground font-bold">Field Font Family</Label>
-                          <Select
-                            value={
-                              (fieldOverrides[activeFieldId]?.fontFamily as string) ||
-                              templateForViewer?.fields?.find((f) => f.id === activeFieldId)?.fontFamily ||
-                              "Helvetica"
-                            }
-                            onValueChange={(value) =>
-                              setFieldOverrides((prev) => ({
-                                ...prev,
-                                [activeFieldId]: {
-                                  ...(prev[activeFieldId] || {}),
-                                  fontFamily: value as CertificateFontFamily,
-                                },
-                              }))
-                            }
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {CERTIFICATE_FONT_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                        {activeFieldIsPhoto ? (
+                          <div className="space-y-1.5">
+                            <div className="flex justify-between items-center text-[10px] font-medium">
+                              <Label className="text-[10px] uppercase text-muted-foreground font-bold">
+                                Photo Size
+                              </Label>
+                              <span className="font-mono bg-primary/10 px-1.5 py-0.5 rounded text-primary text-[10px]">
+                                {(getActivePhotoSizeNorm() * 100).toFixed(1)}%
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-center gap-2 py-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => nudgePhotoSize(-0.01)}
+                                title="Decrease size"
+                              >
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => nudgePhotoSize(0.01)}
+                                title="Increase size"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-[10px]"
+                                onClick={() => {
+                                  if (!activeFieldId) return
+                                  setFieldOverrides((prev) => {
+                                    const next = { ...prev }
+                                    const current = { ...(next[activeFieldId] || {}) }
+                                    delete current.boxWidth
+                                    delete current.boxHeight
+                                    next[activeFieldId] = current
+                                    return next
+                                  })
+                                }}
+                              >
+                                Reset
+                              </Button>
+                            </div>
+                            <Slider
+                              value={[getActivePhotoSizeNorm()]}
+                              onValueChange={([v]) => setActivePhotoSize(v)}
+                              min={0.04}
+                              max={0.45}
+                              step={0.005}
+                              className="py-1"
+                            />
+                            <p className="text-[9px] text-muted-foreground leading-snug">
+                              Use − / + or the slider to resize the ID photo. Click Save Override to keep it.
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="space-y-1.5">
+                              <Label className="text-[10px] uppercase text-muted-foreground font-bold">Field Font Family</Label>
+                              <Select
+                                value={
+                                  (fieldOverrides[activeFieldId]?.fontFamily as string) ||
+                                  templateForViewer?.fields?.find((f) => f.id === activeFieldId)?.fontFamily ||
+                                  "Helvetica"
+                                }
+                                onValueChange={(value) =>
+                                  setFieldOverrides((prev) => ({
+                                    ...prev,
+                                    [activeFieldId]: {
+                                      ...(prev[activeFieldId] || {}),
+                                      fontFamily: value as CertificateFontFamily,
+                                    },
+                                  }))
+                                }
+                              >
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {CERTIFICATE_FONT_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
 
-                        <div className="space-y-1.5">
-                          <Label className="text-[10px] uppercase text-muted-foreground font-bold">Field Font Weight</Label>
-                          <Select
-                            value={
-                              (fieldOverrides[activeFieldId]?.fontWeight as string) ||
-                              templateForViewer?.fields?.find((f) => f.id === activeFieldId)?.fontWeight ||
-                              "normal"
-                            }
-                            onValueChange={(value) =>
-                              setFieldOverrides((prev) => ({
-                                ...prev,
-                                [activeFieldId]: {
-                                  ...(prev[activeFieldId] || {}),
-                                  fontWeight: value as CertificateFontWeight,
-                                },
-                              }))
-                            }
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {CERTIFICATE_FONT_WEIGHT_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-[10px] uppercase text-muted-foreground font-bold">Field Font Weight</Label>
+                              <Select
+                                value={
+                                  (fieldOverrides[activeFieldId]?.fontWeight as string) ||
+                                  templateForViewer?.fields?.find((f) => f.id === activeFieldId)?.fontWeight ||
+                                  "normal"
+                                }
+                                onValueChange={(value) =>
+                                  setFieldOverrides((prev) => ({
+                                    ...prev,
+                                    [activeFieldId]: {
+                                      ...(prev[activeFieldId] || {}),
+                                      fontWeight: value as CertificateFontWeight,
+                                    },
+                                  }))
+                                }
+                              >
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {CERTIFICATE_FONT_WEIGHT_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                      {option.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </>
+                        )}
 
                         <div className="space-y-1.5">
                           <div className="flex justify-between items-center text-[10px] font-medium">

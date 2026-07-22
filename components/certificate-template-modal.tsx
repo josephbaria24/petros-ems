@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
-  Upload, X, Plus, Trash2, Save, Eye, Loader2, Award, CalendarCheck, Trophy,
+  Upload, X, Plus, Minus, Trash2, Save, Eye, Loader2, Award, CalendarCheck, Trophy,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize, Minimize,
   ArrowLeftRight, ArrowUpDown, Copy, FlipHorizontal, CircleHelp
 } from "lucide-react"
@@ -1474,31 +1474,58 @@ toast.success("Template saved successfully!")
           </TooltipProvider>
         </div>
 
-        <div className="flex items-center gap-1 bg-background/50 rounded-md p-1 border shadow-inner">
+        <div className="flex items-center gap-0.5 bg-background/50 rounded-md p-1 border shadow-inner">
+          <span className="px-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Size</span>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => {
-                  const w = currentField?.boxWidth ?? currentField?.fontSize ?? 100;
-                  const h = currentField?.boxHeight ?? currentField?.fontSize ?? 100;
-                  updateField({ boxWidth: w + 2, boxHeight: h + 2, fontSize: Math.min(w+2, h+2) });
-                }}>
-                  <Maximize className="h-4 w-4 text-primary" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-primary/10"
+                  onClick={() => {
+                    const defaultSize = currentTemplateType === "excellence" ? 240 : 100
+                    const w = currentField?.boxWidth ?? currentField?.fontSize ?? defaultSize
+                    const h = currentField?.boxHeight ?? currentField?.fontSize ?? defaultSize
+                    const nextW = Math.max(20, w - 32)
+                    const nextH = Math.max(20, h - 32)
+                    updateField({
+                      boxWidth: nextW,
+                      boxHeight: nextH,
+                      fontSize: Math.min(nextW, nextH),
+                    })
+                  }}
+                >
+                  <Minus className="h-4 w-4 text-primary" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Scale Up Proportional</TooltipContent>
+              <TooltipContent>Decrease size</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => {
-                  const w = currentField?.boxWidth ?? currentField?.fontSize ?? 100;
-                  const h = currentField?.boxHeight ?? currentField?.fontSize ?? 100;
-                  updateField({ boxWidth: Math.max(10, w - 2), boxHeight: Math.max(10, h - 2), fontSize: Math.max(10, Math.min(w-2, h-2)) });
-                }}>
-                  <Minimize className="h-4 w-4 text-primary" />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-primary/10"
+                  onClick={() => {
+                    const defaultSize = currentTemplateType === "excellence" ? 240 : 100
+                    const w = currentField?.boxWidth ?? currentField?.fontSize ?? defaultSize
+                    const h = currentField?.boxHeight ?? currentField?.fontSize ?? defaultSize
+                    const nextW = Math.min(800, w + 32)
+                    const nextH = Math.min(800, h + 32)
+                    updateField({
+                      boxWidth: nextW,
+                      boxHeight: nextH,
+                      fontSize: Math.min(nextW, nextH),
+                    })
+                  }}
+                >
+                  <Plus className="h-4 w-4 text-primary" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Scale Down Proportional</TooltipContent>
+              <TooltipContent>Increase size</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
@@ -1507,47 +1534,128 @@ toast.success("Template saved successfully!")
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => {
-                  const w = currentField?.boxWidth ?? currentField?.fontSize ?? 100;
-                  updateField({ boxWidth: w + 2 });
-                }}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-primary/10"
+                  onClick={() => {
+                    const defaultSize = currentTemplateType === "excellence" ? 240 : 100
+                    const w = currentField?.boxWidth ?? currentField?.fontSize ?? defaultSize
+                    const h = currentField?.boxHeight ?? currentField?.fontSize ?? defaultSize
+                    updateField({
+                      boxWidth: Math.min(800, w + 24),
+                      boxHeight: Math.min(800, h + 24),
+                      fontSize: Math.min(w + 24, h + 24),
+                    })
+                  }}
+                >
+                  <Maximize className="h-4 w-4 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Scale up</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-primary/10"
+                  onClick={() => {
+                    const defaultSize = currentTemplateType === "excellence" ? 240 : 100
+                    const w = currentField?.boxWidth ?? currentField?.fontSize ?? defaultSize
+                    const h = currentField?.boxHeight ?? currentField?.fontSize ?? defaultSize
+                    const nextW = Math.max(20, w - 24)
+                    const nextH = Math.max(20, h - 24)
+                    updateField({
+                      boxWidth: nextW,
+                      boxHeight: nextH,
+                      fontSize: Math.min(nextW, nextH),
+                    })
+                  }}
+                >
+                  <Minimize className="h-4 w-4 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Scale down</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        <div className="flex items-center gap-1 bg-background/50 rounded-md p-1 border shadow-inner">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-primary/10"
+                  onClick={() => {
+                    const defaultSize = currentTemplateType === "excellence" ? 240 : 100
+                    const w = currentField?.boxWidth ?? currentField?.fontSize ?? defaultSize
+                    updateField({ boxWidth: Math.min(800, w + 24) })
+                  }}
+                >
                   <ArrowLeftRight className="h-4 w-4 text-primary" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Stretch Horizontal</TooltipContent>
+              <TooltipContent>Wider</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => {
-                  const w = currentField?.boxWidth ?? currentField?.fontSize ?? 100;
-                  updateField({ boxWidth: Math.max(10, w - 2) });
-                }}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-primary/10"
+                  onClick={() => {
+                    const defaultSize = currentTemplateType === "excellence" ? 240 : 100
+                    const w = currentField?.boxWidth ?? currentField?.fontSize ?? defaultSize
+                    updateField({ boxWidth: Math.max(20, w - 24) })
+                  }}
+                >
                   <Minimize className="h-3 w-3 rotate-90 text-primary" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Squeeze Horizontal</TooltipContent>
+              <TooltipContent>Narrower</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => {
-                  const h = currentField?.boxHeight ?? currentField?.fontSize ?? 100;
-                  updateField({ boxHeight: h + 2 });
-                }}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-primary/10"
+                  onClick={() => {
+                    const defaultSize = currentTemplateType === "excellence" ? 240 : 100
+                    const h = currentField?.boxHeight ?? currentField?.fontSize ?? defaultSize
+                    updateField({ boxHeight: Math.min(800, h + 24) })
+                  }}
+                >
                   <ArrowUpDown className="h-4 w-4 text-primary" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Stretch Vertical</TooltipContent>
+              <TooltipContent>Taller</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10" onClick={() => {
-                  const h = currentField?.boxHeight ?? currentField?.fontSize ?? 100;
-                  updateField({ boxHeight: Math.max(10, h - 2) });
-                }}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 hover:bg-primary/10"
+                  onClick={() => {
+                    const defaultSize = currentTemplateType === "excellence" ? 240 : 100
+                    const h = currentField?.boxHeight ?? currentField?.fontSize ?? defaultSize
+                    updateField({ boxHeight: Math.max(20, h - 24) })
+                  }}
+                >
                   <Minimize className="h-3 w-3 text-primary" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Squeeze Vertical</TooltipContent>
+              <TooltipContent>Shorter</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
