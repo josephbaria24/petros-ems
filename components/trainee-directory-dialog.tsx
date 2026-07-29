@@ -3,7 +3,7 @@
 
 import JSZip from "jszip"
 
-import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogFooter } from "@/components/ui/alert-dialog"
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog"
 import { Progress } from "@/components/ui/progress"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -17,9 +17,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { tmsDb } from "@/lib/supabase-client"
-import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Eye, ListOrdered, Crop, Eraser, Minus, Plus, RotateCcw } from "lucide-react"
+import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Eye, ListOrdered, Crop, Eraser, Minus, Plus, RotateCcw, FileStack, Files } from "lucide-react"
 import { Slider } from "@/components/ui/slider"
 import { ImageCropDialog } from "@/components/image-crop-dialog"
+import { PDFDocument } from "pdf-lib"
 import { exportTraineeExcel } from "@/lib/exports/export-excel"
 import { exportCertificatesNew } from "@/lib/exports/export-certificate"
 import { batchAssignCertificateSerials } from "@/lib/certificate-serial"
@@ -375,6 +376,7 @@ export default function ParticipantDirectoryDialog({
   const [selectedTemplateType, setSelectedTemplateType] = useState<TemplateType>("completion")
   const { toast } = useToast()
   const [isGenerating, setIsGenerating] = useState(false)
+  const [downloadPackageOpen, setDownloadPackageOpen] = useState(false)
   const [isSendingEmails, setIsSendingEmails] = useState(false)
   const [progress, setProgress] = useState(0)
   const [sentCertificateIds, setSentCertificateIds] = useState<Set<string>>(new Set())
@@ -1321,10 +1323,32 @@ export default function ParticipantDirectoryDialog({
     certificatePageSize,
   ])
 
-  const handleDownloadCertificates = async () => {
+  const requestDownloadCertificates = (traineeIdsOverride?: Set<string>) => {
+    if (!scheduleId) return
+    const ids = traineeIdsOverride ?? selectedTraineeIds
+    const selectedTrainees = trainees.filter((t) => ids.has(t.id))
+    if (selectedTrainees.length === 0) {
+      toast({
+        title: "No Selection",
+        description: "Please select at least one participant to download certificates.",
+      })
+      return
+    }
+    if (selectedTrainees.length >= 2) {
+      setDownloadPackageOpen(true)
+      return
+    }
+    void handleDownloadCertificates("separate", ids)
+  }
+
+  const handleDownloadCertificates = async (
+    packageMode: "combined" | "separate" = "separate",
+    traineeIdsOverride?: Set<string>,
+  ) => {
     if (!scheduleId) return;
 
-    const selectedTrainees = getSelectedTrainees();
+    const ids = traineeIdsOverride ?? selectedTraineeIds
+    const selectedTrainees = trainees.filter((t) => ids.has(t.id))
     if (selectedTrainees.length === 0) {
       toast({
         title: "No Selection",
@@ -1333,6 +1357,7 @@ export default function ParticipantDirectoryDialog({
       return;
     }
 
+    setDownloadPackageOpen(false)
     setIsGenerating(true);
     startLongOperation(
       "Generating Certificates",
@@ -1399,14 +1424,77 @@ export default function ParticipantDirectoryDialog({
       }
 
       const isIDTemplate = selectedTemplateType === "excellence";
-      // Zip if 2 or more participants selected
-      const shouldZip = updatedTrainees.length >= 2;
+      const isMulti = updatedTrainees.length >= 2;
+      const useCombinedPdf = isMulti && packageMode === "combined";
+      const useZip = isMulti && packageMode === "separate";
 
       let successCount = 0;
       let failCount = 0;
 
-      if (shouldZip) {
-        // ===== ZIP MODE =====
+      const fetchPdfBlob = async (trainee: DownloadTrainee) => {
+        const res = await fetch("/api/generate-certificate-pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trainee,
+            courseName: courseData.name,
+            courseTitle,
+            scheduleRange,
+            courseId: trainee.course_id,
+            templateType: selectedTemplateType,
+            givenThisDate: new Date().toLocaleDateString(),
+            layoutOverride: isCertificateViewerOpen ? {
+              offsetX: layoutOffset.offsetX,
+              offsetY: layoutOffset.offsetY,
+              fieldOverrides,
+            } : undefined,
+            side: isIDTemplate ? "front" : "both",
+            ...(selectedTemplateType !== "excellence"
+              ? { pageSize: certificatePageSize }
+              : {}),
+          }),
+        });
+        if (!res.ok) return null;
+        return res.blob();
+      };
+
+      if (useCombinedPdf) {
+        const merged = await PDFDocument.create();
+        const dateStr = new Date().toISOString().split("T")[0];
+
+        for (let i = 0; i < updatedTrainees.length; i++) {
+          const trainee = updatedTrainees[i];
+          try {
+            const blob = await fetchPdfBlob(trainee);
+            if (!blob) {
+              failCount++;
+              continue;
+            }
+            const src = await PDFDocument.load(await blob.arrayBuffer());
+            const pages = await merged.copyPages(src, src.getPageIndices());
+            pages.forEach((page) => merged.addPage(page));
+            successCount++;
+            setProgress(Math.floor(((i + 1) / updatedTrainees.length) * 100));
+          } catch (error) {
+            failCount++;
+            console.error(`Failed to merge for ${trainee.first_name} ${trainee.last_name}:`, error);
+          }
+        }
+
+        if (successCount > 0) {
+          const bytes = await merged.save();
+          const pdfBlob = new Blob([bytes], { type: "application/pdf" });
+          const url = URL.createObjectURL(pdfBlob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = isIDTemplate
+            ? `${courseData.name}_IDs_${dateStr}.pdf`
+            : `${courseData.name}_Certificates_${dateStr}.pdf`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      } else if (useZip) {
+        // ===== ZIP MODE (separate PDFs) =====
         const zip = new JSZip();
         const dateStr = new Date().toISOString().split('T')[0];
 
@@ -1414,37 +1502,13 @@ export default function ParticipantDirectoryDialog({
           const trainee = updatedTrainees[i];
 
           try {
-            // For IDs, only download front side (side: "front")
-            const res = await fetch("/api/generate-certificate-pdf", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                trainee,
-                courseName: courseData.name,
-                courseTitle,
-                scheduleRange,
-                courseId: trainee.course_id,
-                templateType: selectedTemplateType,
-                givenThisDate: new Date().toLocaleDateString(),
-                layoutOverride: isCertificateViewerOpen ? {
-                  offsetX: layoutOffset.offsetX,
-                  offsetY: layoutOffset.offsetY,
-                  fieldOverrides,
-                } : undefined,
-                side: isIDTemplate ? "front" : "both",
-                ...(selectedTemplateType !== "excellence"
-                  ? { pageSize: certificatePageSize }
-                  : {}),
-              }),
-            });
-
-            if (!res.ok) {
+            const blob = await fetchPdfBlob(trainee);
+            if (!blob) {
               failCount++;
               console.error(`Failed to generate for ${trainee.first_name} ${trainee.last_name}`);
               continue;
             }
 
-            const blob = await res.blob();
             const fileName = isIDTemplate
               ? `ID_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`
               : `Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`;
@@ -1502,9 +1566,15 @@ export default function ParticipantDirectoryDialog({
         }
       }
 
+      const packageLabel = useCombinedPdf
+        ? " as one PDF"
+        : useZip
+          ? " as ZIP"
+          : "";
+
       toast({
         title: "Download Complete",
-        description: `Successfully downloaded ${successCount} ${isIDTemplate ? "ID(s)" : "certificate(s)"}${shouldZip ? " as ZIP" : ""}.` +
+        description: `Successfully downloaded ${successCount} ${isIDTemplate ? "ID(s)" : "certificate(s)"}${packageLabel}.` +
           (failCount > 0 ? `\n${failCount} failed.` : "")
       });
     } catch (err: any) {
@@ -4357,12 +4427,14 @@ export default function ParticipantDirectoryDialog({
                     size="sm"
                     className="w-full justify-start gap-2 h-9 shadow-sm"
                     onClick={() => {
-                      if (selectedTraineeIds.size === 0) {
+                      let ids = selectedTraineeIds
+                      if (ids.size === 0) {
                         const current = certificatePreviews[activePreviewIndex]
                         if (!current) return
-                        setSelectedTraineeIds(new Set([current.trainee.id]))
+                        ids = new Set([current.trainee.id])
+                        setSelectedTraineeIds(ids)
                       }
-                      handleDownloadCertificates()
+                      requestDownloadCertificates(ids)
                     }}
                     disabled={isGenerating}
                   >
@@ -4871,6 +4943,51 @@ export default function ParticipantDirectoryDialog({
         onSave={handleSaveCroppedPhoto}
         title={cropExistingPhoto ? "Crop Participant Photo" : "Upload & Crop Participant Photo"}
       />
+
+      <AlertDialog open={downloadPackageOpen} onOpenChange={setDownloadPackageOpen}>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Download packaging</AlertDialogTitle>
+            <AlertDialogDescription>
+              You selected {selectedTraineeIds.size}{" "}
+              {selectedTemplateType === "excellence" ? "ID(s)" : "certificate(s)"}. Choose how to
+              package the files.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-2 py-2">
+            <Button
+              className="h-auto justify-start gap-3 px-4 py-3"
+              onClick={() => void handleDownloadCertificates("combined")}
+              disabled={isGenerating}
+            >
+              <FileStack className="h-5 w-5 shrink-0" />
+              <span className="text-left">
+                <span className="block font-medium">One combined PDF</span>
+                <span className="block text-xs font-normal opacity-90">
+                  All pages in a single file
+                </span>
+              </span>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-auto justify-start gap-3 px-4 py-3"
+              onClick={() => void handleDownloadCertificates("separate")}
+              disabled={isGenerating}
+            >
+              <Files className="h-5 w-5 shrink-0" />
+              <span className="text-left">
+                <span className="block font-medium">Separate PDFs (ZIP)</span>
+                <span className="block text-xs font-normal text-muted-foreground">
+                  One file per person, packed in a ZIP
+                </span>
+              </span>
+            </Button>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isGenerating}>Cancel</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }

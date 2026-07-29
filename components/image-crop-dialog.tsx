@@ -160,10 +160,16 @@ export function ImageCropDialog({
     e.target.value = ""
   }
 
+  // Trainee photos (2x2 / ID) often have transparent BG after removal.
+  // JPEG cannot store alpha and flattens transparency to black — always use PNG for those.
+  const preserveAlpha = imageType === "2x2" || imageType === "id"
+  const outputMime = preserveAlpha ? "image/png" : "image/jpeg"
+  const outputExt = preserveAlpha ? "png" : "jpg"
+
   const getCroppedImg = useCallback(
     (image: HTMLImageElement, pixelCrop: PixelCrop): Promise<Blob> => {
       const canvas = document.createElement("canvas")
-      const ctx = canvas.getContext("2d")
+      const ctx = canvas.getContext("2d", { alpha: true })
       if (!ctx) throw new Error("No 2d context")
 
       const scaleX = image.naturalWidth / image.width
@@ -180,6 +186,8 @@ export function ImageCropDialog({
         canvas.height = Math.round(cropHeight)
       }
 
+      // Keep transparent pixels transparent (do not fill with black/white).
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
       ctx.imageSmoothingQuality = "high"
       ctx.translate(canvas.width / 2, canvas.height / 2)
       ctx.rotate(rotRad)
@@ -211,14 +219,16 @@ export function ImageCropDialog({
       }
 
       return new Promise((resolve, reject) => {
-        canvas.toBlob(
-          (blob) => (blob ? resolve(blob) : reject(new Error("Canvas is empty"))),
-          "image/jpeg",
-          0.95
-        )
+        const finish = (blob: Blob | null) =>
+          blob ? resolve(blob) : reject(new Error("Canvas is empty"))
+        if (preserveAlpha) {
+          canvas.toBlob(finish, "image/png")
+        } else {
+          canvas.toBlob(finish, "image/jpeg", 0.95)
+        }
       })
     },
-    [rotation]
+    [rotation, preserveAlpha]
   )
 
   const uploadImage = async (blob: Blob, filename: string): Promise<string> => {
@@ -242,10 +252,10 @@ export function ImageCropDialog({
     setSaving(true)
     try {
       const croppedBlob = await getCroppedImg(imgRef.current, completedCrop)
-      const fileName = `cropped_${imageType}_${Date.now()}.jpg`
+      const fileName = `cropped_${imageType}_${Date.now()}.${outputExt}`
 
       if (isLocalMode && onLocalSave) {
-        const file = new File([croppedBlob], fileName, { type: "image/jpeg" })
+        const file = new File([croppedBlob], fileName, { type: outputMime })
         const previewDataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
           reader.onload = () => resolve(reader.result as string)
@@ -256,7 +266,11 @@ export function ImageCropDialog({
       } else if (onSave) {
         let originalUrl = existingImageUrl || ""
         if (originalFile) {
-          originalUrl = await uploadImage(originalFile, `original_${imageType}_${Date.now()}.jpg`)
+          const originalExt = originalFile.name.split(".").pop() || (preserveAlpha ? "png" : "jpg")
+          originalUrl = await uploadImage(
+            originalFile,
+            `original_${imageType}_${Date.now()}.${originalExt}`,
+          )
         }
         const croppedUrl = await uploadImage(croppedBlob, fileName)
         await onSave(croppedUrl, originalUrl)
@@ -378,7 +392,21 @@ export function ImageCropDialog({
                   )}
                 </div>
 
-                <div className="flex justify-center rounded-xl border bg-[#1a1a1a] p-4 overflow-auto">
+                <div
+                  className="flex justify-center rounded-xl border p-4 overflow-auto"
+                  style={
+                    preserveAlpha
+                      ? {
+                          // Checkerboard so transparent areas from BG removal stay visible
+                          backgroundImage:
+                            "linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)",
+                          backgroundSize: "16px 16px",
+                          backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0",
+                          backgroundColor: "#fff",
+                        }
+                      : { backgroundColor: "#1a1a1a" }
+                  }
+                >
                   <ReactCrop
                     crop={crop}
                     onChange={(c) => setCrop(c)}
