@@ -1307,7 +1307,10 @@ const filteredTrainees = trainees.filter((t) => {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" className="cursor-pointer bg-primary hover:bg-primary/20 text-primary-foreground">
+                <Button
+                  size="sm"
+                  className="cursor-pointer bg-primary text-white hover:bg-primary/90 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-500"
+                >
                   <Zap className="h-4 w-4 mr-2" />
                   Quick Actions
                 </Button>

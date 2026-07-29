@@ -29,5 +29,5 @@ export async function POST(req: Request) {
     )
   }
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, messageId: result.messageId })
 }

@@ -1967,7 +1967,6 @@ export default function ParticipantDirectoryDialog({
       })
       return
     }
-    if (!isIdTemplateSelected) return
 
     setIsRemovingBg(true)
     setBgRemoveProgress("Loading AI model (first time may take a minute)…")
@@ -4332,7 +4331,7 @@ export default function ParticipantDirectoryDialog({
                   <Button
                     variant="default"
                     size="sm"
-                    className="w-full justify-start gap-2 h-9 shadow-sm"
+                    className="w-full justify-start gap-2 h-9 shadow-sm dark:bg-blue-600 dark:text-white dark:hover:bg-blue-500"
                     onClick={() => {
                       if (selectedTraineeIds.size === 0) {
                         const current = certificatePreviews[activePreviewIndex]
@@ -4407,8 +4406,7 @@ export default function ParticipantDirectoryDialog({
                       Crop Photo
                     </Button>
                   </div>
-                  {isIdTemplateSelected && (
-                    <div className="space-y-1">
+                  <div className="space-y-1">
                       <div className="grid grid-cols-2 gap-2">
                         <Button
                           variant="outline"
@@ -4456,11 +4454,10 @@ export default function ParticipantDirectoryDialog({
                       )}
                       {!bgRemoveProgress && (
                         <p className="text-[9px] text-muted-foreground leading-snug px-0.5">
-                          Free in-browser AI for the 2×2 photo (ID template only). First run downloads a model. Revert restores the backup taken before BG removal.
+                          Free in-browser AI for the 2×2 photo. First run downloads a model. Revert restores the backup taken before BG removal.
                         </p>
                       )}
                     </div>
-                  )}
                   <Button
                     variant="outline"
                     size="sm"

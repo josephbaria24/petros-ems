@@ -200,6 +200,15 @@ const menuItems = [
     icon: VoucherManagerIcon,
     href: "/voucher-manager",
   },
+  {
+    type: "separator",
+    title: "Admin",
+  },
+  {
+    title: "Email Status",
+    icon: CertificateTrackerIcon,
+    href: "/admin/email-status",
+  },
 
   // 🌟 Separator
   {

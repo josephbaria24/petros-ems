@@ -34,13 +34,65 @@ import {
   Search,
   Palette,
   MousePointer,
+  History,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react"
+
+type ComposerEmailHistoryItem = {
+  at: string
+  subject: string
+  status: "sent" | "failed"
+  error?: string | null
+}
 
 type Trainee = {
   id: string
   first_name: string
   last_name: string
   email: string | null
+  custom_data?: Record<string, any> | null
+}
+
+const MAX_COMPOSER_EMAIL_HISTORY = 20
+
+function getComposerHistory(trainee: Trainee): ComposerEmailHistoryItem[] {
+  const history = trainee.custom_data?.__composer_email_history
+  return Array.isArray(history) ? history : []
+}
+
+function getLatestComposerStatus(trainee: Trainee): {
+  status?: "sent" | "failed"
+  at?: string
+  subject?: string
+  error?: string | null
+} {
+  const data = trainee.custom_data || {}
+  if (data.__composer_email_status === "sent" || data.__composer_email_status === "failed") {
+    return {
+      status: data.__composer_email_status,
+      at: data.__composer_email_sent_at,
+      subject: data.__composer_email_subject,
+      error: data.__composer_email_error ?? null,
+    }
+  }
+  const latest = getComposerHistory(trainee)[0]
+  if (!latest) return {}
+  return {
+    status: latest.status,
+    at: latest.at,
+    subject: latest.subject,
+    error: latest.error ?? null,
+  }
+}
+
+function formatHistoryTime(iso?: string) {
+  if (!iso) return ""
+  try {
+    return new Date(iso).toLocaleString()
+  } catch {
+    return iso
+  }
 }
 
 type LocalAttachment = {
@@ -147,6 +199,80 @@ export default function SubmissionsEmailPage() {
     })
   }, [trainees, participantSearch])
 
+  const sendHistoryFeed = useMemo(() => {
+    const rows: Array<{
+      traineeId: string
+      name: string
+      email: string | null
+      at: string
+      subject: string
+      status: "sent" | "failed"
+      error?: string | null
+    }> = []
+
+    for (const trainee of trainees) {
+      const history = getComposerHistory(trainee)
+      for (const item of history) {
+        rows.push({
+          traineeId: trainee.id,
+          name: `${trainee.first_name} ${trainee.last_name}`.trim(),
+          email: trainee.email,
+          at: item.at,
+          subject: item.subject,
+          status: item.status,
+          error: item.error,
+        })
+      }
+    }
+
+    return rows.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 50)
+  }, [trainees])
+
+  const historySummary = useMemo(() => {
+    const latestByTrainee = trainees
+      .map((t) => getLatestComposerStatus(t))
+      .filter((s) => s.status)
+    return {
+      sent: latestByTrainee.filter((s) => s.status === "sent").length,
+      failed: latestByTrainee.filter((s) => s.status === "failed").length,
+    }
+  }, [trainees])
+
+  const sendHistoryEntries = useMemo(() => {
+    const rows: Array<{
+      traineeId: string
+      name: string
+      email: string | null
+      at: string
+      subject: string
+      status: "sent" | "failed"
+      error?: string | null
+    }> = []
+
+    for (const trainee of trainees) {
+      const history = getComposerHistory(trainee)
+      for (const item of history) {
+        rows.push({
+          traineeId: trainee.id,
+          name: `${trainee.first_name} ${trainee.last_name}`.trim(),
+          email: trainee.email,
+          at: item.at,
+          subject: item.subject,
+          status: item.status,
+          error: item.error,
+        })
+      }
+    }
+
+    return rows.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()).slice(0, 50)
+  }, [trainees])
+
+  const historyCounts = useMemo(() => {
+    const sent = sendHistoryEntries.filter((e) => e.status === "sent").length
+    const failed = sendHistoryEntries.filter((e) => e.status === "failed").length
+    return { sent, failed, total: sendHistoryEntries.length }
+  }, [sendHistoryEntries])
+
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== editorHtml) {
       editorRef.current.innerHTML = editorHtml
@@ -206,7 +332,7 @@ export default function SubmissionsEmailPage() {
 
         const { data: traineeData, error: traineeError } = await tmsDb
           .from("trainings")
-          .select("id, first_name, last_name, email")
+          .select("id, first_name, last_name, email, custom_data")
           .eq("schedule_id", scheduleId)
           .order("first_name", { ascending: true })
 
@@ -453,6 +579,8 @@ export default function SubmissionsEmailPage() {
       const baseHtml = `${headerHtml || ""}${editorHtml}${footerHtml || ""}`
       let success = 0
       let failed = 0
+      const sentAt = new Date().toISOString()
+      const nextTrainees = [...trainees]
 
       for (const participant of selectedParticipants) {
         const personalizedHtml = applyTemplateVariables(baseHtml, {
@@ -465,20 +593,76 @@ export default function SubmissionsEmailPage() {
           room_link: roomLink || "",
         })
 
-        const response = await fetch("/api/send-email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: participant.email,
-            subject,
-            message: personalizedHtml,
-            attachments,
-          }),
-        })
+        let status: "sent" | "failed" = "failed"
+        let errorMessage: string | null = null
 
-        if (response.ok) success += 1
-        else failed += 1
+        try {
+          const response = await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              to: participant.email,
+              subject,
+              message: personalizedHtml,
+              attachments,
+            }),
+          })
+
+          if (response.ok) {
+            status = "sent"
+            success += 1
+          } else {
+            failed += 1
+            try {
+              const json = await response.json()
+              errorMessage = json?.error || json?.message || `HTTP ${response.status}`
+            } catch {
+              errorMessage = `HTTP ${response.status}`
+            }
+          }
+        } catch (err: any) {
+          failed += 1
+          errorMessage = err?.message || "Network error"
+        }
+
+        const historyItem: ComposerEmailHistoryItem = {
+          at: sentAt,
+          subject,
+          status,
+          error: errorMessage,
+        }
+
+        const existing = nextTrainees.find((t) => t.id === participant.id)
+        const prevData = existing?.custom_data || participant.custom_data || {}
+        const prevHistory = Array.isArray(prevData.__composer_email_history)
+          ? prevData.__composer_email_history
+          : []
+        const nextHistory = [historyItem, ...prevHistory].slice(0, MAX_COMPOSER_EMAIL_HISTORY)
+        const nextCustomData = {
+          ...prevData,
+          __composer_email_status: status,
+          __composer_email_sent_at: sentAt,
+          __composer_email_subject: subject,
+          __composer_email_error: errorMessage,
+          __composer_email_history: nextHistory,
+        }
+
+        const { error: persistError } = await tmsDb
+          .from("trainings")
+          .update({ custom_data: nextCustomData })
+          .eq("id", participant.id)
+
+        if (persistError) {
+          console.error("Failed to persist composer email status:", persistError)
+        }
+
+        const idx = nextTrainees.findIndex((t) => t.id === participant.id)
+        if (idx >= 0) {
+          nextTrainees[idx] = { ...nextTrainees[idx], custom_data: nextCustomData }
+        }
       }
+
+      setTrainees(nextTrainees)
 
       if (success > 0) toast.success(`Email sent to ${success} participant(s)`)
       if (failed > 0) toast.error(`${failed} email(s) failed to send`)
@@ -610,6 +794,12 @@ export default function SubmissionsEmailPage() {
         .dark .email-editor [style*="color:black"],
         .dark .email-editor [style*="color: rgb(0, 0, 0)"],
         .dark .email-editor [style*="color:rgb(0, 0, 0)"],
+        .dark .email-editor [style*="color: #141454"],
+        .dark .email-editor [style*="color:#141454"],
+        .dark .email-editor [style*="color: #1b1b63"],
+        .dark .email-editor [style*="color:#1b1b63"],
+        .dark .email-editor [style*="color: rgb(20, 20, 84)"],
+        .dark .email-editor [style*="color:rgb(20, 20, 84)"],
         .dark .email-preview-content [style*="color: #000"],
         .dark .email-preview-content [style*="color:#000"],
         .dark .email-preview-content [style*="color: #000000"],
@@ -617,8 +807,22 @@ export default function SubmissionsEmailPage() {
         .dark .email-preview-content [style*="color: black"],
         .dark .email-preview-content [style*="color:black"],
         .dark .email-preview-content [style*="color: rgb(0, 0, 0)"],
-        .dark .email-preview-content [style*="color:rgb(0, 0, 0)"] {
-          color: #f8fafc !important;
+        .dark .email-preview-content [style*="color:rgb(0, 0, 0)"],
+        .dark .email-preview-content [style*="color: #141454"],
+        .dark .email-preview-content [style*="color:#141454"],
+        .dark .email-preview-content [style*="color: #1b1b63"],
+        .dark .email-preview-content [style*="color:#1b1b63"],
+        .dark .email-preview-content [style*="color: rgb(20, 20, 84)"],
+        .dark .email-preview-content [style*="color:rgb(20, 20, 84)"] {
+          color: #ffffff !important;
+        }
+        .dark .email-editor,
+        .dark .email-preview-content {
+          color: #ffffff;
+        }
+        .dark .email-editor a,
+        .dark .email-preview-content a {
+          color: #93c5fd !important;
         }
       `}</style>
       <div className="flex items-center justify-between gap-3">
@@ -723,32 +927,67 @@ export default function SubmissionsEmailPage() {
                 className="pl-8"
               />
             </div>
-            <Badge variant="outline">{selectedParticipants.length} selected</Badge>
-            <ScrollArea className="h-[360px] xl:h-[calc(100vh-430px)] pr-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{selectedParticipants.length} selected</Badge>
+              {historySummary.sent > 0 && (
+                <Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border-emerald-600/30" variant="outline">
+                  {historySummary.sent} last sent OK
+                </Badge>
+              )}
+              {historySummary.failed > 0 && (
+                <Badge className="bg-red-600/15 text-red-700 dark:text-red-300 border-red-600/30" variant="outline">
+                  {historySummary.failed} last failed
+                </Badge>
+              )}
+            </div>
+            <ScrollArea className="h-[280px] xl:h-[calc(100vh-520px)] pr-2">
               <div className="space-y-2">
                 {loading ? (
                   <p className="text-sm text-muted-foreground">Loading participants...</p>
                 ) : filteredParticipants.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No participants found</p>
                 ) : (
-                  filteredParticipants.map((t) => (
-                    <label
-                      key={t.id}
-                      className="flex items-start gap-2 rounded border p-2 cursor-pointer hover:bg-muted/50"
-                    >
-                      <Checkbox
-                        checked={selectedIds.includes(t.id)}
-                        disabled={!t.email}
-                        onCheckedChange={() => onToggleParticipant(t.id)}
-                      />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {t.first_name} {t.last_name}
-                        </p>
-                        <p className="text-xs text-muted-foreground truncate">{t.email || "No email address"}</p>
-                      </div>
-                    </label>
-                  ))
+                  filteredParticipants.map((t) => {
+                    const latest = getLatestComposerStatus(t)
+                    return (
+                      <label
+                        key={t.id}
+                        className="flex items-start gap-2 rounded border p-2 cursor-pointer hover:bg-muted/50"
+                      >
+                        <Checkbox
+                          checked={selectedIds.includes(t.id)}
+                          disabled={!t.email}
+                          onCheckedChange={() => onToggleParticipant(t.id)}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {t.first_name} {t.last_name}
+                            </p>
+                            {latest.status === "sent" && (
+                              <Badge className="h-5 shrink-0 gap-0.5 px-1.5 text-[9px] bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border-emerald-600/30" variant="outline">
+                                <CheckCircle2 className="h-2.5 w-2.5" />
+                                Sent
+                              </Badge>
+                            )}
+                            {latest.status === "failed" && (
+                              <Badge className="h-5 shrink-0 gap-0.5 px-1.5 text-[9px] bg-red-600/15 text-red-700 dark:text-red-300 border-red-600/30" variant="outline">
+                                <XCircle className="h-2.5 w-2.5" />
+                                Failed
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground truncate">{t.email || "No email address"}</p>
+                          {latest.at && (
+                            <p className="text-[10px] text-muted-foreground truncate mt-0.5">
+                              Last: {formatHistoryTime(latest.at)}
+                              {latest.subject ? ` · ${latest.subject}` : ""}
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                    )
+                  })
                 )}
               </div>
             </ScrollArea>
@@ -966,6 +1205,80 @@ export default function SubmissionsEmailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="rounded-xl border border-border shadow-sm bg-card text-card-foreground">
+        <CardHeader className="border-b border-border py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base text-zinc-900 dark:text-white">
+                <History className="h-4 w-4" />
+                Send History
+              </CardTitle>
+              <CardDescription>
+                Recent composer emails for this schedule — succeeds and failures are saved per participant.
+              </CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Badge className="bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border-emerald-600/30" variant="outline">
+                {sendHistoryFeed.filter((r) => r.status === "sent").length} succeeded
+              </Badge>
+              <Badge className="bg-red-600/15 text-red-700 dark:text-red-300 border-red-600/30" variant="outline">
+                {sendHistoryFeed.filter((r) => r.status === "failed").length} failed
+              </Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {sendHistoryFeed.length === 0 ? (
+            <p className="p-4 text-sm text-muted-foreground">
+              No send history yet. After you send emails, results appear here.
+            </p>
+          ) : (
+            <ScrollArea className="h-[260px]">
+              <div className="divide-y divide-border">
+                {sendHistoryFeed.map((row, index) => (
+                  <div
+                    key={`${row.traineeId}-${row.at}-${index}`}
+                    className="flex items-start gap-3 px-4 py-3"
+                  >
+                    <div className="mt-0.5 shrink-0">
+                      {row.status === "sent" ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-red-500" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-zinc-900 dark:text-white truncate">
+                          {row.name}
+                        </p>
+                        <Badge
+                          variant="outline"
+                          className={
+                            row.status === "sent"
+                              ? "h-5 text-[10px] bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border-emerald-600/30"
+                              : "h-5 text-[10px] bg-red-600/15 text-red-700 dark:text-red-300 border-red-600/30"
+                          }
+                        >
+                          {row.status === "sent" ? "Succeeded" : "Failed"}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {row.email || "No email"} · {row.subject || "(no subject)"}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {formatHistoryTime(row.at)}
+                        {row.status === "failed" && row.error ? ` · ${row.error}` : ""}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

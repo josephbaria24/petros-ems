@@ -9,7 +9,9 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "echo 'ESLint disabled'",
-    "start": "next start"
+    "start": "next start",
+    "test": "tsx --test tests/**/*.test.ts",
+    "register-sendlayer-webhooks": "tsx scripts/register-sendlayer-webhooks.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -105,6 +107,7 @@
     "@types/react-dom": "^18.3.7",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
+    "tsx": "^4.19.4",
     "tw-animate-css": "1.3.3",
     "typescript": "^5.9.3"
   }

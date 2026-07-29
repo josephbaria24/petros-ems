@@ -18,6 +18,7 @@ yarn-error.log*
 
 # env files
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -27,3 +28,6 @@ yarn-error.log*
 next-env.d.ts
 
 pnpm-lock.yaml
+
+# local email tracking fallback (not for production / serverless)
+.data/

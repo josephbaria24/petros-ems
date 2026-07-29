@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer"
+import { normalizeMessageId, trackSentEmailSafe } from "@/lib/email-tracking"
 
 export type SmtpAttachment = {
   filename: string
@@ -14,7 +15,7 @@ export type SendSmtpMailInput = {
 }
 
 export type SendSmtpMailResult =
-  | { success: true }
+  | { success: true; messageId: string }
   | { success: false; error: string; details?: Record<string, unknown> }
 
 function isValidEmail(email: string) {
@@ -65,9 +66,11 @@ function resolveEnvelopeFromEmail(): { email: string } | { error: string; detail
 }
 
 /**
- * Sends mail via configured SMTP. Used by /api/send-email and in-process by
- * /api/send-certificates so large PDF attachments are not re-POSTed as JSON
- * (Vercel serverless request body limit ~4.5MB).
+ * Sends mail via configured SMTP (SendLayer SMTP in production).
+ * Captures Nodemailer messageId for webhook correlation.
+ *
+ * NOTE: SMTP Message-ID vs SendLayer webhook MessageID correlation should be
+ * verified with a real send — provider-generated IDs can differ in formatting.
  */
 export async function sendSmtpMail(input: SendSmtpMailInput): Promise<SendSmtpMailResult> {
   const { to, subject, message, attachments } = input
@@ -132,15 +135,33 @@ export async function sendSmtpMail(input: SendSmtpMailInput): Promise<SendSmtpMa
 
   try {
     await transporter.verify()
-    await transporter.sendMail(mailOptions)
-    return { success: true }
-  } catch (error: any) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error"
+    const info = await transporter.sendMail(mailOptions)
+    const messageId = normalizeMessageId(info.messageId)
+    if (messageId) {
+      await trackSentEmailSafe({
+        messageId,
+        recipient: to,
+        subject,
+        sentAt: new Date().toISOString(),
+      })
+    } else {
+      console.warn("[email-tracking] SMTP send succeeded but messageId was empty")
+    }
+    return { success: true, messageId }
+  } catch (error: unknown) {
+    const err = error as {
+      message?: string
+      code?: string
+      responseCode?: number
+      response?: string
+      command?: string
+    }
+    const errorMessage = err?.message || (error instanceof Error ? error.message : "Unknown error")
 
     if (
       Array.isArray(attachments) &&
       attachments.length > 0 &&
-      error?.command === "DATA"
+      err?.command === "DATA"
     ) {
       try {
         await transporter.sendMail({
@@ -154,10 +175,10 @@ export async function sendSmtpMail(input: SendSmtpMailInput): Promise<SendSmtpMa
           error:
             "SMTP rejected the message payload with attachments. Retry with smaller/fewer attachments or verify provider limits/policies.",
           details: {
-            code: error?.code,
-            responseCode: error?.responseCode,
-            response: error?.response,
-            command: error?.command,
+            code: err?.code,
+            responseCode: err?.responseCode,
+            response: err?.response,
+            command: err?.command,
             diagnostic: "no-attachment-send-succeeded",
           },
         }
@@ -170,10 +191,10 @@ export async function sendSmtpMail(input: SendSmtpMailInput): Promise<SendSmtpMa
       success: false,
       error: errorMessage,
       details: {
-        code: error?.code,
-        responseCode: error?.responseCode,
-        response: error?.response,
-        command: error?.command,
+        code: err?.code,
+        responseCode: err?.responseCode,
+        response: err?.response,
+        command: err?.command,
       },
     }
   }
