@@ -1,101 +1,126 @@
-// middleware.ts
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
+import { createServerClient } from "@supabase/ssr"
 
-export async function middleware(req: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: req.headers,
-    },
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/training-schedules",
+  "/training-calendar",
+  "/courses",
+  "/submissions",
+  "/admin",
+  "/directory-of-trainees",
+  "/certificate-id-management",
+  "/cert-tracker",
+  "/certificate-verifier",
+  "/voucher-manager",
+  "/trainer-repository",
+  "/training-reports",
+] as const
+
+function copyCookies(from: NextResponse, to: NextResponse) {
+  from.cookies.getAll().forEach((cookie) => {
+    to.cookies.set(cookie.name, cookie.value)
   })
+}
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+/**
+ * Supabase session refresh + route protection.
+ * Must never throw — uncaught errors become Vercel MIDDLEWARE_INVOCATION_FAILED (500).
+ */
+export async function middleware(req: NextRequest) {
+  try {
+    const { pathname } = req.nextUrl
+
+    // Critical: do NOT touch cookies on the OAuth callback.
+    // getUser()/setAll can drop the PKCE code-verifier cookie before exchange.
+    if (pathname.startsWith("/auth/callback")) {
+      return NextResponse.next()
+    }
+
+    const isLogin = pathname === "/login"
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error("[middleware] Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY")
+      const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))
+      if (isProtected) {
+        return NextResponse.redirect(new URL("/login", req.url))
+      }
+      return NextResponse.next()
+    }
+
+    let supabaseResponse = NextResponse.next({
+      request: {
+        headers: req.headers,
+      },
+    })
+
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
-        get(name: string) {
-          return req.cookies.get(name)?.value
+        getAll() {
+          return req.cookies.getAll()
         },
-        set(name: string, value: string, options: any) {
-          // Update both request and response cookies
-          req.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: req.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-        },
-        remove(name: string, options: any) {
-          // Remove from both request and response
-          req.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: req.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value }) => {
+              req.cookies.set(name, value)
+            })
+            supabaseResponse = NextResponse.next({
+              request: {
+                headers: req.headers,
+              },
+            })
+            cookiesToSet.forEach(({ name, value, options }) => {
+              supabaseResponse.cookies.set(name, value, options)
+            })
+          } catch (cookieError) {
+            console.warn(
+              "[middleware] cookie setAll fallback:",
+              cookieError instanceof Error ? cookieError.message : cookieError,
+            )
+            cookiesToSet.forEach(({ name, value, options }) => {
+              try {
+                supabaseResponse.cookies.set(name, value, options)
+              } catch {
+                // ignore individual cookie failures
+              }
+            })
+          }
         },
       },
+    })
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (isLogin && user) {
+      const redirectResponse = NextResponse.redirect(new URL("/dashboard", req.url))
+      copyCookies(supabaseResponse, redirectResponse)
+      return redirectResponse
     }
-  )
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+    const isProtectedRoute = PROTECTED_PREFIXES.some((route) => pathname.startsWith(route))
 
-  const { pathname } = req.nextUrl
+    if (isProtectedRoute && !user) {
+      const redirectResponse = NextResponse.redirect(new URL("/login", req.url))
+      copyCookies(supabaseResponse, redirectResponse)
+      return redirectResponse
+    }
 
-  // Redirect authenticated users away from login
-  if (pathname === '/login' && session) {
-    const redirectResponse = NextResponse.redirect(new URL('/dashboard', req.url))
-    // Copy cookies to redirect response
-    response.cookies.getAll().forEach(cookie => {
-      redirectResponse.cookies.set(cookie.name, cookie.value)
+    return supabaseResponse
+  } catch (error) {
+    console.error(
+      "[middleware] unexpected error (fail-open):",
+      error instanceof Error ? error.message : error,
+    )
+    return NextResponse.next({
+      request: {
+        headers: req.headers,
+      },
     })
-    return redirectResponse
   }
-
-  // Protect routes - redirect unauthenticated users to login
-  const protectedRoutes = [
-    '/dashboard',
-    '/training-schedules',
-    '/training-calendar',
-    '/courses',
-    '/submissions',
-    '/admin',
-  ]
-
-  const isProtectedRoute = protectedRoutes.some(route => 
-    pathname.startsWith(route)
-  )
-
-  if (isProtectedRoute && !session) {
-    const redirectResponse = NextResponse.redirect(new URL('/login', req.url))
-    // Copy cookies to redirect response
-    response.cookies.getAll().forEach(cookie => {
-      redirectResponse.cookies.set(cookie.name, cookie.value)
-    })
-    return redirectResponse
-  }
-
-  return response
 }

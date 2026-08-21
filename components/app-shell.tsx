@@ -23,7 +23,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const isGuestPage =
     pathname.startsWith("/guest") ||
     pathname === "/login" ||
-    pathname === "/auth/callback" ||
+    pathname.startsWith("/auth/callback") ||
     pathname.startsWith("/client-upload") ||
     pathname.startsWith("/evaluation") ||
     pathname.startsWith("/view-material") ||

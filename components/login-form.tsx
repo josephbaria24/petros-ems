@@ -1,17 +1,28 @@
 //components\login-form.tsx
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase-client"
-import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
-  const router = useRouter()
   const [errorMsg, setErrorMsg] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const err = params.get("error")
+    if (!err) return
+    if (err === "exchange" || err === "missing_code") {
+      setErrorMsg("Login session expired or was interrupted. Please try Microsoft login again.")
+    } else if (err === "oauth") {
+      setErrorMsg("Microsoft sign-in was cancelled or failed. Please try again.")
+    } else if (err === "config") {
+      setErrorMsg("Auth is misconfigured. Contact an administrator.")
+    }
+  }, [])
 
   const handleMicrosoftLogin = async () => {
     setErrorMsg("")
@@ -19,7 +30,8 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
 
     try {
       const supabase = createClient()
-      await supabase.auth.signOut() // clear old session
+      // Local-only sign-out so we don't wipe cookies needed for the upcoming PKCE flow
+      await supabase.auth.signOut({ scope: "local" })
 
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "azure",
