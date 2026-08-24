@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { createServerClient } from "@supabase/ssr"
+import { copyResponseCookies } from "@/lib/supabase-cookie-options"
 
 const PROTECTED_PREFIXES = [
   "/dashboard",
@@ -18,12 +19,6 @@ const PROTECTED_PREFIXES = [
   "/training-reports",
 ] as const
 
-function copyCookies(from: NextResponse, to: NextResponse) {
-  from.cookies.getAll().forEach((cookie) => {
-    to.cookies.set(cookie.name, cookie.value)
-  })
-}
-
 /**
  * Supabase session refresh + route protection.
  * Must never throw — uncaught errors become Vercel MIDDLEWARE_INVOCATION_FAILED (500).
@@ -39,6 +34,12 @@ export async function middleware(req: NextRequest) {
     }
 
     const isLogin = pathname === "/login"
+
+    // Do not refresh/write auth cookies on the login page. Oversized Azure
+    // session cookies were causing HTTP 431 and wiping the PKCE verifier.
+    if (isLogin) {
+      return NextResponse.next()
+    }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -95,19 +96,20 @@ export async function middleware(req: NextRequest) {
 
     const {
       data: { user },
+      error: userError,
     } = await supabase.auth.getUser()
 
-    if (isLogin && user) {
-      const redirectResponse = NextResponse.redirect(new URL("/dashboard", req.url))
-      copyCookies(supabaseResponse, redirectResponse)
-      return redirectResponse
+    // Network / Auth API errors must not look like "logged out" or SSO appears to fail.
+    if (userError && userError.message !== "Auth session missing!") {
+      console.error("[middleware] getUser:", userError.message)
+      return supabaseResponse
     }
 
     const isProtectedRoute = PROTECTED_PREFIXES.some((route) => pathname.startsWith(route))
 
     if (isProtectedRoute && !user) {
       const redirectResponse = NextResponse.redirect(new URL("/login", req.url))
-      copyCookies(supabaseResponse, redirectResponse)
+      copyResponseCookies(supabaseResponse, redirectResponse)
       return redirectResponse
     }
 

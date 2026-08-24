@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase-client"
+import { clearSupabaseAuthStorage } from "@/lib/clear-supabase-auth"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,9 +15,12 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const err = params.get("error")
+    if (err === "exchange" || err === "missing_code" || err === "headers") {
+      clearSupabaseAuthStorage()
+    }
     if (!err) return
     if (err === "exchange" || err === "missing_code") {
-      setErrorMsg("Login session expired or was interrupted. Please try Microsoft login again.")
+      setErrorMsg("Login session was reset because cookies were too large or incomplete. Click Login with Microsoft again.")
     } else if (err === "oauth") {
       setErrorMsg("Microsoft sign-in was cancelled or failed. Please try again.")
     } else if (err === "config") {
@@ -29,24 +33,27 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
     setIsLoading(true)
 
     try {
+      clearSupabaseAuthStorage()
       const supabase = createClient()
-      // Local-only sign-out so we don't wipe cookies needed for the upcoming PKCE flow
-      await supabase.auth.signOut({ scope: "local" })
 
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "azure",
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
-          scopes: "openid profile email offline_access User.Read",
+          scopes: "openid email profile",
+          skipBrowserRedirect: true,
         },
       })
-      
-      if (error) {
+
+      if (error || !data?.url) {
         setErrorMsg("SSO Login failed. Please try again.")
         console.error("OAuth error:", error)
         setIsLoading(false)
+        return
       }
-      // If no error, user will be redirected to Microsoft login
+
+      // Navigate only after the PKCE verifier cookie is written.
+      window.location.assign(data.url)
     } catch (err) {
       console.error("Unexpected error:", err)
       setErrorMsg("Unexpected error occurred. Please contact support.")
