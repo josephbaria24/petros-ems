@@ -2440,6 +2440,9 @@ export default function ParticipantDirectoryDialog({
   const getFriendlyEmailError = (rawError: string) => {
     const text = (rawError || "").toLowerCase()
 
+    if (text.includes("no email address") || text.includes("invalid email address") || text.includes("missing or invalid 'to'")) {
+      return "This participant has no email, or the email address is invalid. Open their row and add a valid email, then send again."
+    }
     if (text.includes("suppressed")) {
       return "This recipient is blocked by the email provider (suppressed). Please remove it from the provider suppression list and try again."
     }
@@ -3465,6 +3468,7 @@ export default function ParticipantDirectoryDialog({
           </div>
         ) : (
           <div className="max-h-[350px] overflow-y-auto border border-border rounded-md">
+            <TooltipProvider>
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
@@ -3509,9 +3513,19 @@ export default function ParticipantDirectoryDialog({
                           Sent
                         </Badge>
                       ) : failedCertificateIds.has(trainee.id) ? (
-                        <Badge variant="destructive" className="h-5 rounded-full px-2 text-[10px]">
-                          Failed
-                        </Badge>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge variant="destructive" className="h-5 max-w-[140px] truncate rounded-full px-2 text-[10px]">
+                              Failed
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs text-xs">
+                            {trainee.custom_data?.__certificate_email_error ||
+                              (!trainee.email ? "No email address on this record." : "Email could not be sent.")}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : !trainee.email ? (
+                        <span className="text-xs text-amber-700 dark:text-amber-400">No email</span>
                       ) : (
                         <span className="text-xs text-muted-foreground">Not sent</span>
                       )}
@@ -3533,6 +3547,7 @@ export default function ParticipantDirectoryDialog({
                 )}
               </TableBody>
             </Table>
+            </TooltipProvider>
           </div>
         )}
 

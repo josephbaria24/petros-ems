@@ -274,6 +274,15 @@ export async function POST(req: NextRequest) {
           try {
             console.log(`📤 Generating certificate for: ${trainee.first_name} ${trainee.last_name}`);
 
+            const recipient = typeof trainee.email === "string" ? trainee.email.trim() : ""
+            if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+              throw new Error(
+                recipient
+                  ? `Invalid email address: ${recipient}`
+                  : "No email address on this participant record",
+              )
+            }
+
             // ✅ NEW: Support multiple attachments
             const pdfAttachments = [];
             const attachmentTypes = attachments.length > 0 ? attachments : [templateType];
