@@ -178,19 +178,25 @@ export function ImageCropDialog({
       const cropHeight = pixelCrop.height * scaleY
       const rotRad = (rotation * Math.PI) / 180
 
-      if (rotation === 90 || rotation === 270) {
-        canvas.width = Math.round(cropHeight)
-        canvas.height = Math.round(cropWidth)
-      } else {
-        canvas.width = Math.round(cropWidth)
-        canvas.height = Math.round(cropHeight)
-      }
+      // Cap output size so phone photos do not become 10MB+ PNGs (Vercel 413).
+      const maxEdge = 900
+      const rawW = rotation === 90 || rotation === 270 ? cropHeight : cropWidth
+      const rawH = rotation === 90 || rotation === 270 ? cropWidth : cropHeight
+      const outScale = Math.min(1, maxEdge / Math.max(rawW, rawH))
+      const outW = Math.max(1, Math.round(rawW * outScale))
+      const outH = Math.max(1, Math.round(rawH * outScale))
+
+      canvas.width = outW
+      canvas.height = outH
 
       // Keep transparent pixels transparent (do not fill with black/white).
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       ctx.imageSmoothingQuality = "high"
       ctx.translate(canvas.width / 2, canvas.height / 2)
       ctx.rotate(rotRad)
+
+      const drawW = cropWidth * outScale
+      const drawH = cropHeight * outScale
 
       if (rotation === 90 || rotation === 270) {
         ctx.drawImage(
@@ -199,10 +205,10 @@ export function ImageCropDialog({
           pixelCrop.y * scaleY,
           cropWidth,
           cropHeight,
-          -cropHeight / 2,
-          -cropWidth / 2,
-          cropHeight,
-          cropWidth
+          -drawH / 2,
+          -drawW / 2,
+          drawH,
+          drawW
         )
       } else {
         ctx.drawImage(
@@ -211,10 +217,10 @@ export function ImageCropDialog({
           pixelCrop.y * scaleY,
           cropWidth,
           cropHeight,
-          -cropWidth / 2,
-          -cropHeight / 2,
-          cropWidth,
-          cropHeight
+          -drawW / 2,
+          -drawH / 2,
+          drawW,
+          drawH
         )
       }
 
@@ -224,7 +230,7 @@ export function ImageCropDialog({
         if (preserveAlpha) {
           canvas.toBlob(finish, "image/png")
         } else {
-          canvas.toBlob(finish, "image/jpeg", 0.95)
+          canvas.toBlob(finish, "image/jpeg", 0.85)
         }
       })
     },
@@ -238,6 +244,9 @@ export function ImageCropDialog({
       method: "POST",
       body: formData,
     })
+    if (response.status === 413) {
+      throw new Error("Image is too large for the server. Try cropping a smaller area.")
+    }
     if (!response.ok) throw new Error("Upload failed")
     const data = await response.json()
     return data.url
@@ -251,7 +260,9 @@ export function ImageCropDialog({
 
     setSaving(true)
     try {
-      const croppedBlob = await getCroppedImg(imgRef.current, completedCrop)
+      const { compressForUpload } = await import("@/lib/compress-image-blob")
+      const rawCropped = await getCroppedImg(imgRef.current, completedCrop)
+      const croppedBlob = await compressForUpload(rawCropped, preserveAlpha)
       const fileName = `cropped_${imageType}_${Date.now()}.${outputExt}`
 
       if (isLocalMode && onLocalSave) {
@@ -266,10 +277,10 @@ export function ImageCropDialog({
       } else if (onSave) {
         let originalUrl = existingImageUrl || ""
         if (originalFile) {
-          const originalExt = originalFile.name.split(".").pop() || (preserveAlpha ? "png" : "jpg")
+          const compressedOriginal = await compressForUpload(originalFile, preserveAlpha)
           originalUrl = await uploadImage(
-            originalFile,
-            `original_${imageType}_${Date.now()}.${originalExt}`,
+            compressedOriginal,
+            `original_${imageType}_${Date.now()}.${outputExt}`,
           )
         }
         const croppedUrl = await uploadImage(croppedBlob, fileName)
@@ -279,7 +290,7 @@ export function ImageCropDialog({
       onOpenChange(false)
     } catch (error) {
       console.error("Error saving image:", error)
-      alert("Failed to save image. Please try again.")
+      alert(error instanceof Error ? error.message : "Failed to save image. Please try again.")
     } finally {
       setSaving(false)
     }

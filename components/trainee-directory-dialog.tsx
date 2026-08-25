@@ -6,6 +6,7 @@ import JSZip from "jszip"
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog"
 import { Progress } from "@/components/ui/progress"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -373,6 +374,13 @@ export default function ParticipantDirectoryDialog({
   const [isUploading, setIsUploading] = useState(false)
   const [isRemovingBg, setIsRemovingBg] = useState(false)
   const [bgRemoveProgress, setBgRemoveProgress] = useState("")
+  const [bgJobExpanded, setBgJobExpanded] = useState(true)
+  const [bgJobItems, setBgJobItems] = useState<Array<{
+    id: string
+    name: string
+    status: "queued" | "running" | "done" | "skipped" | "error"
+    detail: string
+  }>>([])
   const [selectedTemplateType, setSelectedTemplateType] = useState<TemplateType>("completion")
   const { toast } = useToast()
   const [isGenerating, setIsGenerating] = useState(false)
@@ -394,6 +402,16 @@ export default function ParticipantDirectoryDialog({
   const [selectedTraineeIds, setSelectedTraineeIds] = useState<Set<string>>(new Set())
   const [selectAll, setSelectAll] = useState(false)
   const [attendeeSearch, setAttendeeSearch] = useState("")
+
+  useEffect(() => {
+    if (!isRemovingBg) return
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = "Background removal is still running. Do not close or refresh this tab."
+    }
+    window.addEventListener("beforeunload", warn)
+    return () => window.removeEventListener("beforeunload", warn)
+  }, [isRemovingBg])
 
   // ✅ NEW: Email compose dialog state
   const [emailComposeOpen, setEmailComposeOpen] = useState(false)
@@ -2026,6 +2044,174 @@ export default function ParticipantDirectoryDialog({
     }
   }
 
+  const removeBackgroundForTrainee = async (
+    trainee: Trainee,
+    onProgress: (message: string) => void,
+  ) => {
+    if (!trainee.id || !trainee.picture_2x2_url) {
+      throw new Error("No 2x2 photo to process")
+    }
+
+    onProgress("Loading AI model (first time may take a minute)…")
+    const { removeBackground } = await import("@imgly/background-removal")
+
+    const photoRes = await fetch(
+      `/api/image-proxy?url=${encodeURIComponent(trainee.picture_2x2_url)}`,
+    )
+    if (!photoRes.ok) {
+      throw new Error("Could not load the 2×2 photo for processing")
+    }
+    const rawSource = await photoRes.blob()
+
+    onProgress("Preparing photo…")
+    const { compressPngBlob } = await import("@/lib/compress-image-blob")
+    const source = await compressPngBlob(rawSource, 1280)
+
+    onProgress("Removing background…")
+    const publicPath = `${window.location.origin}/bg-removal-data/`
+    const rawResultBlob = await removeBackground(source, {
+      publicPath,
+      model: "isnet_fp16",
+      output: {
+        format: "image/png",
+      },
+      progress: (key, current, total) => {
+        if (total > 0) {
+          onProgress(`Downloading model: ${key} (${Math.round((current / total) * 100)}%)`)
+        }
+      },
+    })
+
+    onProgress("Optimizing photo for upload…")
+    const resultBlob = await compressPngBlob(rawResultBlob, 1024)
+
+    onProgress("Uploading…")
+    const formData = new FormData()
+    formData.append("image", resultBlob, `2x2_nobg_${Date.now()}.png`)
+    const uploadRes = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    })
+    if (!uploadRes.ok) {
+      if (uploadRes.status === 413) {
+        throw new Error("Processed photo is still too large for the server.")
+      }
+      throw new Error("Failed to upload processed photo")
+    }
+    const uploadData = await uploadRes.json()
+    const photoUrl = uploadData.url as string
+    if (!photoUrl) throw new Error("Upload did not return a URL")
+
+    const originalBackup = trainee.picture_2x2_original || trainee.picture_2x2_url
+    const updatePayload: Record<string, string> = { picture_2x2_url: photoUrl }
+    if (!trainee.picture_2x2_original && trainee.picture_2x2_url) {
+      updatePayload.picture_2x2_original = trainee.picture_2x2_url
+    }
+
+    const { error } = await tmsDb
+      .from("trainings")
+      .update(updatePayload)
+      .eq("id", trainee.id)
+
+    if (error) throw new Error(error.message)
+
+    applyUpdatedPhotoUrl(trainee.id, photoUrl, {
+      picture_2x2_original: originalBackup || null,
+    })
+
+    return photoUrl
+  }
+
+  const runBackgroundRemovalJob = async (targets: Trainee[]) => {
+    if (isRemovingBg) return
+    if (targets.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No photos",
+        description: "Selected participants have no 2x2 photos to process.",
+      })
+      return
+    }
+
+    setIsRemovingBg(true)
+    setBgJobExpanded(true)
+    setBgJobItems(
+      targets.map((trainee) => ({
+        id: trainee.id,
+        name: `${trainee.first_name} ${trainee.last_name}`,
+        status: "queued" as const,
+        detail: "Waiting…",
+      })),
+    )
+
+    let successCount = 0
+    let failCount = 0
+    let skipCount = 0
+
+    try {
+      for (const trainee of targets) {
+        if (!trainee.picture_2x2_url) {
+          skipCount += 1
+          setBgJobItems((prev) =>
+            prev.map((item) =>
+              item.id === trainee.id
+                ? { ...item, status: "skipped", detail: "No photo" }
+                : item,
+            ),
+          )
+          continue
+        }
+
+        setBgJobItems((prev) =>
+          prev.map((item) =>
+            item.id === trainee.id
+              ? { ...item, status: "running", detail: "Starting…" }
+              : item,
+          ),
+        )
+        setBgRemoveProgress(`Processing ${trainee.first_name} ${trainee.last_name}…`)
+
+        try {
+          await removeBackgroundForTrainee(trainee, (message) => {
+            setBgRemoveProgress(message)
+            setBgJobItems((prev) =>
+              prev.map((item) =>
+                item.id === trainee.id ? { ...item, detail: message } : item,
+              ),
+            )
+          })
+          successCount += 1
+          setBgJobItems((prev) =>
+            prev.map((item) =>
+              item.id === trainee.id
+                ? { ...item, status: "done", detail: "Background removed" }
+                : item,
+            ),
+          )
+        } catch (error: unknown) {
+          failCount += 1
+          const message = error instanceof Error ? error.message : "Failed"
+          setBgJobItems((prev) =>
+            prev.map((item) =>
+              item.id === trainee.id ? { ...item, status: "error", detail: message } : item,
+            ),
+          )
+        }
+      }
+
+      toast({
+        title: "Background removal finished",
+        description: `${successCount} updated${failCount ? `, ${failCount} failed` : ""}${
+          skipCount ? `, ${skipCount} skipped` : ""
+        }.`,
+        variant: failCount && !successCount ? "destructive" : "default",
+      })
+    } finally {
+      setIsRemovingBg(false)
+      setBgRemoveProgress("")
+    }
+  }
+
   const handleRemovePhotoBackground = async () => {
     const current = certificatePreviews[activePreviewIndex]
     const trainee = current?.trainee
@@ -2037,100 +2223,20 @@ export default function ParticipantDirectoryDialog({
       })
       return
     }
+    setSelectedTrainee(trainee as Trainee)
+    await runBackgroundRemovalJob([trainee as Trainee])
+  }
 
-    setIsRemovingBg(true)
-    setBgRemoveProgress("Loading AI model (first time may take a minute)…")
-    try {
-      const { removeBackground } = await import("@imgly/background-removal")
-
-      // Always load via same-origin proxy — direct Supabase/CDN fetches can fail CORS
-      const photoRes = await fetch(
-        `/api/image-proxy?url=${encodeURIComponent(trainee.picture_2x2_url)}`,
-      )
-      if (!photoRes.ok) {
-        throw new Error("Could not load the 2×2 photo for processing")
-      }
-      const rawSource = await photoRes.blob()
-
-      // Downscale large camera photos first — keeps AI output under hosting upload limits (413)
-      setBgRemoveProgress("Preparing photo…")
-      const { compressPngBlob } = await import("@/lib/compress-image-blob")
-      const source = await compressPngBlob(rawSource, 1280)
-
-      setBgRemoveProgress("Removing background…")
-      // publicPath must be same-origin: staticimgly.com does not send CORS headers
-      const publicPath = `${window.location.origin}/bg-removal-data/`
-      const rawResultBlob = await removeBackground(source, {
-        publicPath,
-        model: "isnet_fp16",
-        output: {
-          format: "image/png",
-        },
-        progress: (key, current, total) => {
-          if (total > 0) {
-            setBgRemoveProgress(`Downloading model: ${key} (${Math.round((current / total) * 100)}%)`)
-          }
-        },
-      })
-
-      setBgRemoveProgress("Optimizing photo for upload…")
-      const resultBlob = await compressPngBlob(rawResultBlob, 1024)
-
-      setBgRemoveProgress("Uploading…")
-      const formData = new FormData()
-      formData.append("image", resultBlob, `2x2_nobg_${Date.now()}.png`)
-      const uploadRes = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      })
-      if (!uploadRes.ok) {
-        if (uploadRes.status === 413) {
-          throw new Error(
-            "Processed photo is still too large for the server. Try cropping the photo smaller first, then remove the background again.",
-          )
-        }
-        throw new Error("Failed to upload processed photo")
-      }
-      const uploadData = await uploadRes.json()
-      const photoUrl = uploadData.url as string
-      if (!photoUrl) throw new Error("Upload did not return a URL")
-
-      // Keep a backup so "Revert to original" can restore the pre-BG-removal photo
-      const originalBackup = trainee.picture_2x2_original || trainee.picture_2x2_url
-      const updatePayload: Record<string, string> = { picture_2x2_url: photoUrl }
-      if (!trainee.picture_2x2_original && trainee.picture_2x2_url) {
-        updatePayload.picture_2x2_original = trainee.picture_2x2_url
-      }
-
-      const { error } = await tmsDb
-        .from("trainings")
-        .update(updatePayload)
-        .eq("id", trainee.id)
-
-      if (error) {
-        throw new Error(error.message)
-      }
-
-      setSelectedTrainee(trainee as any)
-      applyUpdatedPhotoUrl(trainee.id, photoUrl, {
-        picture_2x2_original: originalBackup || null,
-      })
-
+  const handleBatchRemoveBackground = async () => {
+    const selected = getSelectedTrainees()
+    if (selected.length === 0) {
       toast({
-        title: "Background removed",
-        description: "2×2 photo updated. Certificate preview will refresh.",
+        title: "No selection",
+        description: "Select at least one participant first.",
       })
-    } catch (error: any) {
-      console.error("Background removal failed:", error)
-      toast({
-        variant: "destructive",
-        title: "Background removal failed",
-        description: error?.message || "Please try again. First run downloads a free AI model.",
-      })
-    } finally {
-      setIsRemovingBg(false)
-      setBgRemoveProgress("")
+      return
     }
+    await runBackgroundRemovalJob(selected)
   }
 
   const handleRevertOriginalPhoto = async () => {
@@ -3091,7 +3197,19 @@ export default function ParticipantDirectoryDialog({
   // PART 3 OF 3 - JSX Return
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && isRemovingBg) {
+          toast({
+            title: "Keep this tab open",
+            description: "Background removal is still running. Do not close or refresh this page.",
+          })
+        }
+        onOpenChange(next)
+      }}
+    >
       <DialogContent className="lg:w-[60vw] sm:w-[90vw] max-h-[90vh] overflow-y-auto pt-10 bg-card">
 
         <DialogHeader>
@@ -3431,6 +3549,20 @@ export default function ParticipantDirectoryDialog({
             )}
           </div>
           <div className="flex gap-2 flex-wrap justify-end w-full md:w-auto">
+            <Button
+              variant="outline"
+              onClick={() => void handleBatchRemoveBackground()}
+              disabled={isRemovingBg || selectedTraineeIds.size === 0}
+              className="border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
+            >
+              {isRemovingBg ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Eraser className="mr-2 h-4 w-4" />
+              )}
+              Remove BG
+              {selectedTraineeIds.size > 0 ? ` (${selectedTraineeIds.size})` : ""}
+            </Button>
             <Button
               variant="default"
               onClick={handleOpenCertificateViewer}
@@ -4989,5 +5121,95 @@ export default function ParticipantDirectoryDialog({
         </AlertDialogContent>
       </AlertDialog>
     </Dialog>
+    {typeof document !== "undefined" && bgJobItems.length > 0
+      ? createPortal(
+          <div className="pointer-events-auto fixed bottom-4 right-4 z-[9999] w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border bg-background shadow-2xl">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left"
+              onClick={() => setBgJobExpanded((openPanel) => !openPanel)}
+            >
+              {isRemovingBg ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-violet-600" />
+              ) : (
+                <Eraser className="h-4 w-4 shrink-0 text-violet-600" />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">
+                  {isRemovingBg ? "Removing backgrounds…" : "Background removal"}
+                </p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {bgJobItems.filter((item) => item.status === "done").length}/{bgJobItems.length} done
+                  {bgRemoveProgress ? ` · ${bgRemoveProgress}` : ""}
+                </p>
+              </div>
+              {bgJobExpanded ? (
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+              )}
+            </button>
+            <Progress
+              value={
+                bgJobItems.length
+                  ? Math.round(
+                      (bgJobItems.filter((item) =>
+                        item.status === "done" || item.status === "skipped" || item.status === "error",
+                      ).length /
+                        bgJobItems.length) *
+                        100,
+                    )
+                  : 0
+              }
+              className="h-1 rounded-none"
+            />
+            {bgJobExpanded ? (
+              <div className="space-y-2 border-t px-3 py-2">
+                <p className="rounded-md bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+                  Do not close or refresh this tab until this finishes.
+                </p>
+                <ul className="max-h-40 space-y-1.5 overflow-y-auto text-xs">
+                  {bgJobItems.map((item) => (
+                    <li key={item.id} className="flex items-start gap-2">
+                      <span
+                        className={
+                          item.status === "done"
+                            ? "mt-0.5 h-2 w-2 shrink-0 rounded-full bg-emerald-500"
+                            : item.status === "error"
+                              ? "mt-0.5 h-2 w-2 shrink-0 rounded-full bg-red-500"
+                              : item.status === "running"
+                                ? "mt-0.5 h-2 w-2 shrink-0 animate-pulse rounded-full bg-violet-500"
+                                : "mt-0.5 h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40"
+                        }
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{item.name}</span>
+                        <span className="block truncate text-muted-foreground">{item.detail}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {!isRemovingBg ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-full text-xs"
+                    onClick={() => setBgJobItems([])}
+                  >
+                    Dismiss
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              <p className="px-3 py-1.5 text-[11px] text-amber-800 dark:text-amber-200">
+                Keep this tab open
+              </p>
+            )}
+          </div>,
+          document.body,
+        )
+      : null}
+    </>
   )
 }
