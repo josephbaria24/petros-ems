@@ -2,7 +2,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getServerOrigin } from "@/lib/get-server-origin";
-import { sendSmtpMail } from "@/lib/send-smtp-mail";
+import { sendSmtpMail, type SmtpAttachment } from "@/lib/send-smtp-mail";
+
+/** SendLayer SMTP DATA limit is 10MB including MIME/base64 overhead. */
+const SMTP_SAFE_ATTACHMENT_BYTES = 7_000_000;
+
+function attachmentPayloadBytes(attachments: SmtpAttachment[]): number {
+  return attachments.reduce((sum, a) => {
+    if (a.encoding === "base64" || !a.encoding) {
+      return sum + Buffer.byteLength(a.content, "base64");
+    }
+    return sum + Buffer.byteLength(a.content);
+  }, 0);
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -327,6 +339,9 @@ export async function POST(req: NextRequest) {
                 content: pdfBase64,
                 encoding: "base64",
               });
+              console.log(
+                `📎 ${filename}: ${(pdfBuffer.length / (1024 * 1024)).toFixed(2)} MB`,
+              );
             }
 
             if (pdfAttachments.length === 0) {
@@ -352,17 +367,38 @@ export async function POST(req: NextRequest) {
             }
 
             // Send in-process (avoid POSTing multi‑MB base64 to /api/send-email — Vercel body ~4.5MB cap)
-            const mailResult = await sendSmtpMail({
-              to: trainee.email,
-              subject: emailSubject,
-              message: emailMessage,
-              attachments: pdfAttachments,
-            });
+            const totalBytes = attachmentPayloadBytes(pdfAttachments);
+            console.log(
+              `📦 Attachment payload ${(totalBytes / (1024 * 1024)).toFixed(2)} MB (${pdfAttachments.length} file(s))`,
+            );
 
-            if (!mailResult.success) {
-              throw new Error(
-                `Email send failed: ${mailResult.error}${mailResult.details ? ` ${JSON.stringify(mailResult.details)}` : ""}`
+            const batches: SmtpAttachment[][] =
+              totalBytes > SMTP_SAFE_ATTACHMENT_BYTES && pdfAttachments.length > 1
+                ? pdfAttachments.map((a) => [a])
+                : [pdfAttachments];
+
+            if (batches.length > 1) {
+              console.log(
+                "✂️ Splitting certificate and ID into separate emails to stay under the 10MB SMTP limit",
               );
+            }
+
+            for (let b = 0; b < batches.length; b++) {
+              const mailResult = await sendSmtpMail({
+                to: trainee.email,
+                subject:
+                  batches.length > 1 && b > 0
+                    ? `${emailSubject} (${b + 1}/${batches.length})`
+                    : emailSubject,
+                message: emailMessage,
+                attachments: batches[b],
+              });
+
+              if (!mailResult.success) {
+                throw new Error(
+                  `Email send failed: ${mailResult.error}${mailResult.details ? ` ${JSON.stringify(mailResult.details)}` : ""}`
+                );
+              }
             }
 
             // Persist email-send result so UI status survives refresh.

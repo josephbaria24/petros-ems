@@ -9,6 +9,7 @@ import {
   resolveCertificatePageDimensions,
 } from "@/lib/certificate-page-sizes";
 import { formatCertificateHolderDisplayName } from "@/lib/certificate-name";
+import { compressImageForPdf } from "@/lib/compress-pdf-image";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -333,24 +334,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. Embed template images
+    // 6. Embed template images (JPEG-downscale so email PDFs stay under SMTP 10MB)
     const pdfDoc = await PDFDocument.create();
-    const imageType = template.image_url.toLowerCase();
-    let templateImage;
-    if (imageType.includes('png') || imageType.includes('data:image/png')) {
-      templateImage = await pdfDoc.embedPng(imageBytes);
-    } else {
-      templateImage = await pdfDoc.embedJpg(imageBytes);
-    }
+    const templateJpegOpts = {
+      maxEdge: isIDTemplate ? 1600 : 1800,
+      quality: 0.72,
+      preferJpeg: true as const,
+    };
+    const frontCompressed = await compressImageForPdf(imageBytes, templateJpegOpts);
+    const templateImage =
+      frontCompressed.format === "png"
+        ? await pdfDoc.embedPng(frontCompressed.bytes)
+        : await pdfDoc.embedJpg(frontCompressed.bytes);
 
     let backTemplateImage;
     if (backImageBytes) {
-      const backImageType = template.back_image_url!.toLowerCase();
-      if (backImageType.includes('png') || backImageType.includes('data:image/png')) {
-        backTemplateImage = await pdfDoc.embedPng(backImageBytes);
-      } else {
-        backTemplateImage = await pdfDoc.embedJpg(backImageBytes);
-      }
+      const backCompressed = await compressImageForPdf(backImageBytes, templateJpegOpts);
+      backTemplateImage =
+        backCompressed.format === "png"
+          ? await pdfDoc.embedPng(backCompressed.bytes)
+          : await pdfDoc.embedJpg(backCompressed.bytes);
     }
 
     const CANVAS = resolveCertificatePageDimensions(pageSize, isIDTemplate);
@@ -430,13 +433,16 @@ export async function POST(req: NextRequest) {
         const photoResponse = await fetch(trainee.picture_2x2_url);
         if (photoResponse.ok) {
           const photoBytes = await photoResponse.arrayBuffer();
-          
-          let traineeImage;
-          if (trainee.picture_2x2_url.toLowerCase().includes('png')) {
-            traineeImage = await pdfDoc.embedPng(photoBytes);
-          } else {
-            traineeImage = await pdfDoc.embedJpg(photoBytes);
-          }
+          const keepAlpha = trainee.picture_2x2_url.toLowerCase().includes("png");
+          const photoCompressed = await compressImageForPdf(photoBytes, {
+            maxEdge: 720,
+            quality: 0.78,
+            preferJpeg: !keepAlpha,
+          });
+          const traineeImage =
+            photoCompressed.format === "png"
+              ? await pdfDoc.embedPng(photoCompressed.bytes)
+              : await pdfDoc.embedJpg(photoCompressed.bytes);
 
           // Different photo positioning for ID vs certificate
           if (isIDTemplate) {
@@ -681,6 +687,9 @@ export async function POST(req: NextRequest) {
       ? `ID_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`
       : `Certificate_${trainee.certificate_number}_${trainee.last_name}_${trainee.first_name}.pdf`;
     const fileName = toAsciiFileName(rawFileName);
+    console.log(
+      `📄 PDF ${fileName}: ${(pdfBytes.length / (1024 * 1024)).toFixed(2)} MB (${templateType})`,
+    );
 
     return new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
