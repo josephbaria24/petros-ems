@@ -5,9 +5,6 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import { readFile } from "fs/promises";
 import path from "path";
-import {
-  resolveCertificatePageDimensions,
-} from "@/lib/certificate-page-sizes";
 import { formatCertificateHolderDisplayName } from "@/lib/certificate-name";
 import { compressImageForPdf } from "@/lib/compress-pdf-image";
 
@@ -356,9 +353,10 @@ export async function POST(req: NextRequest) {
           : await pdfDoc.embedJpg(backCompressed.bytes);
     }
 
-    const CANVAS = resolveCertificatePageDimensions(pageSize, isIDTemplate);
-    const CANVAS_WIDTH = CANVAS.width;
-    const CANVAS_HEIGHT = CANVAS.height;
+    const CANVAS_WIDTH = templateImage.width;
+    const CANVAS_HEIGHT = templateImage.height;
+    const BACK_CANVAS_WIDTH = backTemplateImage?.width ?? CANVAS_WIDTH;
+    const BACK_CANVAS_HEIGHT = backTemplateImage?.height ?? CANVAS_HEIGHT;
 
     // 7. Layout overrides (Check precomputed first)
     let offsetX = 0;
@@ -413,12 +411,12 @@ export async function POST(req: NextRequest) {
     let backPage: any = null;
     if (includeBack && backTemplateImage) {
       // Add page for Back
-      backPage = pdfDoc.addPage([CANVAS_WIDTH, CANVAS_HEIGHT]);
+      backPage = pdfDoc.addPage([BACK_CANVAS_WIDTH, BACK_CANVAS_HEIGHT]);
       backPage.drawImage(backTemplateImage, {
         x: 0,
         y: 0,
-        width: CANVAS_WIDTH,
-        height: CANVAS_HEIGHT,
+        width: BACK_CANVAS_WIDTH,
+        height: BACK_CANVAS_HEIGHT,
       });
     }
 
@@ -593,7 +591,13 @@ export async function POST(req: NextRequest) {
       return helveticaFont;
     };
 
-    const drawFields = (pageToDraw: any, fields: TextField[], isBackSide: boolean = false) => {
+    const drawFields = (
+      pageToDraw: any,
+      fields: TextField[],
+      isBackSide: boolean = false,
+      pageW: number = CANVAS_WIDTH,
+      pageH: number = CANVAS_HEIGHT,
+    ) => {
       logPdf(`✍️ Drawing ${fields.length} text fields for ${isBackSide ? 'Back' : 'Front'}`);
       fields.forEach((field, index) => {
         const fo = fieldOverrides[field.id] || {};
@@ -619,12 +623,12 @@ export async function POST(req: NextRequest) {
         if (typeof fo.x === "number") normX = fo.x;
         if (typeof fo.y === "number") normY = fo.y;
 
-        const x = normX * CANVAS_WIDTH;
-        const y = normY * CANVAS_HEIGHT;
+        const x = normX * pageW;
+        const y = normY * pageH;
 
         const baseFontSizeNorm = field.fontSize;
         const fontSizeNorm = typeof fo.fontSize === "number" ? fo.fontSize : baseFontSizeNorm;
-        const fontSize = fontSizeNorm * CANVAS_HEIGHT;
+        const fontSize = fontSizeNorm * pageH;
         const lineHeight = (field.lineHeight || 1.2) * fontSize;
 
         const colorHex = typeof fo.color === "string" ? fo.color : field.color;
@@ -633,7 +637,7 @@ export async function POST(req: NextRequest) {
 
         const lines = displayText.split('\n');
         
-        let currentY = CANVAS_HEIGHT - y;
+        let currentY = pageH - y;
 
         lines.forEach((line) => {
           const textWidth = selectedFont.widthOfTextAtSize(line, fontSize);
@@ -668,7 +672,13 @@ export async function POST(req: NextRequest) {
 
     // Draw back fields if back side is present
     if (backPage && template.back_fields) {
-      drawFields(backPage, (template.back_fields as any[]).map(f => f as TextField), true);
+      drawFields(
+        backPage,
+        (template.back_fields as any[]).map(f => f as TextField),
+        true,
+        BACK_CANVAS_WIDTH,
+        BACK_CANVAS_HEIGHT,
+      );
     }
 
     // Add metadata

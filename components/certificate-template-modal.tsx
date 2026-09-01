@@ -28,17 +28,22 @@ import {
   PlaceholderChipEditor,
   formatPlaceholderPreview,
 } from "@/components/placeholder-chip-editor"
+import {
+  getFallbackCanvasDimensions,
+  loadImageDimensions,
+  type CanvasDimensions,
+} from "@/lib/template-canvas-dimensions"
 
-function toPercentX(px: number, isID: boolean) {
-  return isID ? px / 1350 : px / 842
+function toPercentX(px: number, canvasW: number) {
+  return px / canvasW
 }
 
-function toPercentY(px: number, isID: boolean) {
-  return isID ? px / 850 : px / 595
+function toPercentY(px: number, canvasH: number) {
+  return px / canvasH
 }
 
-function toPercentFont(size: number, isID: boolean) {
-  return isID ? size / 850 : size / 595
+function toPercentFont(size: number, canvasH: number) {
+  return size / canvasH
 }
 
 interface TextField {
@@ -284,6 +289,14 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
   const [showTemplateCropDialog, setShowTemplateCropDialog] = useState(false)
   const [pendingCropTarget, setPendingCropTarget] = useState<"front" | "back">("front")
   const [existingTemplateCropUrl, setExistingTemplateCropUrl] = useState<string | undefined>(undefined)
+  const [templateCanvasDimensions, setTemplateCanvasDimensions] = useState<
+    Record<TemplateType, CanvasDimensions | null>
+  >({
+    participation: null,
+    completion: null,
+    excellence: null,
+  })
+  const [backCanvasDimensions, setBackCanvasDimensions] = useState<CanvasDimensions | null>(null)
   
   const [textFields, setTextFields] = useState<Record<TemplateType, TextField[]>>({
     participation: DEFAULT_FIELDS.participation,
@@ -369,8 +382,10 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
         const data = await response.json()
         if (data.template && data.template.fields) {
           const isID = currentTemplateType === "excellence"
-          const canvasW = isID ? 1350 : 842
-          const canvasH = isID ? 850 : 595
+          const canvasDims =
+            templateCanvasDimensions[currentTemplateType] ?? getFallbackCanvasDimensions(isID)
+          const canvasW = canvasDims.width
+          const canvasH = canvasDims.height
           
           const restoredFields = (data.template.fields as TextField[]).map(
             (f: TextField): TextField => ({
@@ -452,8 +467,28 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
           const data = await response.json()
           if (data.template && data.template.fields) {
             const isID = type.value === "excellence"
-            const canvasW = isID ? 1350 : 842
-            const canvasH = isID ? 850 : 595
+            let canvasW: number
+            let canvasH: number
+
+            if (data.template.image_url) {
+              try {
+                const dims = await loadImageDimensions(data.template.image_url)
+                canvasW = dims.width
+                canvasH = dims.height
+                setTemplateCanvasDimensions((prev) => ({
+                  ...prev,
+                  [type.value]: dims,
+                }))
+              } catch {
+                const fallback = getFallbackCanvasDimensions(isID)
+                canvasW = fallback.width
+                canvasH = fallback.height
+              }
+            } else {
+              const fallback = getFallbackCanvasDimensions(isID)
+              canvasW = fallback.width
+              canvasH = fallback.height
+            }
             
             const restoredFields = (data.template.fields as TextField[]).map(
               (f: TextField): TextField => ({
@@ -474,15 +509,26 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
 
             if (isID) {
               setBackTemplateImage(data.template.back_image_url || null)
+              let backDims = getFallbackCanvasDimensions(true)
+              if (data.template.back_image_url) {
+                try {
+                  backDims = await loadImageDimensions(data.template.back_image_url)
+                  setBackCanvasDimensions(backDims)
+                } catch {
+                  setBackCanvasDimensions(getFallbackCanvasDimensions(true))
+                }
+              } else {
+                setBackCanvasDimensions(null)
+              }
               if (data.template.back_fields) {
                 const restoredBack = (data.template.back_fields as TextField[]).map(
                   (f: TextField): TextField => ({
                     ...f,
-                    x: f.x * canvasW,
-                    y: f.y * canvasH,
-                    fontSize: f.fontSize * canvasH,
-                    boxWidth: typeof f.boxWidth === "number" ? f.boxWidth * canvasW : undefined,
-                    boxHeight: typeof f.boxHeight === "number" ? f.boxHeight * canvasH : undefined,
+                    x: f.x * backDims.width,
+                    y: f.y * backDims.height,
+                    fontSize: f.fontSize * backDims.height,
+                    boxWidth: typeof f.boxWidth === "number" ? f.boxWidth * backDims.width : undefined,
+                    boxHeight: typeof f.boxHeight === "number" ? f.boxHeight * backDims.height : undefined,
                     fontWeight: f.fontWeight || "normal",
                     fontStyle: f.fontStyle || "normal",
                     fontFamily: f.fontFamily || "Helvetica"
@@ -531,13 +577,23 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
     }
   }
 
-  const applyCroppedTemplateImage = (file: File, previewDataUrl: string) => {
+  const applyCroppedTemplateImage = async (file: File, previewDataUrl: string) => {
+    const isID = currentTemplateType === "excellence"
+    let dims: CanvasDimensions
+    try {
+      dims = await loadImageDimensions(previewDataUrl)
+    } catch {
+      dims = getFallbackCanvasDimensions(isID)
+    }
+
     if (pendingCropTarget === "back") {
       setBackTemplateImage(previewDataUrl)
       setBackTemplateFile(file)
+      setBackCanvasDimensions(dims)
     } else {
       setTemplateImage((prev) => ({ ...prev, [currentTemplateType]: previewDataUrl }))
       setTemplateFile((prev) => ({ ...prev, [currentTemplateType]: file }))
+      setTemplateCanvasDimensions((prev) => ({ ...prev, [currentTemplateType]: dims }))
     }
   }
 
@@ -580,15 +636,22 @@ useEffect(() => {
   const img = new Image()
   img.onload = () => {
     const isIDTemplate = currentTemplateType === "excellence"
-    if (isIDTemplate) {
-      canvas.width = 1350
-      canvas.height = 850
+    const canvasW = img.naturalWidth || img.width
+    const canvasH = img.naturalHeight || img.height
+
+    if (isEditingBack) {
+      setBackCanvasDimensions({ width: canvasW, height: canvasH })
     } else {
-      canvas.width = 842
-      canvas.height = 595
+      setTemplateCanvasDimensions((prev) => ({
+        ...prev,
+        [currentTemplateType]: { width: canvasW, height: canvasH },
+      }))
     }
+
+    canvas.width = canvasW
+    canvas.height = canvasH
     
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+    ctx.drawImage(img, 0, 0, canvasW, canvasH)
 
     // Draw all fields (text + special photo box)
     activeFields.forEach((field) => {
@@ -1083,6 +1146,9 @@ const handleSave = async () => {
     }
 
     const isID = currentTemplateType === "excellence";
+    const canvasDims =
+      templateCanvasDimensions[currentTemplateType] ?? getFallbackCanvasDimensions(isID);
+    const backDims = backCanvasDimensions ?? getFallbackCanvasDimensions(true);
 
     let finalBackImageUrl = backTemplateImage;
     if (isID && (finalBackImageUrl?.startsWith("data:") || backTemplateFile)) {
@@ -1112,20 +1178,20 @@ const handleSave = async () => {
     imageUrl: imageUrl,
     fields: textFields[currentTemplateType].map((f) => ({
       ...f,
-      x: toPercentX(f.x, isID),
-      y: toPercentY(f.y, isID),
-      fontSize: toPercentFont(f.fontSize, isID),
-      boxWidth: typeof f.boxWidth === "number" ? toPercentX(f.boxWidth, isID) : undefined,
-      boxHeight: typeof f.boxHeight === "number" ? toPercentY(f.boxHeight, isID) : undefined,
+      x: toPercentX(f.x, canvasDims.width),
+      y: toPercentY(f.y, canvasDims.height),
+      fontSize: toPercentFont(f.fontSize, canvasDims.height),
+      boxWidth: typeof f.boxWidth === "number" ? toPercentX(f.boxWidth, canvasDims.width) : undefined,
+      boxHeight: typeof f.boxHeight === "number" ? toPercentY(f.boxHeight, canvasDims.height) : undefined,
     })),
     backImageUrl: finalBackImageUrl,
     backFields: backTextFields.map((f) => ({
       ...f,
-      x: toPercentX(f.x, isID),
-      y: toPercentY(f.y, isID),
-      fontSize: toPercentFont(f.fontSize, isID),
-      boxWidth: typeof f.boxWidth === "number" ? toPercentX(f.boxWidth, isID) : undefined,
-      boxHeight: typeof f.boxHeight === "number" ? toPercentY(f.boxHeight, isID) : undefined,
+      x: toPercentX(f.x, backDims.width),
+      y: toPercentY(f.y, backDims.height),
+      fontSize: toPercentFont(f.fontSize, backDims.height),
+      boxWidth: typeof f.boxWidth === "number" ? toPercentX(f.boxWidth, backDims.width) : undefined,
+      boxHeight: typeof f.boxHeight === "number" ? toPercentY(f.boxHeight, backDims.height) : undefined,
     })),
     templateType: currentTemplateType,
   }),
@@ -1178,6 +1244,9 @@ toast.success("Template saved successfully!")
         }
 
         const isID = type.value === "excellence"
+        const canvasDims =
+          templateCanvasDimensions[type.value] ?? getFallbackCanvasDimensions(isID)
+        const backDims = backCanvasDimensions ?? getFallbackCanvasDimensions(true)
         let finalBackImageUrl = backTemplateImage
 
         if (isID && backTemplateFile) {
@@ -1197,17 +1266,21 @@ toast.success("Template saved successfully!")
             imageUrl: imageUrl,
             fields: textFields[type.value].map((f: TextField): TextField => ({
               ...f,
-              x: toPercentX(f.x, isID),
-              y: toPercentY(f.y, isID),
-              fontSize: toPercentFont(f.fontSize, isID)
+              x: toPercentX(f.x, canvasDims.width),
+              y: toPercentY(f.y, canvasDims.height),
+              fontSize: toPercentFont(f.fontSize, canvasDims.height),
+              boxWidth: typeof f.boxWidth === "number" ? toPercentX(f.boxWidth, canvasDims.width) : undefined,
+              boxHeight: typeof f.boxHeight === "number" ? toPercentY(f.boxHeight, canvasDims.height) : undefined,
             })),
             ...(isID ? {
               backImageUrl: finalBackImageUrl,
               backFields: backTextFields.map((f: TextField): TextField => ({
                 ...f,
-                x: toPercentX(f.x, isID),
-                y: toPercentY(f.y, isID),
-                fontSize: toPercentFont(f.fontSize, isID)
+                x: toPercentX(f.x, backDims.width),
+                y: toPercentY(f.y, backDims.height),
+                fontSize: toPercentFont(f.fontSize, backDims.height),
+                boxWidth: typeof f.boxWidth === "number" ? toPercentX(f.boxWidth, backDims.width) : undefined,
+                boxHeight: typeof f.boxHeight === "number" ? toPercentY(f.boxHeight, backDims.height) : undefined,
               })),
             } : {}),
             templateType: type.value
@@ -1725,9 +1798,20 @@ toast.success("Template saved successfully!")
             <p>Upload a {currentTemplateInfo.label.toLowerCase()} {isEditingBack ? "back" : "front"} template</p>
             <p className="text-xs mt-1">
               {currentTemplateType === "excellence" 
-                ? "Recommended: 1350x850 pixels (ID card format)"
-                : "Recommended: 842x595 pixels (A4 landscape)"}
+                ? "Any size supported — recommended 1350×850 px (ID card)"
+                : "Any orientation — e.g. A4 landscape (842×595), portrait (595×842), Letter, Legal, or custom"}
             </p>
+            {activeImage && templateCanvasDimensions[currentTemplateType] && !isEditingBack && (
+              <p className="text-[10px] mt-1 text-muted-foreground/80">
+                Current: {templateCanvasDimensions[currentTemplateType]!.width}×
+                {templateCanvasDimensions[currentTemplateType]!.height} px
+              </p>
+            )}
+            {activeImage && isEditingBack && backCanvasDimensions && (
+              <p className="text-[10px] mt-1 text-muted-foreground/80">
+                Current: {backCanvasDimensions.width}×{backCanvasDimensions.height} px
+              </p>
+            )}
           </div>
         </div>
       )}
