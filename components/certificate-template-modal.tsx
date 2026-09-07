@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   Upload, X, Plus, Minus, Trash2, Save, Eye, Loader2, Award, CalendarCheck, Trophy,
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize, Minimize,
-  ArrowLeftRight, ArrowUpDown, Copy, FlipHorizontal, CircleHelp
+  ArrowLeftRight, ArrowUpDown, Copy, FlipHorizontal, CircleHelp, Undo2, Redo2
 } from "lucide-react"
 import {
   Tooltip,
@@ -286,6 +286,8 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
   const [canvasZoom, setCanvasZoom] = useState(1)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const canvasViewportRef = useRef<HTMLDivElement>(null)
+  const lastAutoFitKeyRef = useRef<string>("")
   const [showTemplateCropDialog, setShowTemplateCropDialog] = useState(false)
   const [pendingCropTarget, setPendingCropTarget] = useState<"front" | "back">("front")
   const [existingTemplateCropUrl, setExistingTemplateCropUrl] = useState<string | undefined>(undefined)
@@ -303,10 +305,74 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
     completion: DEFAULT_FIELDS.completion,
     excellence: DEFAULT_FIELDS.excellence
   })
+  const textFieldsRef = useRef(textFields)
+  const backTextFieldsRef = useRef(backTextFields)
+  textFieldsRef.current = textFields
+  backTextFieldsRef.current = backTextFields
+
+  type FieldsSnapshot = {
+    textFields: Record<TemplateType, TextField[]>
+    backTextFields: TextField[]
+  }
+  const undoStackRef = useRef<FieldsSnapshot[]>([])
+  const redoStackRef = useRef<FieldsSnapshot[]>([])
+  const [canUndo, setCanUndo] = useState(false)
+  const [canRedo, setCanRedo] = useState(false)
+
+  const cloneFieldsSnapshot = (): FieldsSnapshot => ({
+    textFields: JSON.parse(JSON.stringify(textFieldsRef.current)),
+    backTextFields: JSON.parse(JSON.stringify(backTextFieldsRef.current)),
+  })
+
+  const syncHistoryButtons = () => {
+    setCanUndo(undoStackRef.current.length > 0)
+    setCanRedo(redoStackRef.current.length > 0)
+  }
+
+  const clearFieldHistory = () => {
+    undoStackRef.current = []
+    redoStackRef.current = []
+    syncHistoryButtons()
+  }
+
+  /** Call before a user edit so Ctrl+Z can restore prior field layout. */
+  const pushFieldHistory = () => {
+    undoStackRef.current.push(cloneFieldsSnapshot())
+    if (undoStackRef.current.length > 60) undoStackRef.current.shift()
+    redoStackRef.current = []
+    syncHistoryButtons()
+  }
+
+  const undoFields = () => {
+    if (undoStackRef.current.length === 0) return
+    redoStackRef.current.push(cloneFieldsSnapshot())
+    const prev = undoStackRef.current.pop()!
+    setTextFields(prev.textFields)
+    setBackTextFields(prev.backTextFields)
+    syncHistoryButtons()
+  }
+
+  const redoFields = () => {
+    if (redoStackRef.current.length === 0) return
+    undoStackRef.current.push(cloneFieldsSnapshot())
+    const next = redoStackRef.current.pop()!
+    setTextFields(next.textFields)
+    setBackTextFields(next.backTextFields)
+    syncHistoryButtons()
+  }
 
   const [selectedField, setSelectedField] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [canvasCursor, setCanvasCursor] = useState("default")
+  const dragSessionRef = useRef<{
+    fieldId: string
+    offsetX: number
+    offsetY: number
+    startX: number
+    startY: number
+    moved: boolean
+  } | null>(null)
   const [isResizingPhoto, setIsResizingPhoto] = useState(false)
   const [resizeInfo, setResizeInfo] = useState<{
     fieldId: string | null
@@ -401,6 +467,7 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
             })
           );
           
+          pushFieldHistory()
           setTextFields(prev => ({ ...prev, [currentTemplateType]: restoredFields }))
           setIsCopyDialogOpen(false)
           toast.success("Layout copied successfully!")
@@ -413,23 +480,28 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
   }
 
   const handleFitToScreen = () => {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const container = canvas.parentElement;
-    if (!container) return;
+    const canvas = canvasRef.current
+    const viewport = canvasViewportRef.current
+    if (!canvas || !viewport || !canvas.width || !canvas.height) return
 
-    const padding = 40; // 20px each side
-    const availableW = container.clientWidth - padding;
-    const availableH = container.clientHeight - padding;
+    const padding = 16
+    const availableW = Math.max(80, viewport.clientWidth - padding)
+    const availableH = Math.max(80, viewport.clientHeight - padding)
 
-    const scaleX = availableW / canvas.width;
-    const scaleY = availableH / canvas.height;
-    
-    // Use the smaller scale to fit the whole canvas
-    const fitScale = Math.min(scaleX, scaleY);
-    
-    // Limit zoom to a reasonable range [0.5, 2.0]
-    setCanvasZoom(Number(Math.max(0.4, Math.min(fitScale, 2.0)).toFixed(2)));
+    const scaleX = availableW / canvas.width
+    const scaleY = availableH / canvas.height
+    const fitScale = Math.min(scaleX, scaleY)
+
+    // Allow very small scales so large templates still fit; cap upper end for usability
+    setCanvasZoom(Number(Math.max(0.05, Math.min(fitScale, 2.5)).toFixed(3)))
+  }
+
+  const scheduleFitToScreen = () => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        handleFitToScreen()
+      })
+    })
   }
 
   const handleDeleteTemplate = async () => {
@@ -456,6 +528,11 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
   useEffect(() => {
     if (open && courseId) {
       loadAllTemplates()
+      clearFieldHistory()
+    }
+    if (!open) {
+      lastAutoFitKeyRef.current = ""
+      clearFieldHistory()
     }
   }, [open, courseId])
 
@@ -577,6 +654,32 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
     }
   }
 
+  const scaleFieldsToCanvas = (
+    fields: TextField[],
+    from: CanvasDimensions,
+    to: CanvasDimensions,
+  ): TextField[] => {
+    if (
+      !from.width ||
+      !from.height ||
+      !to.width ||
+      !to.height ||
+      (from.width === to.width && from.height === to.height)
+    ) {
+      return fields
+    }
+    const sx = to.width / from.width
+    const sy = to.height / from.height
+    return fields.map((f) => ({
+      ...f,
+      x: f.x * sx,
+      y: f.y * sy,
+      fontSize: f.fontSize * sy,
+      boxWidth: typeof f.boxWidth === "number" ? f.boxWidth * sx : undefined,
+      boxHeight: typeof f.boxHeight === "number" ? f.boxHeight * sy : undefined,
+    }))
+  }
+
   const applyCroppedTemplateImage = async (file: File, previewDataUrl: string) => {
     const isID = currentTemplateType === "excellence"
     let dims: CanvasDimensions
@@ -586,11 +689,29 @@ export default function CertificateTemplateModal({ courseId, courseName, open, o
       dims = getFallbackCanvasDimensions(isID)
     }
 
+    // Keep text/photo layout in the same relative places when the new image size differs
     if (pendingCropTarget === "back") {
+      const prevDims =
+        backCanvasDimensions ??
+        (canvasRef.current?.width
+          ? { width: canvasRef.current.width, height: canvasRef.current.height }
+          : getFallbackCanvasDimensions(true))
+      pushFieldHistory()
+      setBackTextFields((prev) => scaleFieldsToCanvas(prev, prevDims, dims))
       setBackTemplateImage(previewDataUrl)
       setBackTemplateFile(file)
       setBackCanvasDimensions(dims)
     } else {
+      const prevDims =
+        templateCanvasDimensions[currentTemplateType] ??
+        (canvasRef.current?.width
+          ? { width: canvasRef.current.width, height: canvasRef.current.height }
+          : getFallbackCanvasDimensions(isID))
+      pushFieldHistory()
+      setTextFields((prev) => ({
+        ...prev,
+        [currentTemplateType]: scaleFieldsToCanvas(prev[currentTemplateType], prevDims, dims),
+      }))
       setTemplateImage((prev) => ({ ...prev, [currentTemplateType]: previewDataUrl }))
       setTemplateFile((prev) => ({ ...prev, [currentTemplateType]: file }))
       setTemplateCanvasDimensions((prev) => ({ ...prev, [currentTemplateType]: dims }))
@@ -653,6 +774,12 @@ useEffect(() => {
     
     ctx.drawImage(img, 0, 0, canvasW, canvasH)
 
+    const fitKey = `${activeImage}:${canvasW}x${canvasH}:${isEditingBack ? "back" : "front"}`
+    if (lastAutoFitKeyRef.current !== fitKey) {
+      lastAutoFitKeyRef.current = fitKey
+      scheduleFitToScreen()
+    }
+
     // Draw all fields (text + special photo box)
     activeFields.forEach((field) => {
       const isPhotoField = field.value.includes("{{trainee_picture}}")
@@ -675,6 +802,22 @@ useEffect(() => {
           ctx.strokeStyle = "#0ea5e9"
           ctx.lineWidth = 2
           ctx.strokeRect(photoX - 4, photoY - 4, photoW + 8, photoH + 8)
+
+          // Visible resize handles
+          const hs = 8
+          const handles = [
+            [photoX + photoW - hs / 2, photoY + photoH - hs / 2],
+            [photoX + photoW - hs / 2, photoY + photoH / 2 - hs / 2],
+            [photoX + photoW / 2 - hs / 2, photoY + photoH - hs / 2],
+            [photoX - hs / 2, photoY + photoH / 2 - hs / 2],
+            [photoX + photoW / 2 - hs / 2, photoY - hs / 2],
+          ]
+          ctx.fillStyle = "#ffffff"
+          ctx.strokeStyle = "#0ea5e9"
+          handles.forEach(([hx, hy]) => {
+            ctx.fillRect(hx, hy, hs, hs)
+            ctx.strokeRect(hx, hy, hs, hs)
+          })
         }
 
         // Do not render any text for the picture placeholder
@@ -745,319 +888,381 @@ useEffect(() => {
   img.src = activeImage!
 }, [activeImage, activeFields, selectedField, previewMode, currentTemplateType, courseName, idCardSide])
 
-const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-  if (previewMode) return
+const DRAG_THRESHOLD_PX = 4
+
+const getCanvasPoint = (e: React.MouseEvent<HTMLCanvasElement>) => {
   const canvas = canvasRef.current
-  if (!canvas) return
-
+  if (!canvas) return null
   const rect = canvas.getBoundingClientRect()
-  const scaleX = canvas.width / rect.width
-  const scaleY = canvas.height / rect.height
-  const x = (e.clientX - rect.left) * scaleX
-  const y = (e.clientY - rect.top) * scaleY
-
-  const ctx = canvas.getContext("2d")
-  if (!ctx) return
-
-  for (const field of activeFields) {
-    const isPhotoField = field.value.includes("{{trainee_picture}}")
-
-    let boxX: number
-    let boxY: number
-    let boxWidth: number
-    let boxHeight: number
-
-    if (isPhotoField) {
-      const isIDTemplate = currentTemplateType === "excellence"
-      const defaultPhotoSize = isIDTemplate ? 240 : 0.12 * canvas.height
-      const photoW = field.boxWidth ?? field.fontSize ?? defaultPhotoSize
-      const photoH = field.boxHeight ?? field.fontSize ?? defaultPhotoSize
-      boxX = field.x
-      boxY = field.y
-      boxWidth = photoW
-      boxHeight = photoH
-    } else {
-      ctx.font = getFontString(field)
-      ctx.textAlign = "left"
-      
-      const lines = field.value.split('\n')
-      const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width))
-      const lineHeight = (field.lineHeight || 1.2) * field.fontSize
-      const totalHeight = lines.length * lineHeight
-
-      boxX = field.x
-      boxY = field.y - field.fontSize
-      boxWidth = maxWidth
-      boxHeight = totalHeight + 5
-
-      if (field.align === "center") {
-        boxX = field.x - maxWidth / 2
-      } else if (field.align === "right") {
-        boxX = field.x - maxWidth
-      }
-    }
-
-    if (
-      x >= boxX - 5 &&
-      x <= boxX + boxWidth + 5 &&
-      y >= boxY &&
-      y <= boxY + boxHeight
-    ) {
-      setSelectedField(field.id)
-      setDragOffset({ x: x - field.x, y: y - field.y })
-      return
-    }
+  if (rect.width <= 0 || rect.height <= 0) return null
+  return {
+    x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+    y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+    canvas,
   }
-  setSelectedField(null)
 }
 
-const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-  if (previewMode) return
-  const canvas = canvasRef.current
-  if (!canvas) return
+const getFieldBounds = (
+  field: TextField,
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+) => {
+  const isPhotoField = field.value.includes("{{trainee_picture}}")
+  if (isPhotoField) {
+    const isIDTemplate = currentTemplateType === "excellence"
+    const defaultPhotoSize = isIDTemplate ? 240 : 0.12 * canvas.height
+    const photoW = field.boxWidth ?? field.fontSize ?? defaultPhotoSize
+    const photoH = field.boxHeight ?? field.fontSize ?? defaultPhotoSize
+    return {
+      isPhotoField: true as const,
+      boxX: field.x,
+      boxY: field.y,
+      boxWidth: photoW,
+      boxHeight: photoH,
+      pad: 8,
+    }
+  }
 
-  const rect = canvas.getBoundingClientRect()
-  const scaleX = canvas.width / rect.width
-  const scaleY = canvas.height / rect.height
-  const x = (e.clientX - rect.left) * scaleX
-  const y = (e.clientY - rect.top) * scaleY
+  ctx.font = getFontString(field)
+  ctx.textAlign = "left"
+  const lines = field.value.split("\n")
+  const maxWidth = Math.max(24, ...lines.map((line) => ctx.measureText(line).width))
+  const lineHeight = (field.lineHeight || 1.2) * field.fontSize
+  const totalHeight = Math.max(field.fontSize, lines.length * lineHeight)
+  let boxX = field.x
+  if (field.align === "center") boxX = field.x - maxWidth / 2
+  else if (field.align === "right") boxX = field.x - maxWidth
+  return {
+    isPhotoField: false as const,
+    boxX,
+    boxY: field.y - field.fontSize,
+    boxWidth: maxWidth,
+    boxHeight: totalHeight + 5,
+    pad: 10,
+  }
+}
 
+const pointInBounds = (
+  x: number,
+  y: number,
+  b: { boxX: number; boxY: number; boxWidth: number; boxHeight: number; pad: number },
+) =>
+  x >= b.boxX - b.pad &&
+  x <= b.boxX + b.boxWidth + b.pad &&
+  y >= b.boxY - b.pad &&
+  y <= b.boxY + b.boxHeight + b.pad
+
+const findFieldAtPoint = (x: number, y: number, canvas: HTMLCanvasElement) => {
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return null
+  for (let i = activeFields.length - 1; i >= 0; i--) {
+    const field = activeFields[i]
+    const bounds = getFieldBounds(field, canvas, ctx)
+    if (pointInBounds(x, y, bounds)) {
+      return { field, bounds }
+    }
+  }
+  return null
+}
+
+const findResizeHandleAtPoint = (x: number, y: number, canvas: HTMLCanvasElement) => {
   const isIDTemplate = currentTemplateType === "excellence"
+  const sidePad = 8
+  const handleSize = 12
 
-  // First, check if we're grabbing a resize handle of the photo box
-  for (const field of activeFields) {
-    const isPhotoField = field.value.includes("{{trainee_picture}}")
-    if (!isPhotoField) continue
-
+  for (let i = activeFields.length - 1; i >= 0; i--) {
+    const field = activeFields[i]
+    if (!field.value.includes("{{trainee_picture}}")) continue
     const defaultPhotoSize = isIDTemplate ? 240 : 0.12 * canvas.height
     const photoW = field.boxWidth ?? field.fontSize ?? defaultPhotoSize
     const photoH = field.boxHeight ?? field.fontSize ?? defaultPhotoSize
     const boxX = field.x
     const boxY = field.y
 
-    const handleSize = 10
     const cornerXStart = boxX + photoW - handleSize
     const cornerYStart = boxY + photoH - handleSize
-
-    // Side handles (thin hit areas)
-    const sidePad = 6
-    const rightHit = x >= boxX + photoW - sidePad && x <= boxX + photoW + sidePad && y >= boxY && y <= boxY + photoH
-    const bottomHit = y >= boxY + photoH - sidePad && y <= boxY + photoH + sidePad && x >= boxX && x <= boxX + photoW
-    const leftHit = x >= boxX - sidePad && x <= boxX + sidePad && y >= boxY && y <= boxY + photoH
-    const topHit = y >= boxY - sidePad && y <= boxY + sidePad && x >= boxX && x <= boxX + photoW
-
-    // Corner handle: keep proportional resize
     if (
       x >= cornerXStart &&
       x <= boxX + photoW + handleSize &&
       y >= cornerYStart &&
       y <= boxY + photoH + handleSize
     ) {
-      setSelectedField(field.id)
-      setIsResizingPhoto(true)
-      setResizeInfo({
-        fieldId: field.id,
-        startX: x,
-        startY: y,
-        startW: photoW,
-        startH: photoH,
-        startFieldX: field.x,
-        startFieldY: field.y,
-        handle: "corner",
-      })
-      return
+      return { field, handle: "corner" as const, photoW, photoH, cursor: "nwse-resize" }
     }
 
-    // Side handles: adjust width/height
-    if (rightHit || bottomHit || leftHit || topHit) {
-      setSelectedField(field.id)
-      setIsResizingPhoto(true)
-      setResizeInfo({
-        fieldId: field.id,
-        startX: x,
-        startY: y,
-        startW: photoW,
-        startH: photoH,
-        startFieldX: field.x,
-        startFieldY: field.y,
-        handle: rightHit ? "right" : bottomHit ? "bottom" : leftHit ? "left" : "top",
-      })
-      return
-    }
+    const rightHit =
+      x >= boxX + photoW - sidePad &&
+      x <= boxX + photoW + sidePad &&
+      y >= boxY &&
+      y <= boxY + photoH
+    if (rightHit) return { field, handle: "right" as const, photoW, photoH, cursor: "ew-resize" }
+
+    const bottomHit =
+      y >= boxY + photoH - sidePad &&
+      y <= boxY + photoH + sidePad &&
+      x >= boxX &&
+      x <= boxX + photoW
+    if (bottomHit) return { field, handle: "bottom" as const, photoW, photoH, cursor: "ns-resize" }
+
+    const leftHit =
+      x >= boxX - sidePad &&
+      x <= boxX + sidePad &&
+      y >= boxY &&
+      y <= boxY + photoH
+    if (leftHit) return { field, handle: "left" as const, photoW, photoH, cursor: "ew-resize" }
+
+    const topHit =
+      y >= boxY - sidePad &&
+      y <= boxY + sidePad &&
+      x >= boxX &&
+      x <= boxX + photoW
+    if (topHit) return { field, handle: "top" as const, photoW, photoH, cursor: "ns-resize" }
+  }
+  return null
+}
+
+const patchActiveFields = (updater: (fields: TextField[]) => TextField[]) => {
+  if (isEditingBack) {
+    setBackTextFields((prev) => updater(prev))
+  } else {
+    setTextFields((prev) => ({
+      ...prev,
+      [currentTemplateType]: updater(prev[currentTemplateType]),
+    }))
+  }
+}
+
+const endCanvasInteraction = () => {
+  dragSessionRef.current = null
+  setIsDragging(false)
+  setIsResizingPhoto(false)
+  setResizeInfo((prev) => ({ ...prev, fieldId: null }))
+}
+
+const handleCanvasClick = (_e: React.MouseEvent<HTMLCanvasElement>) => {
+  // Selection handled on mousedown so blank clicks never teleport fields
+}
+
+const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  if (previewMode) return
+  e.preventDefault()
+  const pt = getCanvasPoint(e)
+  if (!pt) return
+  const { x, y, canvas } = pt
+
+  const resizeHit = findResizeHandleAtPoint(x, y, canvas)
+  if (resizeHit) {
+    pushFieldHistory()
+    setSelectedField(resizeHit.field.id)
+    setIsResizingPhoto(true)
+    setIsDragging(false)
+    dragSessionRef.current = null
+    setResizeInfo({
+      fieldId: resizeHit.field.id,
+      startX: x,
+      startY: y,
+      startW: resizeHit.photoW,
+      startH: resizeHit.photoH,
+      startFieldX: resizeHit.field.x,
+      startFieldY: resizeHit.field.y,
+      handle: resizeHit.handle,
+    })
+    setCanvasCursor(resizeHit.cursor)
+    return
   }
 
-  // Otherwise, fall back to dragging behavior
-  setIsDragging(true)
+  const hit = findFieldAtPoint(x, y, canvas)
+  if (hit) {
+    pushFieldHistory()
+    setSelectedField(hit.field.id)
+    setDragOffset({ x: x - hit.field.x, y: y - hit.field.y })
+    dragSessionRef.current = {
+      fieldId: hit.field.id,
+      offsetX: x - hit.field.x,
+      offsetY: y - hit.field.y,
+      startX: x,
+      startY: y,
+      moved: false,
+    }
+    setIsDragging(false)
+    setCanvasCursor("grabbing")
+    return
+  }
+
+  // Blank space: deselect only — never teleport the last field
+  setSelectedField(null)
+  endCanvasInteraction()
+  setCanvasCursor("default")
 }
 
 const handleCanvasMouseUp = () => {
-  setIsDragging(false)
-  setIsResizingPhoto(false)
-  setResizeInfo(prev => ({ ...prev, fieldId: null }))
+  const session = dragSessionRef.current
+  // Click-to-select without drag should not leave an empty undo step
+  if (session && !session.moved) {
+    undoStackRef.current.pop()
+    syncHistoryButtons()
+  }
+  endCanvasInteraction()
 }
-
-// REPLACE the handleCanvasDoubleClick function in certificate-template-modal.tsx (around line 530)
 
 const handleCanvasDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
   if (previewMode) return
-  const canvas = canvasRef.current
-  if (!canvas) return
+  const pt = getCanvasPoint(e)
+  if (!pt) return
+  const hit = findFieldAtPoint(pt.x, pt.y, pt.canvas)
+  if (!hit || hit.bounds.isPhotoField) return
+  setSelectedField(hit.field.id)
+  setEditingField(hit.field.id)
+  setEditingValue(hit.field.value)
+  setActiveTab("edit")
+}
 
-  const rect = canvas.getBoundingClientRect()
-  const scaleX = canvas.width / rect.width
-  const scaleY = canvas.height / rect.height
-  const x = (e.clientX - rect.left) * scaleX
-  const y = (e.clientY - rect.top) * scaleY
+const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  if (previewMode) return
+  const pt = getCanvasPoint(e)
+  if (!pt) return
+  const { x, y, canvas } = pt
 
-  const ctx = canvas.getContext("2d")
-  if (!ctx) return
+  if (isResizingPhoto && resizeInfo.fieldId) {
+    patchActiveFields((currentFields) => {
+      const target = currentFields.find((f) => f.id === resizeInfo.fieldId)
+      if (!target) return currentFields
 
-  for (const field of activeFields) {
-    const isPhotoField = field.value.includes("{{trainee_picture}}")
-
-    let boxX: number
-    let boxY: number
-    let boxWidth: number
-    let boxHeight: number
-
-    if (isPhotoField) {
       const isIDTemplate = currentTemplateType === "excellence"
-      const defaultPhotoSize = isIDTemplate ? 240 : 0.12 * canvas.height
-      const photoW = field.boxWidth ?? field.fontSize ?? defaultPhotoSize
-      const photoH = field.boxHeight ?? field.fontSize ?? defaultPhotoSize
-      boxX = field.x
-      boxY = field.y
-      boxWidth = photoW
-      boxHeight = photoH
-    } else {
-      ctx.font = getFontString(field)
-      ctx.textAlign = "left"
-      
-      const lines = field.value.split('\n')
-      const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width))
-      const lineHeight = (field.lineHeight || 1.2) * field.fontSize
-      const totalHeight = lines.length * lineHeight
+      const minSize = isIDTemplate ? 80 : 30
+      const dx = x - resizeInfo.startX
+      const dy = y - resizeInfo.startY
 
-      boxX = field.x
-      boxY = field.y - field.fontSize
-      boxWidth = maxWidth
-      boxHeight = totalHeight + 5
+      let nextX = resizeInfo.startFieldX
+      let nextY = resizeInfo.startFieldY
+      let nextW = resizeInfo.startW
+      let nextH = resizeInfo.startH
 
-      if (field.align === "center") {
-        boxX = field.x - maxWidth / 2
-      } else if (field.align === "right") {
-        boxX = field.x - maxWidth
+      if (resizeInfo.handle === "corner") {
+        const delta = Math.max(dx, dy)
+        const s = Math.max(minSize, Math.min(resizeInfo.startW + delta, resizeInfo.startH + delta))
+        nextW = s
+        nextH = s
+      } else if (resizeInfo.handle === "right") {
+        nextW = Math.max(minSize, resizeInfo.startW + dx)
+      } else if (resizeInfo.handle === "bottom") {
+        nextH = Math.max(minSize, resizeInfo.startH + dy)
+      } else if (resizeInfo.handle === "left") {
+        const w = Math.max(minSize, resizeInfo.startW - dx)
+        nextX = resizeInfo.startFieldX + (resizeInfo.startW - w)
+        nextW = w
+      } else if (resizeInfo.handle === "top") {
+        const h = Math.max(minSize, resizeInfo.startH - dy)
+        nextY = resizeInfo.startFieldY + (resizeInfo.startH - h)
+        nextH = h
       }
-    }
 
-    if (
-      x >= boxX - 5 &&
-      x <= boxX + boxWidth + 5 &&
-      y >= boxY &&
-      y <= boxY + boxHeight
-    ) {
-      setEditingField(field.id)
-      setEditingValue(field.value)
-      setSelectedField(field.id)
-      setActiveTab("edit")
+      return currentFields.map((field) =>
+        field.id === resizeInfo.fieldId
+          ? {
+              ...field,
+              x: nextX,
+              y: nextY,
+              boxWidth: nextW,
+              boxHeight: nextH,
+              fontSize: Math.min(nextW, nextH),
+            }
+          : field,
+      )
+    })
+    return
+  }
+
+  const session = dragSessionRef.current
+  if (session) {
+    const dist = Math.hypot(x - session.startX, y - session.startY)
+    if (!session.moved && dist < DRAG_THRESHOLD_PX) {
+      setCanvasCursor("grabbing")
       return
     }
+    if (!session.moved) {
+      session.moved = true
+      setIsDragging(true)
+    }
+    patchActiveFields((fields) =>
+      fields.map((field) =>
+        field.id === session.fieldId
+          ? { ...field, x: x - session.offsetX, y: y - session.offsetY }
+          : field,
+      ),
+    )
+    setCanvasCursor("grabbing")
+    return
+  }
+
+  if (e.buttons === 0) {
+    const resizeHit = findResizeHandleAtPoint(x, y, canvas)
+    if (resizeHit) {
+      setCanvasCursor(resizeHit.cursor)
+      return
+    }
+    const hit = findFieldAtPoint(x, y, canvas)
+    setCanvasCursor(hit ? "grab" : "default")
   }
 }
-  const handleCanvasMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (previewMode) return
 
-    // Handle resizing of photo placeholder
-    if (isResizingPhoto && resizeInfo.fieldId) {
-      const canvas = canvasRef.current
-      if (!canvas) return
+useEffect(() => {
+  if (!open) return
 
-      const rect = canvas.getBoundingClientRect()
-      const scaleX = canvas.width / rect.width
-      const scaleY = canvas.height / rect.height
-      const x = (e.clientX - rect.left) * scaleX
-      const y = (e.clientY - rect.top) * scaleY
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
 
-      setTextFields((prev) => {
-        const currentFields = prev[currentTemplateType]
-        const target = currentFields.find(f => f.id === resizeInfo.fieldId)
-        if (!target) return prev
-
-        const isIDTemplate = currentTemplateType === "excellence"
-        const minSize = isIDTemplate ? 80 : 30
-        const dx = x - resizeInfo.startX
-        const dy = y - resizeInfo.startY
-
-        let nextX = resizeInfo.startFieldX
-        let nextY = resizeInfo.startFieldY
-        let nextW = resizeInfo.startW
-        let nextH = resizeInfo.startH
-
-        if (resizeInfo.handle === "corner") {
-          const delta = Math.max(dx, dy)
-          const s = Math.max(minSize, Math.min(resizeInfo.startW + delta, resizeInfo.startH + delta))
-          nextW = s
-          nextH = s
-        } else if (resizeInfo.handle === "right") {
-          nextW = Math.max(minSize, resizeInfo.startW + dx)
-        } else if (resizeInfo.handle === "bottom") {
-          nextH = Math.max(minSize, resizeInfo.startH + dy)
-        } else if (resizeInfo.handle === "left") {
-          const w = Math.max(minSize, resizeInfo.startW - dx)
-          nextX = resizeInfo.startFieldX + dx
-          // keep right edge anchored
-          if (w === minSize) nextX = resizeInfo.startFieldX + (resizeInfo.startW - minSize)
-          nextW = w
-        } else if (resizeInfo.handle === "top") {
-          const h = Math.max(minSize, resizeInfo.startH - dy)
-          nextY = resizeInfo.startFieldY + dy
-          if (h === minSize) nextY = resizeInfo.startFieldY + (resizeInfo.startH - minSize)
-          nextH = h
-        }
-
-        return {
-          ...prev,
-          [currentTemplateType]: currentFields.map((field) =>
-            field.id === resizeInfo.fieldId
-              ? {
-                  ...field,
-                  x: nextX,
-                  y: nextY,
-                  boxWidth: nextW,
-                  boxHeight: nextH,
-                  // keep fontSize for backward compatibility (square size)
-                  fontSize: Math.min(nextW, nextH),
-                }
-              : field
-          ),
-        }
-      })
-
+    const mod = e.ctrlKey || e.metaKey
+    if (mod && !e.altKey && e.key.toLowerCase() === "z" && !e.shiftKey) {
+      e.preventDefault()
+      undoFields()
+      return
+    }
+    if (mod && !e.altKey && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) {
+      e.preventDefault()
+      redoFields()
       return
     }
 
-    if (!isDragging || !selectedField) return
-    const canvas = canvasRef.current
-    if (!canvas) return
+    if (previewMode || !selectedField || editingField) return
 
-    const rect = canvas.getBoundingClientRect()
-    const scaleX = canvas.width / rect.width
-    const scaleY = canvas.height / rect.height
-    const x = (e.clientX - rect.left) * scaleX
-    const y = (e.clientY - rect.top) * scaleY
+    const step = e.shiftKey ? 10 : 1
+    let dx = 0
+    let dy = 0
+    if (e.key === "ArrowLeft") dx = -step
+    else if (e.key === "ArrowRight") dx = step
+    else if (e.key === "ArrowUp") dy = -step
+    else if (e.key === "ArrowDown") dy = step
+    else if (e.key === "Escape") {
+      setSelectedField(null)
+      return
+    } else return
 
-    setTextFields((prev) => ({
-      ...prev,
-      [currentTemplateType]: prev[currentTemplateType].map((field) =>
-        field.id === selectedField
-          ? { ...field, x: x - dragOffset.x, y: y - dragOffset.y }
-          : field
+    e.preventDefault()
+    pushFieldHistory()
+    if (isEditingBack) {
+      setBackTextFields((fields) =>
+        fields.map((field) =>
+          field.id === selectedField ? { ...field, x: field.x + dx, y: field.y + dy } : field,
+        ),
       )
-    }))
+    } else {
+      setTextFields((prev) => ({
+        ...prev,
+        [currentTemplateType]: prev[currentTemplateType].map((field) =>
+          field.id === selectedField ? { ...field, x: field.x + dx, y: field.y + dy } : field,
+        ),
+      }))
+    }
   }
+
+  window.addEventListener("keydown", onKeyDown)
+  return () => window.removeEventListener("keydown", onKeyDown)
+}, [open, previewMode, selectedField, editingField, currentTemplateType, idCardSide, isEditingBack])
 
   // Helper: set fields for either front or back
   const setActiveFieldsSetter = (updater: (fields: TextField[]) => TextField[]) => {
+    pushFieldHistory()
     if (isEditingBack) {
       setBackTextFields(prev => updater(prev))
     } else {
@@ -1358,6 +1563,9 @@ toast.success("Template saved successfully!")
           {currentTemplateInfo.label} Template
         </h3>
         <p className="text-xs text-muted-foreground">{currentTemplateInfo.description}</p>
+        <p className="text-[11px] text-muted-foreground mt-1">
+          Drag fields to move · click empty area to deselect · arrow keys nudge (Shift = 10px) · Ctrl+Z / Ctrl+Y undo/redo · double-click text to edit
+        </p>
       </div>
       <div className="flex gap-2 items-center flex-wrap justify-end">
         <div className="flex items-center gap-1 mr-1">
@@ -1366,7 +1574,7 @@ toast.success("Template saved successfully!")
             variant="outline"
             size="sm"
             className="h-8 w-8 p-0"
-            onClick={() => setCanvasZoom((z) => Math.max(0.4, Number((z - 0.1).toFixed(2))))}
+            onClick={() => setCanvasZoom((z) => Math.max(0.05, Number((z - 0.1).toFixed(2))))}
           >
             -
           </Button>
@@ -1388,6 +1596,28 @@ toast.success("Template saved successfully!")
           >
             +
           </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0"
+              disabled={!canUndo}
+              onClick={undoFields}
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0"
+              disabled={!canRedo}
+              onClick={redoFields}
+              title="Redo (Ctrl+Y)"
+            >
+              <Redo2 className="h-3.5 w-3.5" />
+            </Button>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1401,7 +1631,7 @@ toast.success("Template saved successfully!")
                   Fit
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Fit to Screen</TooltipContent>
+              <TooltipContent>Fit to Screen (default on load)</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
@@ -1738,21 +1968,49 @@ toast.success("Template saved successfully!")
     <div className="border rounded-lg overflow-hidden bg-gray-50 relative">
       {templateImage[currentTemplateType] ? (
         <>
-          <div className="w-full overflow-auto">
-            <canvas
-              ref={canvasRef}
-              className="cursor-crosshair origin-top-left"
+          <div
+            ref={canvasViewportRef}
+            className="w-full overflow-auto h-[min(58vh,560px)]"
+          >
+            <div
               style={{
-                transform: `scale(${canvasZoom})`,
-                transformOrigin: "top left",
+                width: Math.max(
+                  1,
+                  (isEditingBack
+                    ? (backCanvasDimensions?.width ?? canvasRef.current?.width ?? 1)
+                    : (templateCanvasDimensions[currentTemplateType]?.width ??
+                        canvasRef.current?.width ??
+                        1)) * canvasZoom,
+                ),
+                height: Math.max(
+                  1,
+                  (isEditingBack
+                    ? (backCanvasDimensions?.height ?? canvasRef.current?.height ?? 1)
+                    : (templateCanvasDimensions[currentTemplateType]?.height ??
+                        canvasRef.current?.height ??
+                        1)) * canvasZoom,
+                ),
               }}
-              onClick={handleCanvasClick}
-              onDoubleClick={handleCanvasDoubleClick}
-              onMouseDown={handleCanvasMouseDown}
-              onMouseUp={handleCanvasMouseUp}
-              onMouseMove={handleCanvasMouseMove}
-              onMouseLeave={handleCanvasMouseUp}
-            />
+            >
+              <canvas
+                ref={canvasRef}
+                className="origin-top-left"
+                style={{
+                  transform: `scale(${canvasZoom})`,
+                  transformOrigin: "top left",
+                  cursor: canvasCursor,
+                }}
+                onClick={handleCanvasClick}
+                onDoubleClick={handleCanvasDoubleClick}
+                onMouseDown={handleCanvasMouseDown}
+                onMouseUp={handleCanvasMouseUp}
+                onMouseMove={handleCanvasMouseMove}
+                onMouseLeave={() => {
+                  endCanvasInteraction()
+                  setCanvasCursor("default")
+                }}
+              />
+            </div>
           </div>
           {editingField && (
             <div className="absolute top-4 left-1/2 transform -translate-x-1/2 w-96 bg-background border-2 border-primary rounded-lg shadow-lg p-4 z-10">
