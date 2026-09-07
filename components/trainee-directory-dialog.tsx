@@ -18,9 +18,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { tmsDb } from "@/lib/supabase-client"
-import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Eye, ListOrdered, Crop, Eraser, Minus, Plus, RotateCcw, FileStack, Files } from "lucide-react"
+import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Eye, ListOrdered, Crop, Eraser, Minus, Plus, RotateCcw, FileStack, Files, Paintbrush } from "lucide-react"
 import { Slider } from "@/components/ui/slider"
 import { ImageCropDialog } from "@/components/image-crop-dialog"
+import { ImagePaintDialog } from "@/components/image-paint-dialog"
 import { PDFDocument } from "pdf-lib"
 import { exportTraineeExcel } from "@/lib/exports/export-excel"
 import { exportCertificatesNew } from "@/lib/exports/export-certificate"
@@ -370,6 +371,7 @@ export default function ParticipantDirectoryDialog({
   const [selectedTrainee, setSelectedTrainee] = useState<Trainee | null>(null)
   const [isTraineeDialogOpen, setIsTraineeDialogOpen] = useState(false)
   const [showPhotoCropDialog, setShowPhotoCropDialog] = useState(false)
+  const [showPhotoEditDialog, setShowPhotoEditDialog] = useState(false)
   const [cropExistingPhoto, setCropExistingPhoto] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [isRemovingBg, setIsRemovingBg] = useState(false)
@@ -2044,6 +2046,51 @@ export default function ParticipantDirectoryDialog({
     }
   }
 
+  const handleSaveEditedPhoto = async (editedImageUrl: string) => {
+    if (!selectedTrainee) return
+
+    setIsUploading(true)
+    try {
+      const originalBackup =
+        selectedTrainee.picture_2x2_original || selectedTrainee.picture_2x2_url
+      const updatePayload: Record<string, string> = { picture_2x2_url: editedImageUrl }
+      if (!selectedTrainee.picture_2x2_original && selectedTrainee.picture_2x2_url) {
+        updatePayload.picture_2x2_original = selectedTrainee.picture_2x2_url
+      }
+
+      const { error } = await tmsDb
+        .from("trainings")
+        .update(updatePayload)
+        .eq("id", selectedTrainee.id)
+
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to update picture: " + error.message,
+        })
+        return
+      }
+
+      applyUpdatedPhotoUrl(selectedTrainee.id, editedImageUrl, {
+        picture_2x2_original: originalBackup || null,
+      })
+
+      toast({
+        title: "Success",
+        description: "Picture edited successfully!",
+      })
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error?.message || "Failed to save edited picture",
+      })
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   const removeBackgroundForTrainee = async (
     trainee: Trainee,
     onProgress: (message: string) => void,
@@ -3642,6 +3689,18 @@ export default function ParticipantDirectoryDialog({
                           Recrop Current
                         </Button>
                       )}
+                      {selectedTrainee.picture_2x2_url && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={isUploading}
+                          onClick={() => setShowPhotoEditDialog(true)}
+                        >
+                          <Paintbrush className="h-4 w-4 mr-2" />
+                          Edit Pic
+                        </Button>
+                      )}
                       {isUploading && <p className="text-sm text-muted-foreground">Saving...</p>}
                     </div>
                   </div>
@@ -5090,6 +5149,17 @@ export default function ParticipantDirectoryDialog({
         onSave={handleSaveCroppedPhoto}
         title={cropExistingPhoto ? "Crop Participant Photo" : "Upload & Crop Participant Photo"}
       />
+
+      {selectedTrainee?.picture_2x2_url && (
+        <ImagePaintDialog
+          open={showPhotoEditDialog}
+          onOpenChange={setShowPhotoEditDialog}
+          imageUrl={selectedTrainee.picture_2x2_url}
+          originalImageUrl={selectedTrainee.picture_2x2_original}
+          title="Edit Participant Picture"
+          onSave={handleSaveEditedPhoto}
+        />
+      )}
 
       <AlertDialog open={downloadPackageOpen} onOpenChange={setDownloadPackageOpen}>
         <AlertDialogContent className="sm:max-w-md">
