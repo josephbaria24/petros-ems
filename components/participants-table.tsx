@@ -3,7 +3,9 @@
 "use client"
 
 import { tmsDb } from "@/lib/supabase-client"
+import { consumePendingCertOpen } from "@/lib/pending-cert-reminders"
 import * as React from "react"
+import { useSearchParams } from "next/navigation"
 import QRCode from "qrcode"
 import {
   useReactTable,
@@ -370,6 +372,30 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const [directoryScheduleId, setDirectoryScheduleId] = React.useState<string | null>(null)
   const [directoryCourseName, setDirectoryCourseName] = React.useState("")
   const [directoryRange, setDirectoryRange] = React.useState("")
+  const [directoryAutoSelectIds, setDirectoryAutoSelectIds] = React.useState<string[]>([])
+  const [directoryAutoViewCerts, setDirectoryAutoViewCerts] = React.useState(false)
+  const searchParams = useSearchParams()
+  const openedDirectoryKeyRef = React.useRef<string | null>(null)
+
+  React.useEffect(() => {
+    if (status !== "finished" && status !== "all") return
+    const openDirectory = searchParams.get("openDirectory")
+    if (!openDirectory || loading) return
+    const consumeKey = `${status}:${openDirectory}`
+    if (openedDirectoryKeyRef.current === consumeKey) return
+
+    const row = data.find((item) => item.id === openDirectory)
+    if (!row && status !== "finished") return
+
+    const payload = consumePendingCertOpen(openDirectory)
+    openedDirectoryKeyRef.current = consumeKey
+    setDirectoryScheduleId(openDirectory)
+    setDirectoryCourseName(row?.course || "Training")
+    setDirectoryRange(row?.schedule || "")
+    setDirectoryAutoSelectIds(payload?.traineeIds || [])
+    setDirectoryAutoViewCerts(Boolean(payload?.viewCerts))
+    setDirectoryOpen(true)
+  }, [searchParams, data, loading, status])
 
   const handleView = (participant: Participant) => {
     setSelectedParticipant(participant)
@@ -832,6 +858,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                   setDirectoryScheduleId(row.original.id)
                   setDirectoryCourseName(row.original.course)
                   setDirectoryRange(row.original.schedule)
+                  setDirectoryAutoSelectIds([])
+                  setDirectoryAutoViewCerts(false)
                   setDirectoryOpen(true)
                 }}
               >
@@ -1591,6 +1619,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         scheduleId={directoryScheduleId}
         courseName={directoryCourseName}
         scheduleRange={directoryRange}
+        autoSelectTraineeIds={directoryAutoSelectIds}
+        autoViewCertificates={directoryAutoViewCerts}
       />
 
       {/* Evaluations Dialog */}

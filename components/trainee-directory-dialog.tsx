@@ -56,6 +56,8 @@ interface ParticipantDirectoryDialogProps {
   scheduleId: string | null
   courseName: string
   scheduleRange: string
+  autoSelectTraineeIds?: string[]
+  autoViewCertificates?: boolean
 }
 
 interface DownloadTrainee {
@@ -365,6 +367,8 @@ export default function ParticipantDirectoryDialog({
   scheduleId,
   courseName,
   scheduleRange,
+  autoSelectTraineeIds = [],
+  autoViewCertificates = false,
 }: ParticipantDirectoryDialogProps) {
   const [trainees, setTrainees] = useState<Trainee[]>([])
   const [scheduleStatus, setScheduleStatus] = useState<string>("planned")
@@ -1227,14 +1231,40 @@ export default function ParticipantDirectoryDialog({
     }
   }
 
+  const autoOpenViewerRef = useRef(false)
+
+  useEffect(() => {
+    if (!open) {
+      autoOpenViewerRef.current = false
+    }
+  }, [open])
+
   useEffect(() => {
     if (open && scheduleId) {
-      fetchTrainees().then(() => {
+      const pendingIds = autoSelectTraineeIds
+      const shouldView = autoViewCertificates && pendingIds.length > 0
+      fetchTrainees().then((rows) => {
         ensureCertificateNumbers()
+        if (pendingIds.length > 0) {
+          const allowed = new Set((rows || []).map((t) => t.id))
+          const selected = pendingIds.filter((id) => allowed.has(id))
+          const ids = selected.length > 0 ? selected : pendingIds
+          setSelectedTraineeIds(new Set(ids))
+          setSelectAll(false)
+          if (shouldView && !autoOpenViewerRef.current && rows) {
+            autoOpenViewerRef.current = true
+            const selectedRows = rows.filter((t) => ids.includes(t.id))
+            if (selectedRows.length > 0) {
+              handleOpenCertificateViewer(selectedRows)
+            }
+          }
+        }
       })
       fetchScheduleStatus()
-      setSelectedTraineeIds(new Set())
-      setSelectAll(false)
+      if (!shouldView) {
+        setSelectedTraineeIds(new Set())
+        setSelectAll(false)
+      }
       // Clean any existing preview URLs when dialog is reopened or template changed
       setCertificatePreviews(prev => {
         prev.forEach(p => {
@@ -1610,10 +1640,10 @@ export default function ParticipantDirectoryDialog({
   };
 
   // ✅ NEW: Generate inline preview PDFs for selected trainees (no download)
-  const handleOpenCertificateViewer = () => {
+  const handleOpenCertificateViewer = (traineesOverride?: Trainee[]) => {
     if (!scheduleId) return
 
-    const selectedTrainees = getSelectedTrainees()
+    const selectedTrainees = traineesOverride?.length ? traineesOverride : getSelectedTrainees()
     if (selectedTrainees.length === 0) {
       toast({
         title: "No Selection",
@@ -1772,24 +1802,27 @@ export default function ParticipantDirectoryDialog({
         })
       } else {
         console.log("✅ Fetched trainees:", data)
-        setTrainees(data || [])
+        const rows = (data || []) as Trainee[]
+        setTrainees(rows)
 
         // Restore persisted certificate email send statuses after refresh/reopen.
         const sentIds = new Set<string>()
         const failedIds = new Set<string>()
-        ;(data || []).forEach((trainee: Trainee) => {
+        rows.forEach((trainee: Trainee) => {
           const status = trainee.custom_data?.__certificate_email_status
           if (status === "sent") sentIds.add(trainee.id)
           if (status === "failed") failedIds.add(trainee.id)
         })
         setSentCertificateIds(sentIds)
         setFailedCertificateIds(failedIds)
+        return rows
       }
     } catch (err) {
       console.error("Unexpected error:", err)
     } finally {
       setLoading(false)
     }
+    return []
   }
 
   const fetchScheduleStatus = async () => {

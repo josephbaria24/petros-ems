@@ -401,6 +401,11 @@ export async function POST(req: NextRequest) {
               }
             }
 
+            const existingTypes = Array.isArray(trainee.custom_data?.__certificate_email_sent_types)
+              ? trainee.custom_data.__certificate_email_sent_types.filter((t: unknown) => typeof t === "string")
+              : [];
+            const sentTypes = Array.from(new Set([...existingTypes, ...attachmentTypes]));
+
             // Persist email-send result so UI status survives refresh.
             const successCustomData = {
               ...(trainee.custom_data || {}),
@@ -408,6 +413,7 @@ export async function POST(req: NextRequest) {
               __certificate_email_sent_at: new Date().toISOString(),
               __certificate_email_error: null,
               __certificate_email_template_type: templateType,
+              __certificate_email_sent_types: sentTypes,
             };
             const { error: updateSuccessStatusError } = await supabase
               .from("trainings")

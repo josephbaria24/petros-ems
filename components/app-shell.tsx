@@ -6,6 +6,7 @@ import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase-client"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
+import { PendingCertPrompt } from "@/components/pending-cert-prompt"
 import { Suspense } from "react"
 import { cn } from "@/lib/utils"
 
@@ -104,6 +105,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {!isGuestPage && isAuthenticated && <AppSidebar />}
         <div className="flex flex-1 flex-col overflow-hidden">
           {!isGuestPage && isAuthenticated && <AppHeader />}
+          {!isGuestPage && isAuthenticated && <PendingCertPrompt />}
           <main
             className={cn(
               "flex flex-col flex-1 min-h-0",
