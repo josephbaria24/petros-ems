@@ -270,12 +270,12 @@ function GuestAttendanceForm() {
   if (done) {
     return (
       <div className="mx-auto flex min-h-[80vh] max-w-xl flex-col items-center justify-center px-4 text-center">
-        <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+        <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400">
           <CheckCircle2 className="h-10 w-10" />
         </div>
-        <h1 className="text-3xl font-semibold text-[#1A1D66]">You are marked present</h1>
+        <h1 className="text-3xl font-semibold text-[#1A1D66] dark:text-foreground">You are marked present</h1>
         <p className="mt-3 text-base text-muted-foreground">{done.name}</p>
-        <p className="mt-1 text-base font-medium text-[#1A1D66]">
+        <p className="mt-1 text-base font-medium text-[#1A1D66] dark:text-foreground">
           {done.dayLabel} · {done.timeLabel}
         </p>
         <p className="mt-2 text-sm text-muted-foreground">{courseName}</p>
@@ -302,11 +302,11 @@ function GuestAttendanceForm() {
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#1A1D66] text-[#FFCC00]">
           <UserCheck className="h-8 w-8" />
         </div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8c9a]">Petrosphere TMS</p>
-        <h1 className="mt-2 text-3xl font-semibold text-[#1A1D66] sm:text-4xl">Attendance check-in</h1>
-        <p className="mt-2 text-base font-medium text-[#1c1e28]">{courseName}</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#8a8c9a] dark:text-muted-foreground">Petrosphere TMS</p>
+        <h1 className="mt-2 text-3xl font-semibold text-[#1A1D66] dark:text-foreground sm:text-4xl">Attendance check-in</h1>
+        <p className="mt-2 text-base font-medium text-[#1c1e28] dark:text-foreground">{courseName}</p>
         {branch && <p className="mt-1 text-sm text-muted-foreground">{branch}</p>}
-        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#FFCC00]/50 bg-[#1A1D66]/5 px-4 py-2 text-sm font-semibold text-[#1A1D66]">
+        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#FFCC00]/50 bg-[#1A1D66]/5 px-4 py-2 text-sm font-semibold text-[#1A1D66] dark:bg-[#FFCC00]/10 dark:text-foreground">
           <Clock className="h-4 w-4 text-[#daae02]" />
           Check-in time · {formatClock(now)}
         </div>
@@ -314,7 +314,7 @@ function GuestAttendanceForm() {
 
       <form
         onSubmit={onSubmit}
-        className="space-y-5 rounded-3xl border border-[#e6e7ee] bg-white p-6 shadow-lg sm:p-8"
+        className="space-y-5 rounded-3xl border border-[#e6e7ee] bg-white p-6 shadow-lg sm:p-8 dark:border-white/10 dark:bg-card"
       >
         <div className="space-y-2">
           <Label className="text-sm font-semibold">Your name</Label>
@@ -343,7 +343,7 @@ function GuestAttendanceForm() {
                   {fullName(t)}
                 </SelectItem>
               ))}
-              <SelectItem value={MANUAL_NAME_VALUE} className="text-base py-2.5 font-medium text-[#1A1D66]">
+              <SelectItem value={MANUAL_NAME_VALUE} className="text-base py-2.5 font-medium text-[#1A1D66] dark:text-foreground">
                 Not in the list — type my name
               </SelectItem>
             </SelectContent>

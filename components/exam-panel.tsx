@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+  AlertTriangle,
   Check,
   Copy,
   Download,
@@ -24,6 +25,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -33,6 +42,7 @@ import {
 import { cn } from "@/lib/utils"
 import {
   answersToCell,
+  buildGuestExamUrl,
   createBlankQuestion,
   downloadExamExcelTemplate,
   EXAM_TYPE_LABELS,
@@ -85,11 +95,16 @@ export function ExamPanel({
   const externalUrl = exam?.external_url || ""
   const [copied, setCopied] = React.useState(false)
   const [qrBusy, setQrBusy] = React.useState(false)
+  const [importPreview, setImportPreview] = React.useState<{
+    fileName: string
+    questions: ExamQuestionDraft[]
+    errors: string[]
+  } | null>(null)
   const fileRef = React.useRef<HTMLInputElement>(null)
 
   const takeUrl =
     exam?.id && typeof window !== "undefined"
-      ? `${window.location.origin}/guest-exam?exam_id=${encodeURIComponent(exam.id)}`
+      ? buildGuestExamUrl(window.location.origin, exam.id, scheduleId)
       : ""
 
   const shareUrl = mode === "internal" ? takeUrl : externalUrl.trim()
@@ -170,22 +185,29 @@ export function ExamPanel({
     try {
       const buf = await file.arrayBuffer()
       const { questions: imported, errors } = parseExamExcelFile(buf)
-      if (errors.length) {
-        toast.error("Some rows were skipped", { description: errors.slice(0, 3).join(" · ") })
-      }
       if (!imported.length) {
-        toast.error("No valid questions found in the file")
+        toast.error("No valid questions found in the file", {
+          description: errors.slice(0, 3).join(" · ") || undefined,
+        })
         return
       }
-      onChangeQuestions([...questions, ...imported])
-      onChangeMode("internal")
-      toast.success(`Imported ${imported.length} question${imported.length === 1 ? "" : "s"}`)
+      setImportPreview({ fileName: file.name, questions: imported, errors })
     } catch (e) {
       console.error(e)
       toast.error("Failed to read Excel file")
     } finally {
       if (fileRef.current) fileRef.current.value = ""
     }
+  }
+
+  const confirmImport = () => {
+    if (!importPreview?.questions.length) return
+    onChangeQuestions([...questions, ...importPreview.questions])
+    onChangeMode("internal")
+    toast.success(
+      `Imported ${importPreview.questions.length} question${importPreview.questions.length === 1 ? "" : "s"}`
+    )
+    setImportPreview(null)
   }
 
   return (
@@ -231,7 +253,7 @@ export function ExamPanel({
             >
               <div className="text-sm font-bold text-[#1A1D66] dark:text-foreground">Create in TMS</div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Build multiple choice, identification, and solving items here. Share a Petrosphere exam link.
+                One {title.toLowerCase()} for every {courseName || "this training"} schedule. Trainees enter email, last name, and first name on the exam link.
               </p>
             </button>
             <button
@@ -250,6 +272,12 @@ export function ExamPanel({
               </p>
             </button>
           </div>
+          {courseName ? (
+            <p className="mt-2 rounded-lg border border-[#1A1D66]/10 bg-[#1A1D66]/5 px-3 py-2 text-xs text-muted-foreground dark:border-white/10 dark:bg-white/5">
+              Saving this exam updates <span className="font-semibold text-foreground">{courseName}</span> for every
+              schedule of this training — not only this batch.
+            </p>
+          ) : null}
         </div>
 
         {mode === "external" ? (
@@ -264,8 +292,8 @@ export function ExamPanel({
               />
             </div>
             {externalUrl.trim() ? (
-              <div className="flex items-start gap-2 rounded-xl border border-[#1A1D66]/15 bg-[#1A1D66]/5 p-3">
-                <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-[#1A1D66]" />
+              <div className="flex items-start gap-2 rounded-xl border border-[#1A1D66]/15 bg-[#1A1D66]/5 p-3 dark:border-white/10 dark:bg-white/5">
+                <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-[#1A1D66] dark:text-[#FFCC00]" />
                 <a
                   href={externalUrl.trim()}
                   target="_blank"
@@ -317,7 +345,7 @@ export function ExamPanel({
               <Button
                 size="sm"
                 variant="outline"
-                className="gap-1.5 border-[#1A1D66]/25"
+                className="gap-1.5 border-[#1A1D66]/25 dark:border-white/20"
                 onClick={() => onChangeQuestions([...questions, createBlankQuestion("multiple_choice")])}
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -366,6 +394,33 @@ export function ExamPanel({
               ) : null}
             </div>
 
+            <div className="rounded-xl border border-[#1A1D66]/15 bg-[#f8f8fc] p-4 dark:border-white/10 dark:bg-muted/20">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#1A1D66] dark:text-[#FFCC00]">
+                Trainee details on the exam form
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Trainees must fill these in before answering. Middle initial is optional.
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs">Email *</Label>
+                  <Input disabled placeholder="trainee@email.com" className="bg-white dark:bg-background" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Last name *</Label>
+                  <Input disabled placeholder="Last name" className="bg-white dark:bg-background" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">First name *</Label>
+                  <Input disabled placeholder="First name" className="bg-white dark:bg-background" />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs">Middle initial (optional)</Label>
+                  <Input disabled placeholder="M" className="max-w-[5rem] bg-white dark:bg-background" />
+                </div>
+              </div>
+            </div>
+
             <p className="text-xs text-muted-foreground">
               Excel columns: <span className="font-medium text-foreground">Type, Question, A, B, C, D, Answer</span>
               . Use <code className="rounded bg-muted px-1">multiple_choice</code>,{" "}
@@ -375,8 +430,8 @@ export function ExamPanel({
             </p>
 
             {questions.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-[#1A1D66]/25 bg-[#1A1D66]/[0.03] px-4 py-10 text-center">
-                <FileSpreadsheet className="mx-auto h-8 w-8 text-[#1A1D66]/50" />
+              <div className="rounded-xl border border-dashed border-[#1A1D66]/25 bg-[#1A1D66]/[0.03] px-4 py-10 text-center dark:border-white/15 dark:bg-white/[0.03]">
+                <FileSpreadsheet className="mx-auto h-8 w-8 text-[#1A1D66]/50 dark:text-muted-foreground" />
                 <p className="mt-2 text-sm font-medium text-[#1A1D66] dark:text-foreground">No questions yet</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Add questions manually or import the Excel template.
@@ -400,9 +455,9 @@ export function ExamPanel({
               </div>
             )}
 
-            <div className="rounded-xl border border-[#FFCC00]/40 bg-[#FFCC00]/10 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#1A1D66]">Trainee exam link</p>
-              <p className="mt-1 break-all text-sm text-[#1A1D66]/90">
+            <div className="rounded-xl border border-[#FFCC00]/40 bg-[#FFCC00]/10 p-3 dark:border-[#FFCC00]/30 dark:bg-[#FFCC00]/10">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#1A1D66] dark:text-[#FFCC00]">Trainee exam link</p>
+              <p className="mt-1 break-all text-sm text-[#1A1D66]/90 dark:text-foreground">
                 {takeUrl || "Save this exam to generate a shareable /guest-exam link."}
               </p>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -444,7 +499,117 @@ export function ExamPanel({
           </div>
         )}
       </div>
+
+      <Dialog open={Boolean(importPreview)} onOpenChange={(open) => !open && setImportPreview(null)}>
+        <DialogContent className="flex max-h-[88vh] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+          <DialogHeader className="border-b border-[#FFCC00]/40 bg-gradient-to-r from-[#1A1D66] to-[#24286f] px-5 py-4 text-white">
+            <DialogTitle className="text-white">Preview imported questions</DialogTitle>
+            <DialogDescription className="text-white/75">
+              {importPreview?.fileName || "Excel file"} — review these questions, then confirm to add them
+              {questions.length > 0 ? ` after the ${questions.length} already in this exam` : ""}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-background px-5 py-4">
+            {importPreview?.errors.length ? (
+              <div className="rounded-lg border border-amber-400/60 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
+                <p className="flex items-center gap-1.5 font-semibold">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {importPreview.errors.length} row{importPreview.errors.length === 1 ? "" : "s"} skipped
+                </p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                  {importPreview.errors.slice(0, 8).map((err) => (
+                    <li key={err}>{err}</li>
+                  ))}
+                  {importPreview.errors.length > 8 ? (
+                    <li>+{importPreview.errors.length - 8} more</li>
+                  ) : null}
+                </ul>
+              </div>
+            ) : null}
+
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {importPreview?.questions.length || 0} question
+              {(importPreview?.questions.length || 0) === 1 ? "" : "s"} ready to import
+            </p>
+
+            <div className="space-y-2">
+              {(importPreview?.questions || []).map((q, index) => (
+                <ImportQuestionPreview key={q.clientId} index={index} question={q} />
+              ))}
+            </div>
+          </div>
+
+          <DialogFooter className="border-t bg-muted/30 px-5 py-3">
+            <Button type="button" variant="outline" onClick={() => setImportPreview(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="bg-[#1A1D66] text-white hover:bg-[#141654] dark:bg-[#FFCC00] dark:text-[#1A1D66] dark:hover:bg-[#e6b800]"
+              onClick={confirmImport}
+            >
+              Confirm import
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
+  )
+}
+
+function ImportQuestionPreview({
+  index,
+  question,
+}: {
+  index: number
+  question: ExamQuestionDraft
+}) {
+  const correct = question.answers[0]?.toUpperCase()
+  return (
+    <div className="rounded-xl border border-[#1A1D66]/15 bg-[#f8f8fc] p-3 dark:border-white/10 dark:bg-muted/20">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="rounded-md bg-[#1A1D66] px-2 py-0.5 text-xs font-bold text-white">Q{index + 1}</span>
+        <Badge variant="outline" className="text-[10px]">
+          {EXAM_TYPE_LABELS[question.question_type]}
+        </Badge>
+      </div>
+      <p className="text-sm font-medium text-[#1A1D66] dark:text-foreground">{question.question_text}</p>
+      {question.question_type === "multiple_choice" ? (
+        <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+          {question.options.map((opt) => {
+            const isCorrect = opt.key === correct
+            return (
+              <div
+                key={opt.key}
+                className={cn(
+                  "flex items-start gap-2 rounded-lg border px-2 py-1.5 text-xs",
+                  isCorrect
+                    ? "border-[#FFCC00] bg-[#FFCC00]/15 font-semibold"
+                    : "border-border bg-white dark:bg-background"
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold",
+                    isCorrect
+                      ? "bg-[#FFCC00] text-[#1A1D66]"
+                      : "bg-[#1A1D66]/10 text-[#1A1D66] dark:bg-white/10 dark:text-foreground"
+                  )}
+                >
+                  {opt.key}
+                </span>
+                <span className="min-w-0 pt-0.5">{opt.text || "—"}</span>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Accepted: <span className="font-medium text-foreground">{answersToCell(question.answers) || "—"}</span>
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -468,7 +633,7 @@ function QuestionEditor({
   canMoveDown: boolean
 }) {
   return (
-    <div className="rounded-xl border border-[#1A1D66]/15 bg-[#f8f8fc] p-4 dark:bg-muted/20">
+    <div className="rounded-xl border border-[#1A1D66]/15 bg-[#f8f8fc] p-4 dark:border-white/10 dark:bg-muted/20">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-1 rounded-md bg-[#1A1D66] px-2 py-1 text-xs font-bold text-white">
           <GripVertical className="h-3 w-3 opacity-70" />
@@ -537,8 +702,8 @@ function QuestionEditor({
                   className={cn(
                     "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold",
                     question.answers[0] === opt.key
-                      ? "bg-[#FFCC00] text-[#1A1D66] ring-2 ring-[#1A1D66]"
-                      : "bg-[#1A1D66]/10 text-[#1A1D66]"
+                      ? "bg-[#FFCC00] text-[#1A1D66] ring-2 ring-[#1A1D66] dark:ring-[#FFCC00]"
+                      : "bg-[#1A1D66]/10 text-[#1A1D66] dark:bg-white/10 dark:text-foreground"
                   )}
                 >
                   {opt.key}

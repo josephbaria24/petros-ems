@@ -10,8 +10,11 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { tmsDb } from "@/lib/supabase-client"
 import {
+  composeRespondentName,
   gradeAnswer,
+  isValidExamEmail,
   mapDbQuestion,
+  normalizeMiddleInitial,
   type ExamQuestionDraft,
   type ExamRecord,
 } from "@/lib/exam"
@@ -20,6 +23,7 @@ import { cn } from "@/lib/utils"
 export default function GuestExamPage() {
   const searchParams = useSearchParams()
   const examId = searchParams.get("exam_id")
+  const scheduleIdParam = searchParams.get("schedule_id") || searchParams.get("scheduleId")
 
   const [loading, setLoading] = React.useState(true)
   const [submitting, setSubmitting] = React.useState(false)
@@ -27,8 +31,10 @@ export default function GuestExamPage() {
   const [exam, setExam] = React.useState<ExamRecord | null>(null)
   const [courseName, setCourseName] = React.useState("")
   const [questions, setQuestions] = React.useState<ExamQuestionDraft[]>([])
-  const [name, setName] = React.useState("")
   const [email, setEmail] = React.useState("")
+  const [lastName, setLastName] = React.useState("")
+  const [firstName, setFirstName] = React.useState("")
+  const [middleInitial, setMiddleInitial] = React.useState("")
   const [answers, setAnswers] = React.useState<Record<string, string>>({})
 
   React.useEffect(() => {
@@ -86,8 +92,17 @@ export default function GuestExamPage() {
   }, [examId])
 
   const submit = async () => {
-    if (!exam || !name.trim()) {
-      toast.error("Please enter your name")
+    if (!exam) return
+    if (!isValidExamEmail(email)) {
+      toast.error("Please enter a valid email")
+      return
+    }
+    if (!lastName.trim()) {
+      toast.error("Please enter your last name")
+      return
+    }
+    if (!firstName.trim()) {
+      toast.error("Please enter your first name")
       return
     }
     const unanswered = questions.find((q) => !String(answers[q.id || q.clientId] || "").trim())
@@ -95,6 +110,9 @@ export default function GuestExamPage() {
       toast.error("Please answer all questions")
       return
     }
+
+    const mi = normalizeMiddleInitial(middleInitial)
+    const respondentName = composeRespondentName(lastName, firstName, mi)
 
     setSubmitting(true)
     try {
@@ -110,14 +128,23 @@ export default function GuestExamPage() {
         if (gradeAnswer(q, given)) score += pts
       }
 
-      const { error } = await tmsDb.from("exam_responses").insert({
+      const responsePayload: Record<string, unknown> = {
         exam_id: exam.id,
-        respondent_name: name.trim(),
-        respondent_email: email.trim() || null,
+        respondent_name: respondentName,
+        respondent_email: email.trim(),
         answers: payloadAnswers,
         score,
         max_score: max,
-      })
+      }
+      const responseScheduleId = scheduleIdParam || exam.schedule_id || null
+      if (responseScheduleId) responsePayload.schedule_id = responseScheduleId
+
+      let { error } = await tmsDb.from("exam_responses").insert(responsePayload)
+      if (error && responseScheduleId && /schedule_id|schema cache|column/i.test(error.message || "")) {
+        delete responsePayload.schedule_id
+        const retry = await tmsDb.from("exam_responses").insert(responsePayload)
+        error = retry.error
+      }
       if (error) throw error
       setDone({ score, max })
       toast.success("Exam submitted")
@@ -131,7 +158,7 @@ export default function GuestExamPage() {
 
   if (!examId) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f4f5fb] p-6">
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f5fb] p-6 dark:bg-background">
         <p className="text-muted-foreground">Missing exam link.</p>
       </div>
     )
@@ -139,7 +166,7 @@ export default function GuestExamPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f4f5fb] text-[#1A1D66]">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f4f5fb] text-[#1A1D66] dark:bg-background dark:text-foreground">
         <Loader2 className="h-8 w-8 animate-spin" />
         Loading exam…
       </div>
@@ -148,14 +175,14 @@ export default function GuestExamPage() {
 
   if (!exam) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f4f5fb] p-6">
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f5fb] p-6 dark:bg-background">
         <p className="text-muted-foreground">This exam could not be loaded.</p>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#fff7cc_0%,_#f4f5fb_45%,_#e8eaf6_100%)]">
+    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_#fff7cc_0%,_#f4f5fb_45%,_#e8eaf6_100%)] dark:bg-[radial-gradient(ellipse_at_top,_#2a2610_0%,_#161824_45%,_#12141c_100%)]">
       <header className="border-b border-[#FFCC00]/40 bg-gradient-to-r from-[#1A1D66] to-[#24286f] text-white shadow-md">
         <div className="mx-auto flex max-w-3xl flex-col gap-1 px-4 py-6">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#FFCC00]">Petrosphere TMS</p>
@@ -168,39 +195,70 @@ export default function GuestExamPage() {
 
       <main className="mx-auto max-w-3xl space-y-5 px-4 py-8">
         {done ? (
-          <div className="rounded-2xl border border-[#FFCC00]/50 bg-white p-8 text-center shadow-md">
-            <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
-            <h2 className="mt-3 text-xl font-bold text-[#1A1D66]">Thank you, {name.trim()}!</h2>
+          <div className="rounded-2xl border border-[#FFCC00]/50 bg-white p-8 text-center shadow-md dark:border-[#FFCC00]/30 dark:bg-card">
+            <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600 dark:text-emerald-400" />
+            <h2 className="mt-3 text-xl font-bold text-[#1A1D66] dark:text-foreground">Thank you, {firstName.trim()}!</h2>
             <p className="mt-2 text-muted-foreground">Your answers were submitted successfully.</p>
-            <p className="mt-4 text-3xl font-bold text-[#1A1D66]">
+            <p className="mt-4 text-3xl font-bold text-[#1A1D66] dark:text-foreground">
               {done.score}
               <span className="text-lg font-medium text-muted-foreground"> / {done.max}</span>
             </p>
           </div>
         ) : (
           <>
-            <div className="rounded-2xl border border-[#1A1D66]/10 bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-[#1A1D66]/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-card">
+              <p className="mb-4 text-sm font-semibold text-[#1A1D66] dark:text-foreground">Your details</p>
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="guest-name">Full name *</Label>
-                  <Input
-                    id="guest-name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Your name"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="guest-email">Email (optional)</Label>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="guest-email">Email *</Label>
                   <Input
                     id="guest-email"
                     type="email"
+                    required
+                    autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
+                    placeholder="you@email.com"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="guest-last-name">Last name *</Label>
+                  <Input
+                    id="guest-last-name"
+                    required
+                    autoComplete="family-name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Last name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="guest-first-name">First name *</Label>
+                  <Input
+                    id="guest-first-name"
+                    required
+                    autoComplete="given-name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="First name"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="guest-mi">Middle initial (optional)</Label>
+                  <Input
+                    id="guest-mi"
+                    autoComplete="additional-name"
+                    maxLength={2}
+                    value={middleInitial}
+                    onChange={(e) => setMiddleInitial(normalizeMiddleInitial(e.target.value))}
+                    placeholder="M"
+                    className="max-w-[5rem] uppercase"
                   />
                 </div>
               </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Use the same name and email as in your training registration.
+              </p>
             </div>
 
             {questions.map((q, i) => {
@@ -208,13 +266,13 @@ export default function GuestExamPage() {
               return (
                 <div
                   key={key}
-                  className="rounded-2xl border border-[#1A1D66]/10 bg-white p-5 shadow-sm"
+                  className="rounded-2xl border border-[#1A1D66]/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-card"
                 >
                   <div className="mb-3 flex items-start gap-2">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#1A1D66] text-xs font-bold text-white">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#1A1D66] text-xs font-bold text-white dark:bg-[#FFCC00] dark:text-[#1A1D66]">
                       {i + 1}
                     </span>
-                    <p className="font-medium text-[#1A1D66]">{q.question_text}</p>
+                    <p className="font-medium text-[#1A1D66] dark:text-foreground">{q.question_text}</p>
                   </div>
 
                   {q.question_type === "multiple_choice" ? (
@@ -230,7 +288,7 @@ export default function GuestExamPage() {
                               "flex w-full items-center gap-3 rounded-xl border-2 px-3 py-2.5 text-left transition-colors",
                               answers[key] === o.key
                                 ? "border-[#FFCC00] bg-[#FFCC00]/20"
-                                : "border-border hover:border-[#1A1D66]/30"
+                                : "border-border hover:border-[#1A1D66]/30 dark:hover:border-white/25"
                             )}
                           >
                             <span
@@ -238,12 +296,12 @@ export default function GuestExamPage() {
                                 "flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold",
                                 answers[key] === o.key
                                   ? "bg-[#FFCC00] text-[#1A1D66]"
-                                  : "bg-[#1A1D66]/10 text-[#1A1D66]"
+                                  : "bg-[#1A1D66]/10 text-[#1A1D66] dark:bg-white/10 dark:text-foreground"
                               )}
                             >
                               {o.key}
                             </span>
-                            <span>{o.text}</span>
+                            <span className="text-foreground">{o.text}</span>
                           </button>
                         ))}
                     </div>
@@ -262,7 +320,7 @@ export default function GuestExamPage() {
             })}
 
             <Button
-              className="h-11 w-full gap-2 bg-[#1A1D66] text-base text-white hover:bg-[#141654]"
+              className="h-11 w-full gap-2 bg-[#1A1D66] text-base text-white hover:bg-[#141654] dark:bg-[#FFCC00] dark:text-[#1A1D66] dark:hover:bg-[#e6b800]"
               disabled={submitting || !questions.length}
               onClick={() => void submit()}
             >

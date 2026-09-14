@@ -35,12 +35,15 @@ CREATE TABLE IF NOT EXISTS tms.exam_responses (
   answers JSONB NOT NULL DEFAULT '{}'::jsonb,
   score NUMERIC,
   max_score NUMERIC,
+  schedule_id UUID REFERENCES tms.schedules(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_exams_schedule_id ON tms.exams(schedule_id);
+CREATE INDEX IF NOT EXISTS idx_exams_course_id_kind ON tms.exams(course_id, kind);
 CREATE INDEX IF NOT EXISTS idx_exam_questions_exam_id ON tms.exam_questions(exam_id);
 CREATE INDEX IF NOT EXISTS idx_exam_responses_exam_id ON tms.exam_responses(exam_id);
+CREATE INDEX IF NOT EXISTS idx_exam_responses_schedule_id ON tms.exam_responses(schedule_id);
 
 ALTER TABLE tms.exams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tms.exam_questions ENABLE ROW LEVEL SECURITY;

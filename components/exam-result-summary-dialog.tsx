@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { tmsDb } from "@/lib/supabase-client"
 import { cn } from "@/lib/utils"
+import { filterExamResponsesForSchedule, matchExamResponse } from "@/lib/exam"
 
 export type ExamSummaryRow = {
   traineeId: string
@@ -106,14 +107,6 @@ function formatInclusiveDates(schedule: {
   return "—"
 }
 
-function normalizeName(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-}
-
 function scorePercent(score: number | null, max: number | null): string {
   if (score == null || max == null || max <= 0) return ""
   return `${((score / max) * 100).toFixed(2)}%`
@@ -122,32 +115,6 @@ function scorePercent(score: number | null, max: number | null): string {
 function scoreFraction(score: number | null, max: number | null): string {
   if (score == null || max == null) return ""
   return `${score} / ${max}`
-}
-
-function pickBestResponse(
-  responses: { respondent_name: string | null; score: number | null; max_score: number | null; created_at?: string }[],
-  trainee: { first_name: string; last_name: string }
-) {
-  const targets = [
-    normalizeName(`${trainee.first_name} ${trainee.last_name}`),
-    normalizeName(`${trainee.last_name} ${trainee.first_name}`),
-    normalizeName(trainee.last_name),
-  ].filter(Boolean)
-
-  const ranked = responses
-    .map((r) => {
-      const n = normalizeName(r.respondent_name || "")
-      let rank = 0
-      if (targets[0] && n === targets[0]) rank = 3
-      else if (targets[1] && n === targets[1]) rank = 3
-      else if (targets[0] && (n.includes(targets[0]) || targets[0].includes(n))) rank = 2
-      else if (targets[2] && n.includes(targets[2])) rank = 1
-      return { r, rank }
-    })
-    .filter((x) => x.rank > 0)
-    .sort((a, b) => b.rank - a.rank)
-
-  return ranked[0]?.r || null
 }
 
 const DEFAULT_META: ExamSummaryMeta = {
@@ -212,7 +179,7 @@ export function ExamResultSummaryDialog({
 
       const { data: trainings, error: te } = await tmsDb
         .from("trainings")
-        .select("id, first_name, last_name, middle_initial, training_type, status")
+        .select("id, first_name, last_name, middle_initial, email, training_type, status")
         .eq("schedule_id", scheduleId)
         .order("last_name", { ascending: true })
 
@@ -228,25 +195,49 @@ export function ExamResultSummaryDialog({
 
       let preResponses: {
         respondent_name: string | null
+        respondent_email: string | null
+        schedule_id?: string | null
         score: number | null
         max_score: number | null
       }[] = []
       let postResponses: typeof preResponses = []
 
       if (pretestExamId) {
-        const { data } = await tmsDb
+        const preRes = await tmsDb
           .from("exam_responses")
-          .select("respondent_name, score, max_score, created_at")
+          .select("respondent_name, respondent_email, schedule_id, score, max_score, created_at")
           .eq("exam_id", pretestExamId)
-        preResponses = data || []
+        if (preRes.error && /schedule_id|schema cache|column/i.test(preRes.error.message || "")) {
+          const fallback = await tmsDb
+            .from("exam_responses")
+            .select("respondent_name, respondent_email, score, max_score, created_at")
+            .eq("exam_id", pretestExamId)
+          preResponses = fallback.data || []
+        } else {
+          preResponses = preRes.data || []
+        }
       }
       if (posttestExamId) {
-        const { data } = await tmsDb
+        const postRes = await tmsDb
           .from("exam_responses")
-          .select("respondent_name, score, max_score, created_at")
+          .select("respondent_name, respondent_email, schedule_id, score, max_score, created_at")
           .eq("exam_id", posttestExamId)
-        postResponses = data || []
+        if (postRes.error && /schedule_id|schema cache|column/i.test(postRes.error.message || "")) {
+          const fallback = await tmsDb
+            .from("exam_responses")
+            .select("respondent_name, respondent_email, score, max_score, created_at")
+            .eq("exam_id", posttestExamId)
+          postResponses = fallback.data || []
+        } else {
+          postResponses = postRes.data || []
+        }
       }
+
+      const forThisSchedule = <T extends { schedule_id?: string | null }>(rows: T[]) =>
+        filterExamResponsesForSchedule(rows, scheduleId)
+
+      preResponses = forThisSchedule(preResponses)
+      postResponses = forThisSchedule(postResponses)
 
       const defaultMaxPre = pretestQuestionCount || null
       const defaultMaxPost = posttestQuestionCount || null
@@ -271,8 +262,8 @@ export function ExamResultSummaryDialog({
       }
 
       const nextRows: ExamSummaryRow[] = active.map((t) => {
-        const pre = pickBestResponse(preResponses, t)
-        const post = pickBestResponse(postResponses, t)
+        const pre = matchExamResponse(preResponses, t)
+        const post = matchExamResponse(postResponses, t)
         return {
           traineeId: t.id,
           lastName: (t.last_name || "").trim(),
@@ -458,7 +449,7 @@ export function ExamResultSummaryDialog({
 
           <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-200/80 p-4 dark:bg-zinc-900">
             {loading ? (
-              <div className="flex flex-col items-center justify-center gap-3 py-24 text-[#1A1D66]">
+              <div className="flex flex-col items-center justify-center gap-3 py-24 text-[#1A1D66] dark:text-foreground">
                 <Loader2 className="h-8 w-8 animate-spin" />
                 Building summary preview…
               </div>

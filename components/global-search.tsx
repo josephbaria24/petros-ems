@@ -12,16 +12,18 @@ import {
   type GlobalSearchItem,
 } from "@/lib/global-search"
 
+const categoryIconClass = "h-4 w-4 shrink-0 text-[#1A1D66] dark:text-foreground"
+
 function CategoryIcon({ category }: { category: GlobalSearchItem["category"] }) {
   switch (category) {
     case "Courses":
-      return <BookOpen className="h-4 w-4 shrink-0 text-[#1A1D66]" />
+      return <BookOpen className={categoryIconClass} />
     case "Schedules":
-      return <CalendarDays className="h-4 w-4 shrink-0 text-[#1A1D66]" />
+      return <CalendarDays className={categoryIconClass} />
     case "Trainees":
-      return <User className="h-4 w-4 shrink-0 text-[#1A1D66]" />
+      return <User className={categoryIconClass} />
     default:
-      return <FileText className="h-4 w-4 shrink-0 text-[#1A1D66]" />
+      return <FileText className={categoryIconClass} />
   }
 }
 
@@ -204,7 +206,7 @@ export function GlobalSearch() {
   return (
     <div ref={rootRef} className="relative mx-2 min-w-0 flex-1 max-w-xl">
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#1A1D66]/55" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#1A1D66]/55 dark:text-zinc-400" />
         <Input
           ref={inputRef}
           value={query}
@@ -215,7 +217,7 @@ export function GlobalSearch() {
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
           placeholder="Search pages, courses, schedules, trainees…"
-          className="h-10 border-0 bg-white/95 pl-9 pr-16 text-sm text-[#1A1D66] shadow-sm placeholder:text-[#1A1D66]/45 focus-visible:ring-2 focus-visible:ring-[#FFCC00]"
+          className="h-10 border-0 bg-white/95 pl-9 pr-16 text-sm text-[#1A1D66] shadow-sm placeholder:text-[#1A1D66]/45 focus-visible:ring-2 focus-visible:ring-[#FFCC00] dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-400 dark:shadow-none dark:ring-1 dark:ring-white/15 dark:focus-visible:ring-[#FFCC00]"
           aria-label="Global search"
           aria-expanded={showPanel}
           aria-controls="global-search-results"
@@ -225,7 +227,7 @@ export function GlobalSearch() {
           {query ? (
             <button
               type="button"
-              className="rounded p-1 text-[#1A1D66]/60 hover:bg-[#1A1D66]/10 hover:text-[#1A1D66]"
+              className="rounded p-1 text-[#1A1D66]/60 hover:bg-[#1A1D66]/10 hover:text-[#1A1D66] dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-100"
               onClick={() => {
                 setQuery("")
                 setLiveItems([])
@@ -236,7 +238,7 @@ export function GlobalSearch() {
               <X className="h-3.5 w-3.5" />
             </button>
           ) : (
-            <kbd className="hidden rounded border border-[#1A1D66]/20 bg-[#1A1D66]/5 px-1.5 py-0.5 text-[10px] font-medium text-[#1A1D66]/70 sm:inline">
+            <kbd className="hidden rounded border border-[#1A1D66]/20 bg-[#1A1D66]/5 px-1.5 py-0.5 text-[10px] font-medium text-[#1A1D66]/70 sm:inline dark:border-white/20 dark:bg-white/10 dark:text-zinc-300">
               Ctrl K
             </kbd>
           )}
@@ -246,7 +248,7 @@ export function GlobalSearch() {
       {showPanel ? (
         <div
           id="global-search-results"
-          className="absolute left-0 right-0 top-[calc(100%+0.4rem)] z-[90] overflow-hidden rounded-xl border border-[#FFCC00]/50 bg-white shadow-xl shadow-black/20 dark:bg-card"
+          className="absolute left-0 right-0 top-[calc(100%+0.4rem)] z-[90] overflow-hidden rounded-xl border border-[#FFCC00]/50 bg-white shadow-xl shadow-black/20 dark:border-[#FFCC00]/40 dark:bg-card dark:shadow-black/50"
         >
           <div className="max-h-[min(24rem,70vh)] overflow-y-auto py-1">
             {searchingLive ? (
@@ -264,7 +266,7 @@ export function GlobalSearch() {
 
             {groups.map((group) => (
               <div key={group.category} className="py-1">
-                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#1A1D66]/55">
+                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#1A1D66]/55 dark:text-muted-foreground">
                   {group.category}
                 </div>
                 {group.items.map((item) => {
@@ -276,7 +278,7 @@ export function GlobalSearch() {
                       type="button"
                       className={cn(
                         "flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors",
-                        active ? "bg-[#FFCC00]/25" : "hover:bg-[#1A1D66]/5"
+                        active ? "bg-[#FFCC00]/25 dark:bg-[#FFCC00]/20" : "hover:bg-[#1A1D66]/5 dark:hover:bg-white/5"
                       )}
                       onMouseEnter={() => setActiveIndex(index)}
                       onClick={() => goTo(item)}

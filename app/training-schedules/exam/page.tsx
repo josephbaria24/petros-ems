@@ -3,15 +3,18 @@
 import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { ArrowLeft, ClipboardList, FileSpreadsheet, Loader2 } from "lucide-react"
+import { format, parseISO } from "date-fns"
+import { ArrowLeft, Calendar, ClipboardList, FileSpreadsheet, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { ExamPanel } from "@/components/exam-panel"
+import { ExamResultsPreview } from "@/components/exam-results-preview"
 import { ExamResultSummaryDialog } from "@/components/exam-result-summary-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { tmsDb } from "@/lib/supabase-client"
 import {
   mapDbQuestion,
+  pickCanonicalExam,
   type ExamKind,
   type ExamMode,
   type ExamQuestionDraft,
@@ -30,6 +33,52 @@ const emptySlot = (): SlotState => ({
   saving: false,
 })
 
+function formatDay(value: string) {
+  try {
+    return format(parseISO(value.slice(0, 10)), "MMMM d, yyyy")
+  } catch {
+    return value
+  }
+}
+
+function formatScheduleDateLabel(schedule: {
+  schedule_type?: string | null
+  schedule_ranges?: { start_date?: string; end_date?: string }[] | null
+  schedule_dates?: { date?: string }[] | null
+}): string | null {
+  const range = schedule.schedule_ranges?.[0]
+  if (schedule.schedule_type !== "staggered" && range?.start_date) {
+    const start = range.start_date
+    const end = range.end_date || range.start_date
+    try {
+      const s = parseISO(start.slice(0, 10))
+      const e = parseISO(end.slice(0, 10))
+      if (s.getTime() === e.getTime()) return format(s, "MMMM d, yyyy")
+      if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear()) {
+        return `${format(s, "MMMM d")}–${format(e, "d, yyyy")}`
+      }
+      return `${format(s, "MMM d, yyyy")} – ${format(e, "MMM d, yyyy")}`
+    } catch {
+      return start
+    }
+  }
+
+  if (schedule.schedule_dates?.length) {
+    const dates = [...schedule.schedule_dates]
+      .map((d) => d.date)
+      .filter(Boolean)
+      .sort() as string[]
+    if (!dates.length) return null
+    if (dates.length === 1) return formatDay(dates[0])
+    if (dates.length <= 4) {
+      return dates.map((d) => format(parseISO(d.slice(0, 10)), "MMM d, yyyy")).join(", ")
+    }
+    return `${formatDay(dates[0])} – ${formatDay(dates[dates.length - 1])}`
+  }
+
+  return null
+}
+
 function kindToCourseLinkField(kind: ExamKind): "pretest_link" | "posttest_link" {
   return kind === "pretest" ? "pretest_link" : "posttest_link"
 }
@@ -43,6 +92,7 @@ export default function ScheduleExamPage() {
   const [loading, setLoading] = React.useState(true)
   const [courseName, setCourseName] = React.useState("")
   const [courseTitle, setCourseTitle] = React.useState<string | null>(null)
+  const [scheduleDateLabel, setScheduleDateLabel] = React.useState<string | null>(null)
   const [courseId, setCourseId] = React.useState<string | null>(null)
   const [slots, setSlots] = React.useState<Record<ExamKind, SlotState>>({
     pretest: emptySlot(),
@@ -65,13 +115,16 @@ export default function ScheduleExamPage() {
         `
         id,
         course_id,
+        schedule_type,
         courses (
           id,
           name,
           title,
           pretest_link,
           posttest_link
-        )
+        ),
+        schedule_ranges ( start_date, end_date ),
+        schedule_dates ( date )
       `
       )
       .eq("id", scheduleId)
@@ -97,11 +150,25 @@ export default function ScheduleExamPage() {
     setCourseId(resolvedCourseId)
     setCourseName(course?.name || "Training")
     setCourseTitle(course?.title ?? null)
+    setScheduleDateLabel(
+      formatScheduleDateLabel({
+        schedule_type: schedule.schedule_type,
+        schedule_ranges: schedule.schedule_ranges || [],
+        schedule_dates: schedule.schedule_dates || [],
+      })
+    )
 
-    const { data: exams, error: ee } = await tmsDb
+    let examQuery = tmsDb
       .from("exams")
-      .select("id, schedule_id, course_id, kind, mode, title, external_url, is_published")
-      .eq("schedule_id", scheduleId)
+      .select("id, schedule_id, course_id, kind, mode, title, external_url, is_published, updated_at")
+
+    if (resolvedCourseId) {
+      examQuery = examQuery.eq("course_id", resolvedCourseId)
+    } else {
+      examQuery = examQuery.eq("schedule_id", scheduleId)
+    }
+
+    const { data: exams, error: ee } = await examQuery
 
     if (ee) {
       const msg = ee.message || ""
@@ -112,10 +179,43 @@ export default function ScheduleExamPage() {
       }
     }
 
-    const byKind = new Map<ExamKind, ExamRecord>()
-    for (const row of exams || []) {
-      if (row.kind === "pretest" || row.kind === "posttest") {
-        byKind.set(row.kind, row as ExamRecord)
+    let examRows = (exams || []) as (ExamRecord & { updated_at?: string })[]
+    if (resolvedCourseId && examRows.length === 0) {
+      const { data: bySchedule } = await tmsDb
+        .from("exams")
+        .select("id, schedule_id, course_id, kind, mode, title, external_url, is_published, updated_at")
+        .eq("schedule_id", scheduleId)
+      examRows = (bySchedule || []) as (ExamRecord & { updated_at?: string })[]
+    }
+    if (resolvedCourseId && examRows.length === 0) {
+      const { data: siblings } = await tmsDb.from("schedules").select("id").eq("course_id", resolvedCourseId)
+      const siblingIds = (siblings || []).map((s) => s.id).filter(Boolean)
+      if (siblingIds.length) {
+        const { data: siblingExams } = await tmsDb
+          .from("exams")
+          .select("id, schedule_id, course_id, kind, mode, title, external_url, is_published, updated_at")
+          .in("schedule_id", siblingIds)
+        examRows = (siblingExams || []) as (ExamRecord & { updated_at?: string })[]
+      }
+    }
+
+    const examIds = examRows.map((e) => e.id)
+    const questionCountByExamId: Record<string, number> = {}
+    const questionsByExamId: Record<string, ExamQuestionDraft[]> = {}
+    if (examIds.length) {
+      const { data: qs } = await tmsDb
+        .from("exam_questions")
+        .select("id, exam_id, question_type, question_text, options, answers, points, sort_order")
+        .in("exam_id", examIds)
+        .order("sort_order", { ascending: true })
+      for (const row of qs || []) {
+        const mapped = mapDbQuestion(row)
+        const list = questionsByExamId[row.exam_id] || []
+        list.push(mapped)
+        questionsByExamId[row.exam_id] = list
+      }
+      for (const id of examIds) {
+        questionCountByExamId[id] = questionsByExamId[id]?.length || 0
       }
     }
 
@@ -125,16 +225,8 @@ export default function ScheduleExamPage() {
     }
 
     for (const kind of ["pretest", "posttest"] as ExamKind[]) {
-      const existing = byKind.get(kind) || null
-      let questions: ExamQuestionDraft[] = []
-      if (existing?.id) {
-        const { data: qs } = await tmsDb
-          .from("exam_questions")
-          .select("id, question_type, question_text, options, answers, points, sort_order")
-          .eq("exam_id", existing.id)
-          .order("sort_order", { ascending: true })
-        questions = (qs || []).map(mapDbQuestion)
-      }
+      const existing = pickCanonicalExam(examRows, kind, questionCountByExamId)
+      const questions = existing ? questionsByExamId[existing.id] || [] : []
 
       const courseLink =
         kind === "pretest"
@@ -213,7 +305,6 @@ export default function ScheduleExamPage() {
     patchSlot(kind, { saving: true })
     try {
       const payload = {
-        schedule_id: scheduleId,
         course_id: courseId,
         kind,
         mode,
@@ -224,13 +315,38 @@ export default function ScheduleExamPage() {
       }
 
       let examId = slot.exam?.id || ""
+      if (!examId && courseId) {
+        const { data: existingRows } = await tmsDb
+          .from("exams")
+          .select("id")
+          .eq("course_id", courseId)
+          .eq("kind", kind)
+          .limit(5)
+        examId = existingRows?.[0]?.id || ""
+      }
+
       if (examId) {
         const { error } = await tmsDb.from("exams").update(payload).eq("id", examId)
         if (error) throw error
       } else {
-        const { data, error } = await tmsDb.from("exams").insert(payload).select("id").single()
-        if (error) throw error
-        examId = data.id
+        const { data, error } = await tmsDb
+          .from("exams")
+          .insert({ ...payload, schedule_id: scheduleId })
+          .select("id")
+          .single()
+        if (error) {
+          const lookup = courseId
+            ? tmsDb.from("exams").select("id").eq("course_id", courseId).eq("kind", kind)
+            : tmsDb.from("exams").select("id").eq("schedule_id", scheduleId).eq("kind", kind)
+          const { data: fallback } = await lookup.limit(1)
+          const found = fallback?.[0]?.id
+          if (!found) throw error
+          examId = found
+          const { error: upErr } = await tmsDb.from("exams").update(payload).eq("id", examId)
+          if (upErr) throw upErr
+        } else {
+          examId = data.id
+        }
       }
 
       if (mode === "internal") {
@@ -267,7 +383,7 @@ export default function ScheduleExamPage() {
         ...prev,
         exam: {
           id: examId,
-          schedule_id: scheduleId,
+          schedule_id: prev.exam?.schedule_id || scheduleId,
           course_id: courseId,
           kind,
           mode,
@@ -277,7 +393,9 @@ export default function ScheduleExamPage() {
         },
         saving: false,
       }))
-      toast.success(`${kind === "pretest" ? "Pre-test" : "Post-test"} saved`)
+      toast.success(
+        `${kind === "pretest" ? "Pre-test" : "Post-test"} saved${courseName ? ` for all ${courseName} schedules` : ""}`
+      )
     } catch (e: unknown) {
       const message = e && typeof e === "object" && "message" in e ? String((e as { message: string }).message) : ""
       if (/relation|does not exist|schema cache|Could not find/i.test(message)) {
@@ -356,8 +474,17 @@ export default function ScheduleExamPage() {
                     <span className="text-white/90">{courseTitle}</span>
                   </>
                 ) : null}
+                {scheduleDateLabel ? (
+                  <>
+                    {" — "}
+                    <span className="inline-flex items-center gap-1.5 text-white">
+                      <Calendar className="h-3.5 w-3.5 text-[#FFCC00]" />
+                      {scheduleDateLabel}
+                    </span>
+                  </>
+                ) : null}
                 {" — "}
-                create exams in TMS or attach Google / Microsoft Form links. Import questions from Excel.
+                create one exam per training (shared across every schedule of this course), or attach Google / Microsoft Form links.
               </p>
             </div>
             <Button
@@ -383,11 +510,17 @@ export default function ScheduleExamPage() {
 
       {loading ? (
         <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
-          <Loader2 className="h-8 w-8 animate-spin text-[#1A1D66]" />
+          <Loader2 className="h-8 w-8 animate-spin text-[#1A1D66] dark:text-[#FFCC00]" />
           Loading exams…
         </div>
       ) : (
-        <div className="grid gap-5 lg:grid-cols-2">
+        <>
+          <ExamResultsPreview
+            scheduleId={scheduleId}
+            pretestExamId={slots.pretest.exam?.id || null}
+            posttestExamId={slots.posttest.exam?.id || null}
+          />
+          <div className="grid gap-5 lg:grid-cols-2">
           {panels.map((p) => {
             const slot = slots[p.kind]
             return (
@@ -440,7 +573,8 @@ export default function ScheduleExamPage() {
               />
             )
           })}
-        </div>
+          </div>
+        </>
       )}
 
       <ExamResultSummaryDialog

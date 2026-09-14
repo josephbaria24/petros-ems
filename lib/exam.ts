@@ -275,6 +275,100 @@ export function exportQuestionsToExcel(questions: ExamQuestionDraft[], filename:
   XLSX.writeFile(wb, filename)
 }
 
+export function normalizeMiddleInitial(value: string) {
+  return value.trim().replace(/[^a-zA-Z]/g, "").slice(0, 1).toUpperCase()
+}
+
+export function isValidExamEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+}
+
+/** Stored as "Last, First M." so summary matching can find the trainee. */
+export function composeRespondentName(lastName: string, firstName: string, middleInitial?: string) {
+  const last = lastName.trim()
+  const first = firstName.trim()
+  const mi = normalizeMiddleInitial(middleInitial || "")
+  if (!last && !first) return ""
+  if (!last) return mi ? `${first} ${mi}.` : first
+  if (!first) return last
+  return mi ? `${last}, ${first} ${mi}.` : `${last}, ${first}`
+}
+
+/** One exam definition per course + kind. Prefer the copy with the most questions. */
+export function pickCanonicalExam<T extends { id: string; kind: ExamKind; mode: ExamMode }>(
+  exams: T[],
+  kind: ExamKind,
+  questionCountByExamId: Record<string, number>
+): T | null {
+  const ofKind = exams.filter((e) => e.kind === kind)
+  if (!ofKind.length) return null
+  return [...ofKind].sort((a, b) => {
+    const aq = questionCountByExamId[a.id] || 0
+    const bq = questionCountByExamId[b.id] || 0
+    if (bq !== aq) return bq - aq
+    const ai = a.mode === "internal" ? 1 : 0
+    const bi = b.mode === "internal" ? 1 : 0
+    return bi - ai
+  })[0]
+}
+
+export function buildGuestExamUrl(origin: string, examId: string, scheduleId?: string | null) {
+  const params = new URLSearchParams({ exam_id: examId })
+  if (scheduleId) params.set("schedule_id", scheduleId)
+  return `${origin}/guest-exam?${params.toString()}`
+}
+
+export type ExamResponseMatch = {
+  respondent_name: string | null
+  respondent_email?: string | null
+  schedule_id?: string | null
+  score: number | null
+  max_score: number | null
+  created_at?: string
+}
+
+export function normalizeRespondentName(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+export function filterExamResponsesForSchedule<T extends { schedule_id?: string | null }>(
+  rows: T[],
+  scheduleId: string
+) {
+  return rows.filter((r) => !r.schedule_id || r.schedule_id === scheduleId)
+}
+
+export function matchExamResponse(
+  responses: ExamResponseMatch[],
+  trainee: { first_name: string; last_name: string; email?: string | null }
+): ExamResponseMatch | null {
+  const email = (trainee.email || "").trim().toLowerCase()
+  const firstLast = normalizeRespondentName(`${trainee.first_name} ${trainee.last_name}`)
+  const lastFirst = normalizeRespondentName(`${trainee.last_name} ${trainee.first_name}`)
+  const lastOnly = normalizeRespondentName(trainee.last_name)
+
+  const ranked = responses
+    .map((r) => {
+      const n = normalizeRespondentName(r.respondent_name || "")
+      const rEmail = (r.respondent_email || "").trim().toLowerCase()
+      let rank = 0
+      if (email && rEmail && rEmail === email) rank = 5
+      else if (firstLast && (n === firstLast || n === lastFirst)) rank = 4
+      else if (lastFirst && n.startsWith(`${lastFirst} `)) rank = 3
+      else if (firstLast && (n.includes(firstLast) || firstLast.includes(n))) rank = 2
+      else if (lastOnly && n.includes(lastOnly)) rank = 1
+      return { r, rank }
+    })
+    .filter((x) => x.rank > 0)
+    .sort((a, b) => b.rank - a.rank)
+
+  return ranked[0]?.r || null
+}
+
 export function normalizeTextAnswer(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ")
 }
