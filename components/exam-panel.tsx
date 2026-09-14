@@ -1,0 +1,589 @@
+"use client"
+
+import * as React from "react"
+import {
+  Check,
+  Copy,
+  Download,
+  ExternalLink,
+  FileSpreadsheet,
+  GripVertical,
+  Link2,
+  Loader2,
+  Plus,
+  QrCode,
+  Save,
+  Trash2,
+  Upload,
+} from "lucide-react"
+import QRCode from "qrcode"
+import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { cn } from "@/lib/utils"
+import {
+  answersToCell,
+  createBlankQuestion,
+  downloadExamExcelTemplate,
+  EXAM_TYPE_LABELS,
+  exportQuestionsToExcel,
+  parseExamExcelFile,
+  type ExamKind,
+  type ExamMode,
+  type ExamQuestionDraft,
+  type ExamQuestionType,
+  type ExamRecord,
+} from "@/lib/exam"
+
+type ExamPanelProps = {
+  kind: ExamKind
+  title: string
+  description: string
+  courseName: string
+  scheduleId: string
+  exam: ExamRecord | null
+  questions: ExamQuestionDraft[]
+  saving: boolean
+  onChangeMode: (mode: ExamMode) => void
+  onChangeExternalUrl: (url: string) => void
+  onChangeQuestions: (questions: ExamQuestionDraft[]) => void
+  onSave: () => Promise<void>
+}
+
+function downloadDataUrl(dataUrl: string, filename: string) {
+  const a = document.createElement("a")
+  a.href = dataUrl
+  a.download = filename
+  a.click()
+}
+
+export function ExamPanel({
+  kind,
+  title,
+  description,
+  courseName,
+  scheduleId,
+  exam,
+  questions,
+  saving,
+  onChangeMode,
+  onChangeExternalUrl,
+  onChangeQuestions,
+  onSave,
+}: ExamPanelProps) {
+  const mode: ExamMode = exam?.mode || "external"
+  const externalUrl = exam?.external_url || ""
+  const [copied, setCopied] = React.useState(false)
+  const [qrBusy, setQrBusy] = React.useState(false)
+  const fileRef = React.useRef<HTMLInputElement>(null)
+
+  const takeUrl =
+    exam?.id && typeof window !== "undefined"
+      ? `${window.location.origin}/guest-exam?exam_id=${encodeURIComponent(exam.id)}`
+      : ""
+
+  const shareUrl = mode === "internal" ? takeUrl : externalUrl.trim()
+
+  const copyShare = async () => {
+    if (!shareUrl) {
+      toast.error(mode === "internal" ? "Save the exam first to get a share link" : "Enter an exam link first")
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      toast.success("Link copied")
+      window.setTimeout(() => setCopied(false), 1600)
+    } catch {
+      toast.error("Could not copy link")
+    }
+  }
+
+  const downloadQr = async () => {
+    if (!shareUrl) {
+      toast.error(mode === "internal" ? "Save the exam first to get a share link" : "Enter an exam link first")
+      return
+    }
+    setQrBusy(true)
+    try {
+      const dataUrl = await QRCode.toDataURL(shareUrl, {
+        width: 512,
+        margin: 2,
+        color: { dark: "#1A1D66", light: "#ffffff" },
+      })
+      const safe = courseName.replace(/[^\w\-]+/g, "-").slice(0, 40)
+      downloadDataUrl(dataUrl, `${safe}-${kind}-qr.png`)
+      toast.success("QR downloaded")
+    } catch {
+      toast.error("Could not generate QR")
+    } finally {
+      setQrBusy(false)
+    }
+  }
+
+  const updateQuestion = (clientId: string, patch: Partial<ExamQuestionDraft>) => {
+    onChangeQuestions(
+      questions.map((q) => {
+        if (q.clientId !== clientId) return q
+        const next = { ...q, ...patch }
+        if (patch.question_type && patch.question_type !== q.question_type) {
+          if (patch.question_type === "multiple_choice") {
+            next.options = createBlankQuestion("multiple_choice").options
+            next.answers = ["A"]
+          } else {
+            next.options = []
+            next.answers = q.answers.filter((a) => !/^[A-D]$/i.test(a))
+          }
+        }
+        return next
+      })
+    )
+  }
+
+  const removeQuestion = (clientId: string) => {
+    onChangeQuestions(questions.filter((q) => q.clientId !== clientId))
+  }
+
+  const moveQuestion = (clientId: string, dir: -1 | 1) => {
+    const idx = questions.findIndex((q) => q.clientId === clientId)
+    if (idx < 0) return
+    const nextIdx = idx + dir
+    if (nextIdx < 0 || nextIdx >= questions.length) return
+    const next = [...questions]
+    const [item] = next.splice(idx, 1)
+    next.splice(nextIdx, 0, item)
+    onChangeQuestions(next)
+  }
+
+  const onImportExcel = async (file: File | null) => {
+    if (!file) return
+    try {
+      const buf = await file.arrayBuffer()
+      const { questions: imported, errors } = parseExamExcelFile(buf)
+      if (errors.length) {
+        toast.error("Some rows were skipped", { description: errors.slice(0, 3).join(" · ") })
+      }
+      if (!imported.length) {
+        toast.error("No valid questions found in the file")
+        return
+      }
+      onChangeQuestions([...questions, ...imported])
+      onChangeMode("internal")
+      toast.success(`Imported ${imported.length} question${imported.length === 1 ? "" : "s"}`)
+    } catch (e) {
+      console.error(e)
+      toast.error("Failed to read Excel file")
+    } finally {
+      if (fileRef.current) fileRef.current.value = ""
+    }
+  }
+
+  return (
+    <section className="overflow-hidden rounded-2xl border border-[#1A1D66]/15 bg-white shadow-md dark:border-white/10 dark:bg-card">
+      <div className="border-b border-[#FFCC00]/50 bg-gradient-to-r from-[#1A1D66] to-[#2a2f7a] px-5 py-4 text-white">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold tracking-tight">{title}</h2>
+              <Badge className="border-0 bg-[#FFCC00] text-[#1A1D66] hover:bg-[#FFCC00]">
+                {questions.length} Q
+              </Badge>
+            </div>
+            <p className="mt-1 text-sm text-white/75">{description}</p>
+          </div>
+          <Button
+            size="sm"
+            className="gap-1.5 bg-[#FFCC00] text-[#1A1D66] hover:bg-[#e6b800]"
+            disabled={saving}
+            onClick={() => void onSave()}
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Save
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-5 p-5">
+        <div>
+          <Label className="text-xs font-semibold uppercase tracking-wide text-[#1A1D66] dark:text-[#FFCC00]">
+            How will trainees take this exam?
+          </Label>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => onChangeMode("internal")}
+              className={cn(
+                "rounded-xl border-2 px-4 py-3 text-left transition-colors",
+                mode === "internal"
+                  ? "border-[#FFCC00] bg-[#FFCC00]/15 shadow-sm"
+                  : "border-border hover:border-[#1A1D66]/30 hover:bg-muted/40"
+              )}
+            >
+              <div className="text-sm font-bold text-[#1A1D66] dark:text-foreground">Create in TMS</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Build multiple choice, identification, and solving items here. Share a Petrosphere exam link.
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => onChangeMode("external")}
+              className={cn(
+                "rounded-xl border-2 px-4 py-3 text-left transition-colors",
+                mode === "external"
+                  ? "border-[#FFCC00] bg-[#FFCC00]/15 shadow-sm"
+                  : "border-border hover:border-[#1A1D66]/30 hover:bg-muted/40"
+              )}
+            >
+              <div className="text-sm font-bold text-[#1A1D66] dark:text-foreground">External link</div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Paste a Google Form, Microsoft Form, or any other exam URL.
+              </p>
+            </button>
+          </div>
+        </div>
+
+        {mode === "external" ? (
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor={`exam-url-${kind}`}>Exam URL</Label>
+              <Input
+                id={`exam-url-${kind}`}
+                value={externalUrl}
+                placeholder="https://forms.office.com/... or https://docs.google.com/forms/..."
+                onChange={(e) => onChangeExternalUrl(e.target.value)}
+              />
+            </div>
+            {externalUrl.trim() ? (
+              <div className="flex items-start gap-2 rounded-xl border border-[#1A1D66]/15 bg-[#1A1D66]/5 p-3">
+                <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-[#1A1D66]" />
+                <a
+                  href={externalUrl.trim()}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="min-w-0 break-all text-sm underline-offset-2 hover:underline"
+                >
+                  {externalUrl.trim()}
+                </a>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                className="gap-1.5 bg-[#1A1D66] text-white hover:bg-[#141654]"
+                disabled={!externalUrl.trim()}
+                asChild={Boolean(externalUrl.trim())}
+              >
+                {externalUrl.trim() ? (
+                  <a href={externalUrl.trim()} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Open
+                  </a>
+                ) : (
+                  <span>
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Open
+                  </span>
+                )}
+              </Button>
+              <Button size="sm" variant="outline" className="gap-1.5" onClick={() => void copyShare()}>
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {copied ? "Copied" : "Copy"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                disabled={qrBusy}
+                onClick={() => void downloadQr()}
+              >
+                {qrBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <QrCode className="h-3.5 w-3.5" />}
+                QR
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 border-[#1A1D66]/25"
+                onClick={() => onChangeQuestions([...questions, createBlankQuestion("multiple_choice")])}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add question
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => downloadExamExcelTemplate()}
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download template
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={(e) => void onImportExcel(e.target.files?.[0] || null)}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => fileRef.current?.click()}
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Import Excel
+              </Button>
+              {questions.length > 0 ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() =>
+                    exportQuestionsToExcel(
+                      questions,
+                      `${courseName.replace(/[^\w\-]+/g, "-").slice(0, 40)}-${kind}-questions.xlsx`
+                    )
+                  }
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" />
+                  Export
+                </Button>
+              ) : null}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Excel columns: <span className="font-medium text-foreground">Type, Question, A, B, C, D, Answer</span>
+              . Use <code className="rounded bg-muted px-1">multiple_choice</code>,{" "}
+              <code className="rounded bg-muted px-1">identification</code>, or{" "}
+              <code className="rounded bg-muted px-1">solving</code>. Separate alternate answers with{" "}
+              <code className="rounded bg-muted px-1">|</code>.
+            </p>
+
+            {questions.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-[#1A1D66]/25 bg-[#1A1D66]/[0.03] px-4 py-10 text-center">
+                <FileSpreadsheet className="mx-auto h-8 w-8 text-[#1A1D66]/50" />
+                <p className="mt-2 text-sm font-medium text-[#1A1D66] dark:text-foreground">No questions yet</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Add questions manually or import the Excel template.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {questions.map((q, index) => (
+                  <QuestionEditor
+                    key={q.clientId}
+                    index={index}
+                    question={q}
+                    onChange={(patch) => updateQuestion(q.clientId, patch)}
+                    onRemove={() => removeQuestion(q.clientId)}
+                    onMoveUp={() => moveQuestion(q.clientId, -1)}
+                    onMoveDown={() => moveQuestion(q.clientId, 1)}
+                    canMoveUp={index > 0}
+                    canMoveDown={index < questions.length - 1}
+                  />
+                ))}
+              </div>
+            )}
+
+            <div className="rounded-xl border border-[#FFCC00]/40 bg-[#FFCC00]/10 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#1A1D66]">Trainee exam link</p>
+              <p className="mt-1 break-all text-sm text-[#1A1D66]/90">
+                {takeUrl || "Save this exam to generate a shareable /guest-exam link."}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  className="gap-1.5 bg-[#1A1D66] text-white hover:bg-[#141654]"
+                  disabled={!takeUrl}
+                  asChild={Boolean(takeUrl)}
+                >
+                  {takeUrl ? (
+                    <a href={takeUrl} target="_blank" rel="noreferrer">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Preview
+                    </a>
+                  ) : (
+                    <span>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Preview
+                    </span>
+                  )}
+                </Button>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => void copyShare()}>
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? "Copied" : "Copy"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={qrBusy}
+                  onClick={() => void downloadQr()}
+                >
+                  {qrBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <QrCode className="h-3.5 w-3.5" />}
+                  QR
+                </Button>
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground">Schedule: {scheduleId.slice(0, 8)}…</p>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function QuestionEditor({
+  index,
+  question,
+  onChange,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
+}: {
+  index: number
+  question: ExamQuestionDraft
+  onChange: (patch: Partial<ExamQuestionDraft>) => void
+  onRemove: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+  canMoveUp: boolean
+  canMoveDown: boolean
+}) {
+  return (
+    <div className="rounded-xl border border-[#1A1D66]/15 bg-[#f8f8fc] p-4 dark:bg-muted/20">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1 rounded-md bg-[#1A1D66] px-2 py-1 text-xs font-bold text-white">
+          <GripVertical className="h-3 w-3 opacity-70" />
+          Q{index + 1}
+        </span>
+        <Select
+          value={question.question_type}
+          onValueChange={(v) => onChange({ question_type: v as ExamQuestionType })}
+        >
+          <SelectTrigger className="h-8 w-[180px] bg-white dark:bg-background">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(Object.keys(EXAM_TYPE_LABELS) as ExamQuestionType[]).map((t) => (
+              <SelectItem key={t} value={t}>
+                {EXAM_TYPE_LABELS[t]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="ml-auto flex gap-1">
+          <Button type="button" size="icon" variant="ghost" className="h-8 w-8" disabled={!canMoveUp} onClick={onMoveUp}>
+            ↑
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            disabled={!canMoveDown}
+            onClick={onMoveDown}
+          >
+            ↓
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-destructive hover:text-destructive"
+            onClick={onRemove}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <Label>Question</Label>
+          <Textarea
+            value={question.question_text}
+            placeholder="Enter the question…"
+            className="min-h-[72px] bg-white dark:bg-background"
+            onChange={(e) => onChange({ question_text: e.target.value })}
+          />
+        </div>
+
+        {question.question_type === "multiple_choice" ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {question.options.map((opt) => (
+              <div key={opt.key} className="flex items-center gap-2">
+                <button
+                  type="button"
+                  title={`Mark ${opt.key} as correct`}
+                  onClick={() => onChange({ answers: [opt.key] })}
+                  className={cn(
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                    question.answers[0] === opt.key
+                      ? "bg-[#FFCC00] text-[#1A1D66] ring-2 ring-[#1A1D66]"
+                      : "bg-[#1A1D66]/10 text-[#1A1D66]"
+                  )}
+                >
+                  {opt.key}
+                </button>
+                <Input
+                  value={opt.text}
+                  placeholder={`Choice ${opt.key}`}
+                  className="bg-white dark:bg-background"
+                  onChange={(e) =>
+                    onChange({
+                      options: question.options.map((o) =>
+                        o.key === opt.key ? { ...o, text: e.target.value } : o
+                      ),
+                    })
+                  }
+                />
+              </div>
+            ))}
+            <p className="sm:col-span-2 text-xs text-muted-foreground">
+              Click A–D to set the correct answer (highlighted in gold).
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <Label>Accepted answers (separate with | )</Label>
+            <Input
+              value={answersToCell(question.answers)}
+              placeholder={
+                question.question_type === "identification"
+                  ? "Jose Rizal | Dr. Jose Rizal"
+                  : "3 | three | Three"
+              }
+              className="bg-white dark:bg-background"
+              onChange={(e) =>
+                onChange({
+                  answers: e.target.value
+                    .split("|")
+                    .map((p) => p.trim())
+                    .filter(Boolean),
+                })
+              }
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

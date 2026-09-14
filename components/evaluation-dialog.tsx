@@ -351,55 +351,105 @@ export function EvaluationDialog({
     const handleSaveBuilder = async () => {
         setLoading(true)
         try {
+            if (!title.trim()) {
+                toast.error("Title is required")
+                return
+            }
+
             let currentId = evaluationId
 
             if (!currentId) {
                 const { data, error } = await tmsDb
                     .from("repo_evaluations")
                     .insert({
-                        title,
-                        schedule_id: scheduleId,
-                        trainer_name: trainerName
+                        title: title.trim(),
+                        schedule_id: scheduleId || null,
+                        trainer_name: trainerName || null,
                     })
-                    .select()
+                    .select("id")
                     .single()
 
                 if (error) throw error
                 currentId = data.id as string
                 setEvaluationId(currentId)
                 if (onIdCreated) onIdCreated(currentId)
-            } else if (currentId) {
-                await tmsDb.from("repo_evaluations").update({ title, trainer_name: trainerName }).eq("id", currentId)
+            } else {
+                const { error } = await tmsDb
+                    .from("repo_evaluations")
+                    .update({
+                        title: title.trim(),
+                        trainer_name: trainerName || null,
+                    })
+                    .eq("id", currentId)
+                if (error) throw error
             }
 
-            if (currentId) {
-                // Get IDs of questions to keep
-                const questionsWithId = questions.filter(q => q.id)
-                const questionIdsToKeep = questionsWithId.map(q => q.id)
+            if (!currentId) throw new Error("Could not resolve evaluation id")
 
-                // Delete questions that are no longer in the list
-                if (questionIdsToKeep.length > 0) {
-                    await tmsDb.from("repo_eval_questions")
-                        .delete()
-                        .eq("evaluation_id", currentId)
-                        .not("id", "in", `(${questionIdsToKeep.join(',')})`)
-                } else {
-                    await tmsDb.from("repo_eval_questions").delete().eq("evaluation_id", currentId)
-                }
+            const { data: existingQuestions, error: existingError } = await tmsDb
+                .from("repo_eval_questions")
+                .select("id")
+                .eq("evaluation_id", currentId)
+            if (existingError) throw existingError
 
-                if (questions.length > 0) {
-                    const { error } = await tmsDb.from("repo_eval_questions").upsert(
-                        questions.map((q, i) => ({
-                            id: q.id || undefined,
+            const keepIds = new Set(
+                questions.map((q) => q.id).filter((id): id is string => typeof id === "string" && id.length > 0)
+            )
+            const toDelete = (existingQuestions || [])
+                .map((q) => q.id as string)
+                .filter((id) => !keepIds.has(id))
+
+            if (toDelete.length > 0) {
+                const { error } = await tmsDb.from("repo_eval_questions").delete().in("id", toDelete)
+                if (error) throw error
+            }
+
+            const withIds = questions.filter((q) => typeof q.id === "string" && q.id.length > 0)
+            const withoutIds = questions.filter((q) => !(typeof q.id === "string" && q.id.length > 0))
+
+            if (withIds.length > 0) {
+                const { error } = await tmsDb.from("repo_eval_questions").upsert(
+                    withIds.map((q) => ({
+                        id: q.id,
+                        evaluation_id: currentId,
+                        question_text: (q.question_text || "").trim() || "Untitled question",
+                        question_type: q.question_type || "text",
+                        options: Array.isArray(q.options) ? q.options : [],
+                        sort_order: questions.indexOf(q),
+                        is_required: q.is_required ?? true,
+                    })),
+                    { onConflict: "id" }
+                )
+                if (error) throw error
+            }
+
+            if (withoutIds.length > 0) {
+                const { data: inserted, error } = await tmsDb
+                    .from("repo_eval_questions")
+                    .insert(
+                        withoutIds.map((q) => ({
                             evaluation_id: currentId,
-                            question_text: q.question_text,
-                            question_type: q.question_type,
-                            options: q.options,
-                            sort_order: i,
-                            is_required: q.is_required
+                            question_text: (q.question_text || "").trim() || "Untitled question",
+                            question_type: q.question_type || "text",
+                            options: Array.isArray(q.options) ? q.options : [],
+                            sort_order: questions.indexOf(q),
+                            is_required: q.is_required ?? true,
                         }))
                     )
-                    if (error) throw error
+                    .select("id, sort_order")
+                if (error) throw error
+
+                if (inserted?.length) {
+                    setQuestions((prev) => {
+                        const next = [...prev]
+                        for (const row of inserted) {
+                            const idx = typeof row.sort_order === "number" ? row.sort_order : -1
+                            if (idx >= 0 && idx < next.length && !next[idx]?.id) {
+                                next[idx] = { ...next[idx], id: row.id }
+                            }
+                        }
+                        return next
+                    })
                 }
             }
 
@@ -407,9 +457,20 @@ export function EvaluationDialog({
             if (mode === "builder") {
                 onOpenChange(false)
             }
-        } catch (error) {
-            toast.error("Failed to save evaluation")
-            console.error(error)
+        } catch (error: unknown) {
+            const err = error as { message?: string; details?: string; hint?: string; code?: string }
+            const message =
+                err?.message ||
+                err?.details ||
+                (typeof error === "string" ? error : "Unknown database error")
+            toast.error("Failed to save evaluation", { description: message })
+            console.error("Failed to save evaluation:", {
+                message: err?.message,
+                details: err?.details,
+                hint: err?.hint,
+                code: err?.code,
+                error,
+            })
         } finally {
             setLoading(false)
         }

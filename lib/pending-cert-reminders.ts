@@ -1,5 +1,7 @@
 export const PENDING_CERT_OPEN_KEY = "tms-pending-cert-open"
 export const PENDING_CERT_DONE_KEY = "tms-pending-cert-done"
+export const PENDING_CERT_CENTER_SHOWS_KEY = "tms-pending-cert-center-shows"
+export const PENDING_CERT_CENTER_SHOWS_PER_DAY = 2
 
 export type CompletedReminder = {
   scheduleId: string
@@ -66,6 +68,50 @@ export function markReminderCompleted(record: Omit<CompletedReminder, "completed
     ...existing,
   ]
   localStorage.setItem(PENDING_CERT_DONE_KEY, JSON.stringify(next))
+}
+
+function todayKey() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
+/** How many times the centered dialog was auto-shown today. */
+export function getPendingCertCenterShowsToday(): number {
+  if (typeof window === "undefined") return 0
+  try {
+    const raw = localStorage.getItem(PENDING_CERT_CENTER_SHOWS_KEY)
+    if (!raw) return 0
+    const parsed = JSON.parse(raw) as { date?: string; count?: number }
+    if (parsed?.date !== todayKey()) return 0
+    return Math.max(0, Number(parsed.count) || 0)
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Auto-open the centered dialog at most PENDING_CERT_CENTER_SHOWS_PER_DAY times per calendar day,
+ * and only once per full page load / refresh (not on client-side route changes).
+ * Returns true if this load should show the center dialog (and records that show).
+ */
+let pendingCertCenterCheckedThisPageLoad = false
+
+export function consumePendingCertCenterShow(): boolean {
+  if (typeof window === "undefined") return false
+  // Same JS runtime = SPA remount / soft navigation — do not auto-open again.
+  if (pendingCertCenterCheckedThisPageLoad) return false
+  pendingCertCenterCheckedThisPageLoad = true
+
+  const count = getPendingCertCenterShowsToday()
+  if (count >= PENDING_CERT_CENTER_SHOWS_PER_DAY) return false
+  localStorage.setItem(
+    PENDING_CERT_CENTER_SHOWS_KEY,
+    JSON.stringify({ date: todayKey(), count: count + 1 })
+  )
+  return true
 }
 
 export type PendingCertTrainee = {

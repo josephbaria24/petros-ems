@@ -5,8 +5,20 @@ export const EMS_ATTENDANCE_STATUS_KEY = "ems_attendance_status" as const
 export const EMS_ATTENDANCE_BY_DAY_KEY = "ems_attendance_by_day" as const
 export const EMS_ATTENDANCE_SOURCE_KEY = "ems_attendance_source" as const
 export const EMS_ATTENDANCE_UPDATED_AT_KEY = "ems_attendance_updated_at" as const
+export const EMS_ATTENDANCE_LOG_KEY = "ems_attendance_log" as const
+export const EMS_ATTENDANCE_CHECKIN_AT_KEY = "ems_attendance_checkin_at" as const
+export const EMS_ATTENDANCE_CHECKIN_TIME_KEY = "ems_attendance_checkin_time" as const
 
 export type AttendanceStatusValue = "unmarked" | "present" | "absent" | "late"
+export type AttendanceSource = "manual" | "bulk" | "excel" | "integration" | "qr"
+
+export type AttendanceLogEntry = {
+  day: string | null
+  status: AttendanceStatusValue
+  source: AttendanceSource
+  at: string
+  time: string
+}
 
 export type ScheduleMetaForDays = {
   schedule_type: string
@@ -45,6 +57,77 @@ function readByDayMap(customData: Record<string, unknown> | null | undefined): R
     if (typeof v === "string") out[k] = v
   }
   return out
+}
+
+function formatLogTime(date = new Date()) {
+  return format(date, "h:mm a")
+}
+
+function readAttendanceLogRaw(customData: Record<string, unknown> | null | undefined): AttendanceLogEntry[] {
+  const raw = customData?.[EMS_ATTENDANCE_LOG_KEY]
+  if (!Array.isArray(raw)) return []
+  const out: AttendanceLogEntry[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue
+    const row = item as Record<string, unknown>
+    const status = normalizeAttendanceInput(String(row.status ?? ""))
+    const source = String(row.source ?? "manual") as AttendanceSource
+    const at = typeof row.at === "string" ? row.at : ""
+    if (!status || !at) continue
+    out.push({
+      day: typeof row.day === "string" ? row.day : null,
+      status,
+      source: ["manual", "bulk", "excel", "integration", "qr"].includes(source) ? source : "manual",
+      at,
+      time: typeof row.time === "string" && row.time ? row.time : formatLogTime(new Date(at)),
+    })
+  }
+  return out
+}
+
+export function getAttendanceLog(
+  customData: Record<string, unknown> | null | undefined
+): AttendanceLogEntry[] {
+  const existing = readAttendanceLogRaw(customData)
+  if (existing.length > 0) return existing.sort((a, b) => b.at.localeCompare(a.at))
+
+  // Backfill a single entry from older QR check-in fields if present.
+  const at = customData?.[EMS_ATTENDANCE_CHECKIN_AT_KEY]
+  const time = customData?.[EMS_ATTENDANCE_CHECKIN_TIME_KEY]
+  const status = normalizeAttendanceInput(String(customData?.[EMS_ATTENDANCE_STATUS_KEY] ?? ""))
+  if (typeof at === "string" && at) {
+    return [
+      {
+        day: null,
+        status: status && status !== "unmarked" ? status : "present",
+        source: "qr",
+        at,
+        time: typeof time === "string" && time ? time : formatLogTime(new Date(at)),
+      },
+    ]
+  }
+  return []
+}
+
+function appendAttendanceLog(
+  base: Record<string, unknown>,
+  entry: Omit<AttendanceLogEntry, "at" | "time"> & { at?: string; time?: string }
+) {
+  const when = entry.at ? new Date(entry.at) : new Date()
+  const at = Number.isNaN(when.getTime()) ? new Date().toISOString() : when.toISOString()
+  const next: AttendanceLogEntry = {
+    day: entry.day,
+    status: entry.status,
+    source: entry.source,
+    at,
+    time: entry.time || formatLogTime(new Date(at)),
+  }
+  const prev = readAttendanceLogRaw(base)
+  base[EMS_ATTENDANCE_LOG_KEY] = [next, ...prev].slice(0, 80)
+  if (entry.source === "qr" && entry.status !== "unmarked") {
+    base[EMS_ATTENDANCE_CHECKIN_AT_KEY] = next.at
+    base[EMS_ATTENDANCE_CHECKIN_TIME_KEY] = next.time
+  }
 }
 
 export function normalizeAttendanceInput(
@@ -98,7 +181,7 @@ export function mergeAttendanceForDay(
   dayKeys: string[],
   dayKey: string,
   status: AttendanceStatusValue,
-  source: "manual" | "bulk" | "excel" | "integration"
+  source: AttendanceSource
 ): Record<string, unknown> {
   const base = cloneCustom(existing)
   let byDay = { ...readByDayMap(base) }
@@ -114,6 +197,8 @@ export function mergeAttendanceForDay(
   } else {
     byDay[dayKey] = status
   }
+
+  appendAttendanceLog(base, { day: dayKey, status, source })
 
   if (Object.keys(byDay).length === 0) {
     delete base[EMS_ATTENDANCE_BY_DAY_KEY]
@@ -134,7 +219,7 @@ export function mergeAttendanceAllDays(
   existing: Record<string, unknown> | null | undefined,
   dayKeys: string[],
   status: AttendanceStatusValue,
-  source: "manual" | "bulk" | "excel" | "integration"
+  source: AttendanceSource
 ): Record<string, unknown> {
   const base = cloneCustom(existing)
   if (dayKeys.length === 0) {
@@ -143,6 +228,7 @@ export function mergeAttendanceAllDays(
   if (status === "unmarked") {
     delete base[EMS_ATTENDANCE_BY_DAY_KEY]
     stripLegacyAttendanceKeys(base)
+    appendAttendanceLog(base, { day: null, status, source })
     return base
   }
   const byDay: Record<string, string> = {}
@@ -151,6 +237,7 @@ export function mergeAttendanceAllDays(
   base[EMS_ATTENDANCE_BY_DAY_KEY] = byDay
   base[EMS_ATTENDANCE_SOURCE_KEY] = source
   base[EMS_ATTENDANCE_UPDATED_AT_KEY] = new Date().toISOString()
+  for (const d of dayKeys) appendAttendanceLog(base, { day: d, status, source })
   return base
 }
 
@@ -158,9 +245,10 @@ export function mergeAttendanceAllDays(
 function mergeAttendanceIntoCustomDataLegacy(
   base: Record<string, unknown>,
   status: AttendanceStatusValue,
-  source: "manual" | "bulk" | "excel" | "integration"
+  source: AttendanceSource
 ): Record<string, unknown> {
   delete base[EMS_ATTENDANCE_BY_DAY_KEY]
+  appendAttendanceLog(base, { day: null, status, source })
   if (status === "unmarked") {
     delete base[EMS_ATTENDANCE_STATUS_KEY]
     delete base[EMS_ATTENDANCE_SOURCE_KEY]
@@ -176,7 +264,7 @@ function mergeAttendanceIntoCustomDataLegacy(
 export function mergeAttendanceIntoCustomData(
   existing: Record<string, unknown> | null | undefined,
   status: AttendanceStatusValue,
-  source: "manual" | "bulk" | "excel" | "integration"
+  source: AttendanceSource
 ): Record<string, unknown> {
   const base = cloneCustom(existing)
   return mergeAttendanceIntoCustomDataLegacy(base, status, source)

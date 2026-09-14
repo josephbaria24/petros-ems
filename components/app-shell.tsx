@@ -103,7 +103,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden">
       <Suspense fallback={<div>Loading...</div>}>
         {!isGuestPage && isAuthenticated && <AppSidebar />}
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="relative z-0 flex flex-1 flex-col overflow-hidden">
           {!isGuestPage && isAuthenticated && <AppHeader />}
           {!isGuestPage && isAuthenticated && <PendingCertPrompt />}
           <main

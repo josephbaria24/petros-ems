@@ -107,6 +107,21 @@ const AttendanceIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+const ExamIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    {...props}
+  >
+    <path
+      fill="currentColor"
+      d="M7 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.828a2 2 0 0 0-.586-1.414l-4.828-4.828A2 2 0 0 0 12.172 2zm5 1.5V8a1 1 0 0 0 1 1h4.5L12 3.5ZM8.75 12a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5H9.5a.75.75 0 0 1-.75-.75m0 3a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 0 1.5H9.5a.75.75 0 0 1-.75-.75m0 3a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 0 1.5H9.5a.75.75 0 0 1-.75-.75"
+    />
+  </svg>
+)
+
 type Participant = {
   id: string
   course: string
@@ -821,13 +836,13 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const columns: ColumnDef<Participant>[] = [
     {
       accessorKey: "course",
-      header: () => <div className="w-[220px]">Course</div>,
+      header: () => <div className="w-[260px]">Course</div>,
       cell: ({ row }) => {
         const submissionCount = row.original.submissionCount
         const isCancelled = row.original.status === 'cancelled'
 
         return (
-          <div className="w-[220px] space-y-1.5">
+          <div className="w-[260px] space-y-1.5">
             <div
               className={`font-medium text-card-foreground truncate ${isCancelled ? 'line-through text-muted-foreground' : ''}`}
               title={String(row.getValue("course"))}
@@ -874,6 +889,15 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               >
                 <AttendanceIcon className="h-3.5 w-3.5" />
                 Attendance
+              </Link>
+
+              <Link
+                href={`/training-schedules/exam?scheduleId=${row.original.id}&from=${status}`}
+                className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-foreground hover:bg-muted cursor-pointer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <ExamIcon className="h-3.5 w-3.5" />
+                Exam
               </Link>
             </div>
           </div>

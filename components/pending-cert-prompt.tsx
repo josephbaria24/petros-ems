@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
-import { Award, Check, ChevronDown, ChevronUp, FolderOpen, IdCard, MailWarning, Send, Users } from "lucide-react"
+import { ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { tmsDb } from "@/lib/supabase-client"
 import { createClient } from "@/lib/supabase-client"
 import {
+  consumePendingCertCenterShow,
   isMissingCertAndId,
   isPaymentCompleted,
   loadCompletedReminderIds,
@@ -16,6 +17,160 @@ import {
   type CompletedReminder,
   type PendingCertSchedule,
 } from "@/lib/pending-cert-reminders"
+
+const CHIP_POS_STORAGE_KEY = "pending-cert-chip-position-v1"
+const CHIP_DRAG_THRESHOLD_PX = 6
+const CHIP_EDGE_PAD = 12
+
+type ChipPosition = { left: number; top: number }
+
+function loadChipPosition(): ChipPosition | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = localStorage.getItem(CHIP_POS_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<ChipPosition>
+    if (typeof parsed.left !== "number" || typeof parsed.top !== "number") return null
+    if (!Number.isFinite(parsed.left) || !Number.isFinite(parsed.top)) return null
+    return { left: parsed.left, top: parsed.top }
+  } catch {
+    return null
+  }
+}
+
+function saveChipPosition(pos: ChipPosition) {
+  try {
+    localStorage.setItem(CHIP_POS_STORAGE_KEY, JSON.stringify(pos))
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+function clampChipPosition(pos: ChipPosition, width: number, height: number): ChipPosition {
+  const maxLeft = Math.max(CHIP_EDGE_PAD, window.innerWidth - width - CHIP_EDGE_PAD)
+  const maxTop = Math.max(CHIP_EDGE_PAD, window.innerHeight - height - CHIP_EDGE_PAD)
+  return {
+    left: Math.min(maxLeft, Math.max(CHIP_EDGE_PAD, pos.left)),
+    top: Math.min(maxTop, Math.max(CHIP_EDGE_PAD, pos.top)),
+  }
+}
+
+function IconSvg({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className} aria-hidden="true">
+      {children}
+    </svg>
+  )
+}
+
+function PeopleIcon({ className }: { className?: string }) {
+  return (
+    <IconSvg className={className}>
+      <path
+        fill="currentColor"
+        d="M9 11a4 4 0 1 0 0-8a4 4 0 0 0 0 8m7.5 1a3 3 0 1 0 0-6a3 3 0 0 0 0 6M9 12.5c-3.866 0-7 2.015-7 4.5V19h9.27A6.5 6.5 0 0 1 16.5 13c.17 0 .338.007.505.02C15.4 12.68 12.44 12.5 9 12.5m7.5 1.5a5 5 0 1 0 0 10a5 5 0 0 0 0-10"
+      />
+    </IconSvg>
+  )
+}
+
+function CertificateIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" className={className} aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M5.25 4A3.25 3.25 0 0 0 2 7.25v7.92a7 7 0 0 1 11.5 7.938V25h13.25A3.25 3.25 0 0 0 30 21.75V7.25A3.25 3.25 0 0 0 26.75 4zM9 10h14a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2m7 8a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2h-6a1 1 0 0 1-1-1m-3 1.5a5.5 5.5 0 1 1-11 0a5.5 5.5 0 0 1 11 0m-1 5.362A6.97 6.97 0 0 1 7.5 26.5A6.97 6.97 0 0 1 3 24.862V29a1 1 0 0 0 1.528.849l2.972-1.85l2.972 1.85a1 1 0 0 0 1.528-.85z"
+      />
+    </svg>
+  )
+}
+
+function IdIcon({ className }: { className?: string }) {
+  return (
+    <IconSvg className={className}>
+      <path
+        fill="currentColor"
+        d="M3 6.75A3.75 3.75 0 0 1 6.75 3h10.5A3.75 3.75 0 0 1 21 6.75v10.5A3.75 3.75 0 0 1 17.25 21H6.75A3.75 3.75 0 0 1 3 17.25zm4.25 2a2.25 2.25 0 1 1 0 4.5a2.25 2.25 0 0 1 0-4.5m5 .5a.75.75 0 0 0 0 1.5h5a.75.75 0 0 0 0-1.5zm0 3.5a.75.75 0 0 0 0 1.5h3.5a.75.75 0 0 0 0-1.5z"
+      />
+    </IconSvg>
+  )
+}
+
+function PaymentPendingIcon({ className }: { className?: string }) {
+  return (
+    <IconSvg className={className}>
+      <path
+        fill="currentColor"
+        d="M4 5.25A2.25 2.25 0 0 1 6.25 3h11.5A2.25 2.25 0 0 1 20 5.25v2.1A3.5 3.5 0 0 0 17.5 7h-7A3.5 3.5 0 0 0 7 10.5v.25H6.25A2.25 2.25 0 0 1 4 8.5zm3 6.75a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-10a2 2 0 0 1-2-2zm7 1.25a2.25 2.25 0 1 0 0 4.5a2.25 2.25 0 0 0 0-4.5"
+      />
+    </IconSvg>
+  )
+}
+
+function PaymentDoneIcon({ className }: { className?: string }) {
+  return (
+    <IconSvg className={className}>
+      <path
+        fill="currentColor"
+        d="M12 2a10 10 0 1 1 0 20a10 10 0 0 1 0-20m4.03 6.97a.75.75 0 0 0-1.06 0l-4.22 4.22l-1.72-1.72a.75.75 0 1 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.06 0l4.75-4.75a.75.75 0 0 0 0-1.06"
+      />
+    </IconSvg>
+  )
+}
+
+function SendIcon({ className }: { className?: string }) {
+  return (
+    <IconSvg className={className}>
+      <path
+        fill="currentColor"
+        d="M3.4 11.2a1.2 1.2 0 0 1 .15-1.26L12.7 2.3a.9.9 0 0 1 1.5.67v4.55c4.8.42 8.3 3.55 8.3 8.48a.9.9 0 0 1-1.52.66c-1.7-1.62-3.9-2.55-6.78-2.7v4.48a.9.9 0 0 1-1.5.67l-9.15-7.64a1.2 1.2 0 0 1-.15-.27"
+      />
+    </IconSvg>
+  )
+}
+
+function FolderIcon({ className }: { className?: string }) {
+  return (
+    <IconSvg className={className}>
+      <path
+        fill="currentColor"
+        fillRule="evenodd"
+        d="M2.07 5.258C2 5.626 2 6.068 2 6.95V14c0 3.771 0 5.657 1.172 6.828S6.229 22 10 22h4c3.771 0 5.657 0 6.828-1.172S22 17.771 22 14v-2.202c0-2.632 0-3.949-.77-4.804a3 3 0 0 0-.224-.225C20.151 6 18.834 6 16.202 6h-.374c-1.153 0-1.73 0-2.268-.153a4 4 0 0 1-.848-.352C12.224 5.224 11.816 4.815 11 4l-.55-.55c-.274-.274-.41-.41-.554-.53a4 4 0 0 0-2.18-.903C7.53 2 7.336 2 6.95 2c-.883 0-1.324 0-1.692.07A4 4 0 0 0 2.07 5.257M12.25 10a.75.75 0 0 1 .75-.75h5a.75.75 0 0 1 0 1.5h-5a.75.75 0 0 1-.75-.75"
+        clipRule="evenodd"
+      />
+    </IconSvg>
+  )
+}
+
+function ListIcon({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className={className} aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M7.5 9c.194 0 .382.03.56.081a1.5 1.5 0 0 0 .322 1.419a1.5 1.5 0 0 0-.382 1c0 .384.144.735.382 1a1.5 1.5 0 0 0-.363.77C7.208 13.742 6.142 14 5 14c-1.175 0-2.27-.272-3.089-.77C1.091 12.73.5 11.965.5 11a2 2 0 0 1 2-2zm7 4a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1zm0-2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1zm0-2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1zM5 2.5A2.75 2.75 0 1 1 5 8a2.75 2.75 0 0 1 0-5.5m7.002.997a2.252 2.252 0 1 1 0 4.503a2.252 2.252 0 0 1 0-4.503"
+      />
+    </svg>
+  )
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <IconSvg className={className}>
+      <path
+        fill="currentColor"
+        d="M12 2a10 10 0 1 1 0 20a10 10 0 0 1 0-20m4.03 6.97a.75.75 0 0 0-1.06 0l-4.22 4.22l-1.72-1.72a.75.75 0 1 0-1.06 1.06l2.25 2.25a.75.75 0 0 0 1.06 0l4.75-4.75a.75.75 0 0 0 0-1.06"
+      />
+    </IconSvg>
+  )
+}
+
+function statusIcon(label: string) {
+  const value = label.toLowerCase()
+  if (value.includes("payment completed") || value.includes("partial")) return PaymentDoneIcon
+  if (value.includes("pending") || value.includes("payment")) return PaymentPendingIcon
+  if (value.includes("cancel") || value.includes("declin")) return PaymentPendingIcon
+  return PaymentPendingIcon
+}
 
 function statusTone(label: string) {
   const value = label.toLowerCase()
@@ -62,9 +217,39 @@ export function PendingCertPrompt() {
   const [items, setItems] = useState<PendingCertSchedule[]>([])
   const [completed, setCompleted] = useState<CompletedReminder[]>([])
   const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending")
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
   const [loading, setLoading] = useState(true)
   const [pickedId, setPickedId] = useState<string | null>(null)
+  const [chipPos, setChipPos] = useState<ChipPosition | null>(null)
+  const [draggingChip, setDraggingChip] = useState(false)
+  const chipRef = useRef<HTMLButtonElement | null>(null)
+  const chipDragRef = useRef<{
+    pointerId: number
+    startX: number
+    startY: number
+    originLeft: number
+    originTop: number
+    moved: boolean
+  } | null>(null)
+
+  useEffect(() => {
+    setChipPos(loadChipPosition())
+  }, [])
+
+  useEffect(() => {
+    const keepOnScreen = () => {
+      setChipPos((prev) => {
+        if (!prev || !chipRef.current) return prev
+        const rect = chipRef.current.getBoundingClientRect()
+        const next = clampChipPosition(prev, rect.width, rect.height)
+        if (next.left === prev.left && next.top === prev.top) return prev
+        saveChipPosition(next)
+        return next
+      })
+    }
+    window.addEventListener("resize", keepOnScreen)
+    return () => window.removeEventListener("resize", keepOnScreen)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -146,7 +331,15 @@ export function PendingCertPrompt() {
               .map(([label, count]) => ({ label, count }))
               .sort((a, b) => b.count - a.count),
           }))
-        if (!cancelled) setItems(pending)
+        if (!cancelled) {
+          setItems(pending)
+          // Center dialog auto-opens at most twice per calendar day.
+          if (pending.length > 0 && consumePendingCertCenterShow()) {
+            setCollapsed(false)
+          } else {
+            setCollapsed(true)
+          }
+        }
       } catch (err) {
         console.error("Failed to load pending certificate reminders:", err)
         if (!cancelled) setItems([])
@@ -208,25 +401,97 @@ export function PendingCertPrompt() {
   const totalPeople = items.reduce((sum, item) => sum + item.trainees.length, 0)
 
   if (collapsed && items.length > 0) {
+    const chipStyle = chipPos
+      ? { left: chipPos.left, top: chipPos.top, right: "auto", bottom: "auto" }
+      : undefined
+
+    const onChipPointerDown = (e: PointerEvent<HTMLButtonElement>) => {
+      if (e.button !== 0) return
+      const el = chipRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const origin = chipPos ?? { left: rect.left, top: rect.top }
+      chipDragRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        originLeft: origin.left,
+        originTop: origin.top,
+        moved: false,
+      }
+      el.setPointerCapture(e.pointerId)
+      setDraggingChip(true)
+    }
+
+    const onChipPointerMove = (e: PointerEvent<HTMLButtonElement>) => {
+      const drag = chipDragRef.current
+      if (!drag || drag.pointerId !== e.pointerId) return
+      const dx = e.clientX - drag.startX
+      const dy = e.clientY - drag.startY
+      if (!drag.moved && Math.hypot(dx, dy) < CHIP_DRAG_THRESHOLD_PX) return
+      drag.moved = true
+      const el = chipRef.current
+      const width = el?.offsetWidth ?? 188
+      const height = el?.offsetHeight ?? 40
+      const next = clampChipPosition(
+        { left: drag.originLeft + dx, top: drag.originTop + dy },
+        width,
+        height
+      )
+      setChipPos(next)
+    }
+
+    const endChipPointer = (e: PointerEvent<HTMLButtonElement>) => {
+      const drag = chipDragRef.current
+      if (!drag || drag.pointerId !== e.pointerId) return
+      chipDragRef.current = null
+      setDraggingChip(false)
+      try {
+        chipRef.current?.releasePointerCapture(e.pointerId)
+      } catch {
+        // already released
+      }
+      if (drag.moved) {
+        setChipPos((prev) => {
+          if (prev) saveChipPosition(prev)
+          return prev
+        })
+        return
+      }
+      setCollapsed(false)
+    }
+
     return (
       <button
+        ref={chipRef}
         type="button"
-        onClick={() => setCollapsed(false)}
-        className="fixed bottom-5 right-5 z-[80] flex max-w-[16.5rem] items-center gap-2 rounded-full border-2 border-amber-500 bg-amber-400 px-3 py-2 text-left text-amber-950 shadow-lg shadow-amber-500/40 ring-2 ring-amber-300/70 hover:bg-amber-300 animate-pulse"
+        style={chipStyle}
+        onPointerDown={onChipPointerDown}
+        onPointerMove={onChipPointerMove}
+        onPointerUp={endChipPointer}
+        onPointerCancel={endChipPointer}
+        onClick={(e) => {
+          // Open is handled on pointer up when not dragged; block default click.
+          e.preventDefault()
+        }}
+        aria-label="Pending certificate reminders. Drag to move, click to open."
+        className={`fixed bottom-5 right-5 z-[80] flex max-w-[12rem] touch-none select-none items-center gap-1.5 rounded-full border border-amber-500 bg-amber-400 px-2 py-1 text-left text-amber-950 shadow-md shadow-amber-500/30 ring-1 ring-amber-300/70 hover:bg-amber-300 ${
+          draggingChip ? "cursor-grabbing animate-none" : "cursor-grab animate-pulse"
+        }`}
       >
-        <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-950 text-amber-100">
-          <Award className="h-3.5 w-3.5" />
-          <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[9px] font-bold text-white">
+        <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-950 text-amber-100">
+          <CertificateIcon className="h-3 w-3" />
+          <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-600 px-0.5 text-[8px] font-bold leading-none text-white">
             {totalPeople > 99 ? "99+" : totalPeople}
           </span>
         </span>
         <span className="min-w-0">
-          <span className="block text-xs font-bold uppercase tracking-wide">Action required</span>
-          <span className="block text-[11px] font-medium leading-tight text-amber-950/80">
-            {totalPeople} paid attendee{totalPeople === 1 ? "" : "s"} still need certificate & ID
+          <span className="block text-[10px] font-bold uppercase leading-none tracking-wide">Action required</span>
+          <span className="mt-0.5 block text-[9px] font-medium leading-tight text-amber-950/80">
+            {totalPeople} still need cert & ID
           </span>
         </span>
-        <ChevronUp className="h-4 w-4 shrink-0" />
+        <ChevronUp className="h-3 w-3 shrink-0" />
       </button>
     )
   }
@@ -327,23 +592,27 @@ export function PendingCertPrompt() {
                 <div className="text-xs text-amber-900/70">{item.scheduleLabel}</div>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-2 py-0.5 text-xs font-semibold text-white">
-                    <Users className="h-3.5 w-3.5" />
+                    <PeopleIcon className="h-3.5 w-3.5" />
                     {item.totalAttendees} total
                   </span>
-                  {item.statusCounts.map((status) => (
+                  {item.statusCounts.map((status) => {
+                    const StatusIcon = statusIcon(status.label)
+                    return (
                     <span
                       key={status.label}
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${statusTone(status.label)}`}
                     >
+                      <StatusIcon className="h-3.5 w-3.5" />
                       {status.count} {status.label}
                     </span>
-                  ))}
+                    )
+                  })}
                   <span className="inline-flex items-center gap-1 rounded-full bg-orange-600 px-2 py-0.5 text-xs font-semibold text-white">
-                    <MailWarning className="h-3.5 w-3.5" />
+                    <CertificateIcon className="h-3.5 w-3.5" />
                     {item.trainees.length} certificate pending
                   </span>
                   <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">
-                    <IdCard className="h-3.5 w-3.5" />
+                    <IdIcon className="h-3.5 w-3.5" />
                     {item.trainees.length} ID pending
                   </span>
                 </div>
@@ -368,7 +637,7 @@ export function PendingCertPrompt() {
                       className="h-8 justify-start bg-amber-950 text-amber-50 hover:bg-amber-900"
                       onClick={() => openDirectory(item, true)}
                     >
-                      <Send className="mr-2 h-3.5 w-3.5" />
+                      <SendIcon className="mr-2 h-3.5 w-3.5" />
                       Go to sending certificate
                     </Button>
                     <Button
@@ -378,7 +647,7 @@ export function PendingCertPrompt() {
                       className="h-8 justify-start border-amber-500 bg-white text-amber-950 hover:bg-amber-50"
                       onClick={() => openSubmissions(item)}
                     >
-                      <MailWarning className="mr-2 h-3.5 w-3.5" />
+                      <ListIcon className="mr-2 h-3.5 w-3.5" />
                       Go to submissions
                     </Button>
                     <Button
@@ -388,7 +657,7 @@ export function PendingCertPrompt() {
                       className="h-8 justify-start border-amber-500 bg-white text-amber-950 hover:bg-amber-50"
                       onClick={() => openDirectory(item, false)}
                     >
-                      <FolderOpen className="mr-2 h-3.5 w-3.5" />
+                      <FolderIcon className="mr-2 h-3.5 w-3.5" />
                       Go to directory
                     </Button>
                     <Button
@@ -397,7 +666,7 @@ export function PendingCertPrompt() {
                       className="h-8 justify-start bg-emerald-700 text-white hover:bg-emerald-800"
                       onClick={() => void completeSchedule(item)}
                     >
-                      <Check className="mr-2 h-3.5 w-3.5" />
+                      <CheckIcon className="mr-2 h-3.5 w-3.5" />
                       Mark as completed
                     </Button>
                   </div>

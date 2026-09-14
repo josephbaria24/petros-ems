@@ -8,129 +8,132 @@ import {
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { useTheme } from "next-themes"
+
+function OutlineIcon({ className, children, ...props }: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      {...props}
+    >
+      {children}
+    </svg>
+  )
+}
 
 const DashboardIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    {...props}
-  >
-    <path
-      fill="currentColor"
-      d="M15.21 2H8.75A6.76 6.76 0 0 0 2 8.75v6.5A6.76 6.76 0 0 0 8.75 22h6.5A6.76 6.76 0 0 0 22 15.25v-6.5A6.76 6.76 0 0 0 15.21 2M8.43 16.23a.8.8 0 1 1-1.6 0v-5.1a.8.8 0 0 1 1.6 0zm4.45 0a.8.8 0 1 1-1.6 0V7.78a.8.8 0 0 1 1.6 0zm4.21 0a.8.8 0 1 1-1.6 0V9.82a.8.8 0 0 1 1.6 0z"
-    />
-  </svg>
+  <OutlineIcon {...props}>
+    <rect x="3" y="3" width="7" height="9" rx="1.5" />
+    <rect x="14" y="3" width="7" height="5" rx="1.5" />
+    <rect x="14" y="12" width="7" height="9" rx="1.5" />
+    <rect x="3" y="16" width="7" height="5" rx="1.5" />
+  </OutlineIcon>
 )
 
 const TrainingsIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    {...props}
-  >
-    <path
-      fill="currentColor"
-      d="M19 4h-1V3c0-.6-.4-1-1-1s-1 .4-1 1v1H8V3c0-.6-.4-1-1-1s-1 .4-1 1v1H5C3.3 4 2 5.3 2 7v1h20V7c0-1.7-1.3-3-3-3M2 19c0 1.7 1.3 3 3 3h14c1.7 0 3-1.3 3-3v-9H2zm15-7c.6 0 1 .4 1 1s-.4 1-1 1s-1-.4-1-1s.4-1 1-1m0 4c.6 0 1 .4 1 1s-.4 1-1 1s-1-.4-1-1s.4-1 1-1m-5-4c.6 0 1 .4 1 1s-.4 1-1 1s-1-.4-1-1s.4-1 1-1m0 4c.6 0 1 .4 1 1s-.4 1-1 1s-1-.4-1-1s.4-1 1-1m-5-4c.6 0 1 .4 1 1s-.4 1-1 1s-1-.4-1-1s.4-1 1-1m0 4c.6 0 1 .4 1 1s-.4 1-1 1s-1-.4-1-1s.4-1 1-1"
-    />
-  </svg>
+  <OutlineIcon {...props}>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M8 3v4M16 3v4M3 10h18" />
+  </OutlineIcon>
 )
 
 const CoursesIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    {...props}
-  >
-    <g fill="none" fillRule="evenodd">
-      <path d="m12.593 23.258l-.011.002l-.071.035l-.02.004l-.014-.004l-.071-.035q-.016-.005-.024.005l-.004.01l-.017.428l.005.02l.01.013l.104.074l.015.004l.012-.004l.104-.074l.012-.016l.004-.017l-.017-.427q-.004-.016-.017-.018m.265-.113l-.013.002l-.185.093l-.01.01l-.003.011l.018.43l.005.012l.008.007l.201.093q.019.005.029-.008l.004-.014l-.034-.614q-.005-.018-.02-.022m-.715.002a.02.02 0 0 0-.027.006l-.006.014l-.034.614q.001.018.017.024l.015-.002l.201-.093l.01-.008l.004-.011l.017-.43l-.003-.012l-.01-.01z" />
-      <path
-        fill="currentColor"
-        d="M4 5a3 3 0 0 1 3-3h11a2 2 0 0 1 2 2v12.99c0 .168-.038.322-.113.472l-.545 1.09a1 1 0 0 0 0 .895l.543 1.088A1 1 0 0 1 19 22H7a3 3 0 0 1-3-3zm3 13h10.408a3 3 0 0 0 0 2H7a1 1 0 1 1 0-2m3-11a1 1 0 0 0 0 2h4a1 1 0 1 0 0-2z"
-      />
-    </g>
-  </svg>
+  <OutlineIcon {...props}>
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    <path d="M8 7h8" />
+  </OutlineIcon>
 )
 
 const CertificateManagementIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="32"
-    height="32"
-    viewBox="0 0 32 32"
-    {...props}
-  >
-    <path
-      fill="currentColor"
-      d="M5.25 4A3.25 3.25 0 0 0 2 7.25v7.92a7 7 0 0 1 11.5 7.938V25h13.25A3.25 3.25 0 0 0 30 21.75V7.25A3.25 3.25 0 0 0 26.75 4zM9 10h14a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2m7 8a1 1 0 0 1 1-1h6a1 1 0 1 1 0 2h-6a1 1 0 0 1-1-1m-3 1.5a5.5 5.5 0 1 1-11 0a5.5 5.5 0 0 1 11 0m-1 5.362A6.97 6.97 0 0 1 7.5 26.5A6.97 6.97 0 0 1 3 24.862V29a1 1 0 0 0 1.528.849l2.972-1.85l2.972 1.85a1 1 0 0 0 1.528-.85z"
-    />
-  </svg>
+  <OutlineIcon {...props}>
+    <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6" />
+    <path d="M8 8h8M8 12h4" />
+    <circle cx="17" cy="16" r="3" />
+    <path d="M15.2 20.2 14 22l3-1.2L20 22l-1.2-1.8" />
+  </OutlineIcon>
 )
 
 const CertificateTrackerIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    {...props}
-  >
-    <path
-      fill="currentColor"
-      d="M4 2v6H2V2zM2 22h2v-6H2zm3-10a2 2 0 1 0-2 2c1.11 0 2-.89 2-2m19-6v12c0 1.11-.89 2-2 2H10a2 2 0 0 1-2-2v-4l-2-2l2-2V6a2 2 0 0 1 2-2h12c1.11 0 2 .89 2 2m-5 7h-8v2h8zm2-4H11v2h10z"
-    />
-  </svg>
+  <OutlineIcon {...props}>
+    <path d="M4 4v4M4 20v-4M4 12h.01" />
+    <path d="M10 6h10v12H10l-2-2 2-2V6z" />
+    <path d="M12 10h7M12 14h5" />
+  </OutlineIcon>
 )
 
 const CertificateVerifierIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    {...props}
-  >
-    <path
-      fill="currentColor"
-      d="M19 13c.7 0 1.37.13 2 .35V9l-6-6H5c-1.11 0-2 .89-2 2v14a2 2 0 0 0 2 2h8.35c-.22-.63-.35-1.3-.35-2c0-3.31 2.69-6 6-6m-5-8.5l5.5 5.5H14zm8.5 12.75L17.75 22L15 19l1.16-1.16l1.59 1.59l3.59-3.59z"
-    />
-  </svg>
+  <OutlineIcon {...props}>
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4" />
+    <path d="M14 3v5h5" />
+    <path d="M15 16.5 16.5 18 20 14.5" />
+  </OutlineIcon>
 )
 
 const VoucherManagerIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    {...props}
-  >
-    <path
-      fill="currentColor"
-      d="M4 4a2 2 0 0 0-2 2v4a2 2 0 0 1 2 2a2 2 0 0 1-2 2v4a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-4a2 2 0 0 1-2-2a2 2 0 0 1 2-2V6a2 2 0 0 0-2-2zm11.5 3L17 8.5L8.5 17L7 15.5zm-6.69.04c.98 0 1.77.79 1.77 1.77a1.77 1.77 0 0 1-1.77 1.77c-.98 0-1.77-.79-1.77-1.77a1.77 1.77 0 0 1 1.77-1.77m6.38 6.38c.98 0 1.77.79 1.77 1.77a1.77 1.77 0 0 1-1.77 1.77c-.98 0-1.77-.79-1.77-1.77a1.77 1.77 0 0 1 1.77-1.77"
-    />
-  </svg>
+  <OutlineIcon {...props}>
+    <path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z" />
+    <path d="M9 9.5 15 15.5M9 12.2h.01M15 14.8h.01" />
+  </OutlineIcon>
 )
 
 const EventManagementIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    {...props}
-  >
-    <path
-      fill="currentColor"
-      d="M19 4h-2V2h-2v2H9V2H7v2H5c-1.103 0-2 .897-2 2v14c0 1.103.897 2 2 2h14c1.103 0 2-.897 2-2V6c0-1.103-.897-2-2-2m-1 15h-6v-6h6zm1-10H5V7h14z"
-    />
-  </svg>
+  <OutlineIcon {...props}>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M8 3v4M16 3v4M3 10h18M14 14h5v5h-5z" />
+  </OutlineIcon>
+)
+
+const DirectoryIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <OutlineIcon {...props}>
+    <path d="M3 7.5A2 2 0 0 1 5 5.5h4l2 2h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    <path d="M12 12h6" />
+  </OutlineIcon>
+)
+
+const PeopleIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <OutlineIcon {...props}>
+    <circle cx="9" cy="8" r="3" />
+    <circle cx="17" cy="9" r="2.25" />
+    <path d="M3.5 19c.6-2.6 2.8-4 5.5-4s4.9 1.4 5.5 4" />
+    <path d="M15 15.2c1.4-.4 2.8-.2 4 .8" />
+  </OutlineIcon>
+)
+
+const ReportsIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <OutlineIcon {...props}>
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+    <path d="M14 3v5h5M8 13h8M8 17h5" />
+  </OutlineIcon>
+)
+
+const SunIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <OutlineIcon {...props}>
+    <circle cx="12" cy="12" r="3.5" />
+    <path d="M12 2.5v2M12 19.5v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2.5 12h2M19.5 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+  </OutlineIcon>
+)
+
+const MoonIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <OutlineIcon {...props}>
+    <path d="M16.5 14.5A6.5 6.5 0 0 1 9.5 7.5 6.5 6.5 0 1 0 16.5 14.5z" />
+  </OutlineIcon>
+)
+
+const EmailStatusIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <OutlineIcon {...props}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="m4 7 8 6 8-6" />
+  </OutlineIcon>
 )
 
 const menuItems = [
@@ -146,22 +149,32 @@ const menuItems = [
       {
         title: "Schedules",
         href: "/training-schedules",
+        icon: TrainingsIcon,
       },
       {
         title: "Calendar",
         href: "/training-calendar",
+        icon: EventManagementIcon,
       },
       {
         title: "Training Reports",
         href: "training-reports",
+        icon: ReportsIcon,
       },
       {
         title: "Directory of Trainees",
         href: "/directory-of-trainees",
+        icon: DirectoryIcon,
       },
       {
         title: "Trainer Repository",
         href: "/trainer-repository",
+        icon: PeopleIcon,
+      },
+      {
+        title: "Facilitator Materials",
+        href: "/training-facilitator",
+        icon: PeopleIcon,
       },
     ],
   },
@@ -171,25 +184,25 @@ const menuItems = [
     href: "/courses",
   },
   {
-    type: "separator",
     title: "Certificates & IDs",
-  },
-
-
-  {
-    title: "Certs & ID Management",
     icon: CertificateManagementIcon,
-    href: "/certificate-id-management",
-  },
-  {
-    title: "Certificate Tracker",
-    icon: CertificateTrackerIcon,
-    href: "/cert-tracker",
-  },
-  {
-    title: "Certificate Verifier",
-    icon: CertificateVerifierIcon,
-    href: "/certificate-verifier",
+    children: [
+      {
+        title: "Certs & ID Management",
+        href: "/certificate-id-management",
+        icon: CertificateManagementIcon,
+      },
+      {
+        title: "Certificate Tracker",
+        href: "/cert-tracker",
+        icon: CertificateTrackerIcon,
+      },
+      {
+        title: "Certificate Verifier",
+        href: "/certificate-verifier",
+        icon: CertificateVerifierIcon,
+      },
+    ],
   },
   {
     type: "separator",
@@ -206,7 +219,7 @@ const menuItems = [
   },
   {
     title: "Email Status",
-    icon: CertificateTrackerIcon,
+    icon: EmailStatusIcon,
     href: "/admin/email-status",
   },
 
@@ -226,8 +239,36 @@ const menuItems = [
 export function AppSidebar() {
   const [collapsed, setCollapsed] = React.useState(false)
   const [openDropdown, setOpenDropdown] = React.useState<string | null>("Trainings")
+  const [flyout, setFlyout] = React.useState<string | null>(null)
+  const [mounted, setMounted] = React.useState(false)
+  const { resolvedTheme, setTheme } = useTheme()
 
   const pathname = usePathname()
+  const isDark = mounted && resolvedTheme === "dark"
+
+  React.useEffect(() => {
+    setMounted(true)
+    const saved = window.localStorage.getItem("tms-sidebar-collapsed")
+    if (saved === "1") setCollapsed(true)
+
+    const onChange = (event: Event) => {
+      const next = (event as CustomEvent<boolean>).detail
+      setCollapsed(next)
+      if (next) setFlyout(null)
+    }
+    window.addEventListener("tms-sidebar-collapsed", onChange)
+    return () => window.removeEventListener("tms-sidebar-collapsed", onChange)
+  }, [])
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev
+      window.localStorage.setItem("tms-sidebar-collapsed", next ? "1" : "0")
+      window.dispatchEvent(new CustomEvent("tms-sidebar-collapsed", { detail: next }))
+      if (next) setFlyout(null)
+      return next
+    })
+  }
 
   const handleDropdownToggle = (title: string) => {
     setOpenDropdown((prev) => (prev === title ? null : title))
@@ -236,65 +277,45 @@ export function AppSidebar() {
   return (
     <div
       className={cn(
-        "relative flex h-screen flex-col border-0 shadow-lg bg-background dark:bg-card transition-all duration-300 ease-in-out",
-        collapsed ? "w-16" : "w-64"
+        "relative z-50 flex h-screen shrink-0 flex-col border-r transition-all duration-300 ease-in-out",
+        "bg-[#f4f5f8] text-[#3c3e4a] border-[#e6e7ee]",
+        "dark:bg-[#1b1d26] dark:text-[#d7d8e0] dark:border-[#2a2c36]",
+        collapsed ? "w-[4.5rem]" : "w-64"
       )}
     >
-      {/* Logo */}
-      {/* <div className="flex h-16 items-center px-4">
-        {!collapsed ? (
-          <>
-            
-            <img
-              src="/trans-logo-dark.png"
-              alt="Petrosphere Training Manager"
-              className="h-8 w-auto dark:hidden"
-            />
-
-       
-            <img
-              src="/trans-logo.png" 
-              alt="Petrosphere Training Manager"
-              className="h-8 w-auto hidden dark:block"
-            />
-          </>
-        ) : (
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-950">
-            <img src="/logo.png" alt="P" className="h-6" />
+      <button
+        type="button"
+        onClick={toggleCollapsed}
+        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        className="absolute -right-3.5 top-4 z-[60] flex h-7 w-7 items-center justify-center rounded-full border border-[#e6e7ee] bg-white text-[#5c5e6c] shadow-md hover:bg-[#f3f4f8]"
+      >
+        {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+      </button>
+      <div className={cn("relative flex items-center px-3 pt-4 pb-3", collapsed ? "justify-center" : "gap-3")}>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm ring-1 ring-black/5 dark:bg-white">
+          <img src="/logo.png" alt="Petrosphere" className="h-7 w-7 object-contain" />
+        </div>
+        {!collapsed && (
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-[#1c1e28] dark:text-white">Training</p>
+            <p className="truncate text-[11px] text-[#7b7d8c] dark:text-[#9b9dad]">Management System</p>
           </div>
-        )}
-      </div> */}
-
-      {/* Header / Logo */}
-      <div className="p-4 flex flex-col items-center">
-        {collapsed ? (
-          <span className="font-bold text-xl">TMS</span>
-        ) : (
-          <>
-            <span className="font-bold text-2xl">Training</span>
-            <span className="font-light text-sm">Management System</span>
-          </>
         )}
       </div>
 
-
-      {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-2 overflow-y-auto">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-3">
         {menuItems.map((item) => {
           const Icon = item.icon
 
           // 🌟 Render separator
           if (item.type === "separator") {
+            if (collapsed) return null
             return (
               <div
                 key={item.title}
-                className={cn(
-                  "px-3 mt-4 mb-2 text-xs font-semibold text-muted-foreground",
-                  collapsed && "hidden"
-                )}
+                className="px-3 pb-1 pt-4 text-[11px] font-medium tracking-wide text-[#8a8c9a] dark:text-[#8d8f9e]"
               >
                 {item.title}
-                <div className="mt-2 h-px bg-muted"></div>
               </div>
             )
           }
@@ -304,44 +325,77 @@ export function AppSidebar() {
             item.children?.some((child) => child.href === pathname)
 
           const isDropdownOpen = openDropdown === item.title
+          const itemClass = cn(
+            "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+            isActive
+              ? "bg-[#e7e9f0] text-[#1c1e28] dark:bg-[#2c2f3a] dark:text-white"
+              : "text-[#4a4d5c] hover:bg-[#e7e9f0] hover:text-[#1c1e28] dark:text-[#c8c9d4] dark:hover:bg-[#2c2f3a] dark:hover:text-white",
+            collapsed && "justify-center px-0"
+          )
 
-          // Item with submenu
           if (item.children) {
             return (
-              <div key={item.title} className="space-y-1">
+              <div
+                key={item.title}
+                className="relative"
+                onMouseEnter={() => collapsed && setFlyout(item.title)}
+                onMouseLeave={() => collapsed && setFlyout(null)}
+              >
                 <button
-                  onClick={() => handleDropdownToggle(item.title)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    collapsed && "justify-center"
-                  )}
+                  type="button"
+                  onClick={() => {
+                    if (collapsed) setFlyout((prev) => (prev === item.title ? null : item.title))
+                    else handleDropdownToggle(item.title)
+                  }}
+                  className={itemClass}
                 >
-                  <span className="flex items-center gap-3">
-                    {Icon && <Icon className="h-5 w-5" />}
-                    {!collapsed && item.title}
-                  </span>
-
+                  {Icon && <Icon className="h-[18px] w-[18px] shrink-0" />}
+                  {!collapsed && <span className="flex-1 truncate text-left">{item.title}</span>}
                   {!collapsed && (
                     <ChevronRight
                       className={cn(
-                        "h-4 w-4 ml-auto transition-transform",
+                        "h-4 w-4 shrink-0 text-[#8a8c9a] transition-transform",
                         isDropdownOpen ? "rotate-90" : "rotate-0"
                       )}
                     />
                   )}
                 </button>
 
-                {/* Dropdown */}
-                <div
-                  className={cn(
-                    "overflow-hidden transition-all ml-6",
-                    collapsed ? "max-h-0" : isDropdownOpen ? "max-h-96" : "max-h-0"
-                  )}
-                >
-                  <div className="mt-1 space-y-1 rounded-md border border-border bg-muted p-1">
+                {!collapsed && (
+                  <div
+                    className={cn(
+                      "grid transition-[grid-template-rows] duration-200 ease-out",
+                      isDropdownOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                    )}
+                  >
+                    <div className="overflow-hidden">
+                      <div className="ml-5 mt-1 space-y-0.5 border-l border-[#d7d9e2] py-1 pl-3 dark:border-[#3a3d4a]">
+                        {item.children.map((sub) => {
+                          const isSubActive = pathname === sub.href
+                          return (
+                            <Link
+                              key={sub.href}
+                              href={sub.href}
+                              className={cn(
+                                "flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
+                                isSubActive
+                                  ? "bg-[#e7e9f0] font-medium text-[#1c1e28] dark:bg-[#2c2f3a] dark:text-white"
+                                  : "text-[#6b6e7c] hover:bg-[#e7e9f0] hover:text-[#1c1e28] dark:text-[#b7b9c6] dark:hover:bg-[#2c2f3a] dark:hover:text-white"
+                              )}
+                            >
+                              <span className="truncate">{sub.title}</span>
+                              {isSubActive && <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                            </Link>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {collapsed && flyout === item.title && (
+                  <div className="absolute left-full top-0 z-30 ml-3 w-52 rounded-xl border border-[#e6e7ee] bg-white p-1.5 shadow-xl dark:border-[#3a3d4a] dark:bg-[#242733]">
+                    <p className="px-2 py-1.5 text-xs font-medium text-[#8a8c9a] dark:text-[#9b9dad]">{item.title}</p>
                     {item.children.map((sub) => {
                       const isSubActive = pathname === sub.href
                       return (
@@ -349,64 +403,86 @@ export function AppSidebar() {
                           key={sub.href}
                           href={sub.href}
                           className={cn(
-                            "block rounded px-2 py-1 text-sm font-medium transition-colors",
+                            "flex items-center justify-between rounded-lg px-2.5 py-2 text-sm",
                             isSubActive
-                              ? "bg-sidebar-primary text-white"
-                              : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                              ? "bg-[#e7e9f0] font-medium text-[#1c1e28] dark:bg-[#2c2f3a] dark:text-white"
+                              : "text-[#4a4d5c] hover:bg-[#f1f2f6] dark:text-[#d7d8e0] dark:hover:bg-[#2c2f3a]"
                           )}
                         >
-                          {sub.title}
+                          <span className="truncate">{sub.title}</span>
+                          {isSubActive && <ChevronRight className="h-3.5 w-3.5" />}
                         </Link>
                       )
                     })}
                   </div>
-                </div>
+                )}
               </div>
             )
           }
 
-          // Regular link
           if (!item.href) return null
 
           return (
-            <Link
+            <div
               key={item.href}
-              href={item.href}
-              {...(item.title === "Event Management"
-                ? { target: "_blank", rel: "noopener noreferrer" }
-                : {})}
-              className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                isActive
-                  ? "bg-sidebar-primary text-white"
-                  : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                collapsed && "justify-center"
-              )}
+              className="relative"
+              onMouseEnter={() => collapsed && setFlyout(item.title)}
+              onMouseLeave={() => collapsed && setFlyout(null)}
             >
-              {Icon && <Icon className="h-5 w-5" />}
-              {!collapsed && item.title}
-            </Link>
+              <Link
+                href={item.href}
+                {...(item.title === "Event Management"
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
+                className={itemClass}
+              >
+                {Icon && <Icon className="h-[18px] w-[18px] shrink-0" />}
+                {!collapsed && <span className="truncate">{item.title}</span>}
+              </Link>
+              {collapsed && flyout === item.title && (
+                <div className="pointer-events-none absolute left-full top-1/2 z-30 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg border border-[#e6e7ee] bg-white px-2.5 py-1.5 text-xs font-medium text-[#1c1e28] shadow-lg dark:border-[#3a3d4a] dark:bg-[#242733] dark:text-white">
+                  {item.title}
+                </div>
+              )}
+            </div>
           )
         })}
       </nav>
 
-      {/* Collapse Toggle */}
-      <div className="p-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setCollapsed(!collapsed)}
-          className="w-full flex items-center justify-center cursor-pointer"
-        >
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <>
-              <ChevronLeft className="h-4 w-4 mr-2" />
-              <span>Collapse</span>
-            </>
+      <div className="p-3">
+        <div
+          className={cn(
+            "flex items-center rounded-full bg-[#e7e9f0] p-1 dark:bg-[#121318]",
+            collapsed ? "flex-col gap-1" : "gap-1"
           )}
-        </Button>
+        >
+          <button
+            type="button"
+            onClick={() => setTheme("light")}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-xs font-medium transition-colors",
+              !isDark
+                ? "bg-white text-[#1c1e28] shadow-sm"
+                : "text-[#8a8c9a] hover:text-white"
+            )}
+          >
+            <SunIcon className="h-3.5 w-3.5" />
+            {!collapsed && "Light"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setTheme("dark")}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-xs font-medium transition-colors",
+              isDark
+                ? "bg-[#2c2f3a] text-white"
+                : "text-[#6b6e7c] hover:text-[#1c1e28]"
+            )}
+          >
+            <MoonIcon className="h-3.5 w-3.5" />
+            {!collapsed && "Dark"}
+          </button>
+        </div>
       </div>
     </div>
   )

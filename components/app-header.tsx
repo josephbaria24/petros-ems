@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
+import { GlobalSearch } from "@/components/global-search"
 
 export function AppHeader() {
   const { theme, setTheme } = useTheme()
@@ -154,19 +155,17 @@ export function AppHeader() {
 
     
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center border-b-4 border-[#FFCC00] justify-between border-0 shadow-md bg-[#1A1D66] px-6">
-      <div className="container mx-auto flex items-center gap-4 px-4 py-4 sm:py-5">
-    <img
-      src="/trans-logo.png"
-      alt="Petrosphere Logo"
-      className="h-10 sm:h-12 w-auto object-contain"
-    />
+    <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-0 border-b-4 border-[#FFCC00] bg-[#1A1D66] px-4 shadow-md sm:px-6">
+      <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+        <img
+          src="/trans-logo.png"
+          alt="Petrosphere Logo"
+          className="h-10 w-auto shrink-0 object-contain sm:h-12"
+        />
+        <GlobalSearch />
+      </div>
 
-  </div>
-    
-
-
-      <div className="flex items-center gap-3">
+      <div className="ml-2 flex shrink-0 items-center gap-2 sm:gap-3">
         <Button
           className="cursor-pointer text-[#daae02]"
           variant="ghost"

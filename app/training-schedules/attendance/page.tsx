@@ -18,7 +18,13 @@ import {
   GraduationCap,
   ChevronDown,
   Search,
+  QrCode,
+  Link2,
+  Copy,
+  Check,
+  History,
 } from "lucide-react"
+import QRCode from "qrcode"
 import { tmsDb } from "@/lib/supabase-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,6 +57,7 @@ import {
   countAttendanceSlots,
   getAttendanceForDay,
   getAttendanceFromCustomData,
+  getAttendanceLog,
   getTrainingDayKeys,
   mergeAttendanceAllDays,
   mergeAttendanceForDay,
@@ -59,6 +66,11 @@ import {
   type AttendanceStatusValue,
 } from "@/lib/attendance-status"
 import { cn } from "@/lib/utils"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 type TrainingRow = {
   id: string
@@ -117,6 +129,14 @@ const STATUS_BADGE: Record<AttendanceStatusValue, string> = {
   late: "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-100 dark:border-amber-800",
 }
 
+const SOURCE_LABEL: Record<string, string> = {
+  manual: "Manual",
+  bulk: "Quick action",
+  excel: "Excel import",
+  integration: "Integration",
+  qr: "QR check-in",
+}
+
 function attendanceStatusSelectTriggerClass(
   status: AttendanceStatusValue,
   variant: "compact" | "default"
@@ -161,6 +181,8 @@ export default function ScheduleAttendancePage() {
   const [selected, setSelected] = React.useState<Set<string>>(new Set())
   const [participantSearch, setParticipantSearch] = React.useState("")
   const [applyingQuickAction, setApplyingQuickAction] = React.useState(false)
+  const [generatingQr, setGeneratingQr] = React.useState(false)
+  const [copiedLink, setCopiedLink] = React.useState(false)
   const fileRef = React.useRef<HTMLInputElement>(null)
 
   const backHref = `/training-schedules?tab=${encodeURIComponent(fromTab)}`
@@ -382,6 +404,106 @@ export default function ScheduleAttendancePage() {
     setSelected(new Set())
   }
 
+  const attendanceUrl = React.useMemo(() => {
+    if (!scheduleId || typeof window === "undefined") return ""
+    return `${window.location.origin}/guest-attendance?schedule_id=${encodeURIComponent(scheduleId)}`
+  }, [scheduleId])
+
+  const copyAttendanceLink = async () => {
+    if (!attendanceUrl) return
+    try {
+      await navigator.clipboard.writeText(attendanceUrl)
+      setCopiedLink(true)
+      toast.success("Attendance link copied")
+      window.setTimeout(() => setCopiedLink(false), 1800)
+    } catch {
+      toast.error("Could not copy link")
+    }
+  }
+
+  const downloadAttendanceQr = async () => {
+    if (!scheduleId) return
+    setGeneratingQr(true)
+    try {
+      const url =
+        attendanceUrl ||
+        `${window.location.origin}/guest-attendance?schedule_id=${encodeURIComponent(scheduleId)}`
+      const qrSize = 720
+      const qrCanvas = document.createElement("canvas")
+      await QRCode.toCanvas(qrCanvas, url, {
+        width: qrSize,
+        margin: 1,
+        color: { dark: "#1A1D66", light: "#ffffff" },
+      })
+
+      const canvas = document.createElement("canvas")
+      const ctx = canvas.getContext("2d")
+      if (!ctx) throw new Error("Could not draw QR")
+
+      const width = 860
+      const height = 1120
+      canvas.width = width
+      canvas.height = height
+
+      ctx.fillStyle = "#1A1D66"
+      ctx.fillRect(0, 0, width, height)
+      ctx.fillStyle = "#FFCC00"
+      ctx.fillRect(0, 0, width, 18)
+      ctx.fillRect(0, height - 18, width, 18)
+
+      ctx.fillStyle = "#ffffff"
+      ctx.textAlign = "center"
+      ctx.font = "bold 28px Arial, sans-serif"
+      ctx.fillText("PETROSPHERE", width / 2, 62)
+      ctx.font = "16px Arial, sans-serif"
+      ctx.fillStyle = "#FFCC00"
+      ctx.fillText("ATTENDANCE CHECK-IN", width / 2, 92)
+
+      ctx.fillStyle = "#ffffff"
+      ctx.fillRect(70, 120, qrSize, qrSize)
+      ctx.drawImage(qrCanvas, 70, 120)
+
+      const label = courseName || "Training"
+      ctx.fillStyle = "#ffffff"
+      ctx.font = "bold 26px Arial, sans-serif"
+      const words = label.split(" ")
+      const lines: string[] = []
+      let current = ""
+      for (const word of words) {
+        const next = current ? `${current} ${word}` : word
+        if (ctx.measureText(next).width > 760) {
+          if (current) lines.push(current)
+          current = word
+        } else current = next
+      }
+      if (current) lines.push(current)
+      lines.slice(0, 2).forEach((line, index) => ctx.fillText(line, width / 2, 890 + index * 34))
+
+      ctx.font = "16px Arial, sans-serif"
+      ctx.fillStyle = "#FFCC00"
+      ctx.fillText(scheduleLabel, width / 2, 980)
+      ctx.font = "14px Arial, sans-serif"
+      ctx.fillText("Valid for all training days on this schedule", width / 2, 1018)
+
+      const link = document.createElement("a")
+      link.href = canvas.toDataURL("image/png")
+      link.download = `QR-Attendance-${(courseName || "training").replace(/[^a-z0-9]+/gi, "-")}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      await navigator.clipboard.writeText(url).catch(() => undefined)
+      toast.success("Attendance QR downloaded", {
+        description: "Same QR works for every day. Link also copied.",
+      })
+    } catch (error) {
+      console.error(error)
+      toast.error("Could not generate attendance QR.")
+    } finally {
+      setGeneratingQr(false)
+    }
+  }
+
   const downloadTemplate = () => {
     const sheetRows = rows.map((r) => {
       const base: Record<string, string> = {
@@ -558,43 +680,108 @@ export default function ScheduleAttendancePage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <Button variant="ghost" size="sm" className="mb-1 -ml-2 gap-1 text-muted-foreground" asChild>
-            <Link href={backHref}>
-              <ArrowLeft className="h-4 w-4" />
-              Schedules
-            </Link>
-          </Button>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Attendance</h1>
-            <Badge variant="outline" className="gap-1">
-              <UserCheck className="h-3 w-3" />
-              Participants
-            </Badge>
+      <div className="overflow-hidden rounded-2xl border border-[#FFCC00]/40 bg-gradient-to-br from-[#1A1D66] via-[#24286f] to-[#141654] text-white shadow-md">
+        <div className="h-1.5 bg-[#FFCC00]" />
+        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+          <div className="min-w-0 space-y-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mb-1 -ml-2 gap-1 text-white/75 hover:bg-white/10 hover:text-white"
+              asChild
+            >
+              <Link href={backHref}>
+                <ArrowLeft className="h-4 w-4" />
+                Schedules
+              </Link>
+            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">Attendance</h1>
+              <Badge className="gap-1 border-0 bg-[#FFCC00] text-[#1A1D66] hover:bg-[#FFCC00]">
+                <UserCheck className="h-3 w-3" />
+                Participants
+              </Badge>
+            </div>
+            <p className="max-w-2xl text-sm text-white/80 md:text-base">
+              <span className="font-semibold text-[#FFCC00]">{courseName || "Training"}</span>
+              {" — "}
+              mark attendance per training day, use quick actions, generate a QR for self check-in, or import Excel.
+            </p>
+            {attendanceUrl && (
+              <div className="mt-3 flex max-w-2xl flex-col gap-2 rounded-xl border border-white/15 bg-white/10 p-3 backdrop-blur-sm sm:flex-row sm:items-center">
+                <div className="flex min-w-0 flex-1 items-start gap-2">
+                  <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-[#FFCC00]" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#FFCC00]">Attendance link</p>
+                    <a
+                      href={attendanceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block truncate text-sm text-white underline-offset-2 hover:underline"
+                    >
+                      {attendanceUrl}
+                    </a>
+                  </div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-white/25 bg-transparent text-white hover:bg-white/10 hover:text-white"
+                    onClick={() => void copyAttendanceLink()}
+                  >
+                    {copiedLink ? <Check className="mr-1.5 h-3.5 w-3.5" /> : <Copy className="mr-1.5 h-3.5 w-3.5" />}
+                    {copiedLink ? "Copied" : "Copy"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-[#FFCC00] text-[#1A1D66] hover:bg-[#e6b800]"
+                    asChild
+                  >
+                    <a href={attendanceUrl} target="_blank" rel="noreferrer">
+                      Open
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
-          <p className="text-muted-foreground max-w-2xl text-sm md:text-base">
-            {courseName} — mark attendance per training day when the schedule has dates; use quick actions
-            for selected participants across all days, or import an Excel sheet. Data is stored on each
-            registration record.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="hidden"
-            onChange={handleExcelImport}
-          />
-          <Button variant="outline" className="gap-2" onClick={() => fileRef.current?.click()}>
-            <Upload className="h-4 w-4" />
-            Import Excel
-          </Button>
-          <Button variant="outline" className="gap-2" onClick={downloadTemplate} disabled={!rows.length}>
-            <Download className="h-4 w-4" />
-            Download template
-          </Button>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={handleExcelImport}
+            />
+            <Button
+              className="gap-2 bg-[#FFCC00] text-[#1A1D66] hover:bg-[#e6b800]"
+              onClick={() => void downloadAttendanceQr()}
+              disabled={generatingQr || loading}
+            >
+              {generatingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
+              Generate attendance QR
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2 border-white/30 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+              onClick={() => fileRef.current?.click()}
+            >
+              <Upload className="h-4 w-4" />
+              Import Excel
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2 border-white/30 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+              onClick={downloadTemplate}
+              disabled={!rows.length}
+            >
+              <Download className="h-4 w-4" />
+              Download template
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -844,6 +1031,7 @@ export default function ScheduleAttendancePage() {
                       </TableHead>
                       <TableHead className="hidden min-w-[160px] md:table-cell">Email</TableHead>
                       <TableHead className="hidden min-w-[120px] lg:table-cell">Company</TableHead>
+                      <TableHead className="w-[88px] text-center">History</TableHead>
                       {trainingDayKeys.length > 0 ? (
                         trainingDayKeys.map((dk) => (
                           <TableHead
@@ -864,7 +1052,7 @@ export default function ScheduleAttendancePage() {
                     {rows.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={4 + Math.max(trainingDayKeys.length, 1)}
+                          colSpan={5 + Math.max(trainingDayKeys.length, 1)}
                           className="text-muted-foreground py-12 text-center"
                         >
                           No participants registered for this schedule yet.
@@ -873,7 +1061,7 @@ export default function ScheduleAttendancePage() {
                     ) : filteredRows.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={4 + Math.max(trainingDayKeys.length, 1)}
+                          colSpan={5 + Math.max(trainingDayKeys.length, 1)}
                           className="text-muted-foreground py-12 text-center"
                         >
                           No participants match your search. Try a different name, email, or company.
@@ -922,6 +1110,66 @@ export default function ScheduleAttendancePage() {
                             </TableCell>
                             <TableCell className="text-muted-foreground hidden max-w-[160px] truncate text-sm lg:table-cell">
                               {r.company_name || "—"}
+                            </TableCell>
+                            <TableCell className="p-1 text-center align-middle">
+                              {(() => {
+                                const log = getAttendanceLog(r.custom_data)
+                                return (
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8 gap-1 px-2 text-xs"
+                                        disabled={log.length === 0}
+                                        title={log.length ? "View attendance history" : "No history yet"}
+                                      >
+                                        <History className="h-3.5 w-3.5" />
+                                        {log.length || "—"}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent align="end" className="w-80 p-0">
+                                      <div className="border-b px-3 py-2">
+                                        <p className="text-sm font-semibold">Attendance history</p>
+                                        <p className="text-muted-foreground text-xs">
+                                          {r.first_name} {r.last_name}
+                                        </p>
+                                      </div>
+                                      <div className="max-h-72 space-y-2 overflow-y-auto p-3">
+                                        {log.map((entry, index) => (
+                                          <div
+                                            key={`${entry.at}-${index}`}
+                                            className="rounded-lg border bg-muted/30 px-2.5 py-2 text-xs"
+                                          >
+                                            <div className="flex items-center justify-between gap-2">
+                                              <Badge
+                                                variant="outline"
+                                                className={cn("capitalize", STATUS_BADGE[entry.status])}
+                                              >
+                                                {STATUS_LABEL[entry.status]}
+                                              </Badge>
+                                              <span className="font-medium text-[#1A1D66] dark:text-[#FFCC00]">
+                                                {entry.time}
+                                              </span>
+                                            </div>
+                                            <p className="mt-1.5 text-muted-foreground">
+                                              {entry.day
+                                                ? format(parseISO(entry.day), "EEE, MMM d, yyyy")
+                                                : "Whole schedule"}
+                                              {" · "}
+                                              {SOURCE_LABEL[entry.source] || entry.source}
+                                            </p>
+                                            <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                              {format(new Date(entry.at), "MMM d, yyyy h:mm:ss a")}
+                                            </p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+                                )
+                              })()}
                             </TableCell>
                             {trainingDayKeys.length > 0 ? (
                               trainingDayKeys.map((dk) => {
