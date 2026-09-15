@@ -8,6 +8,20 @@ export const EMS_ATTENDANCE_UPDATED_AT_KEY = "ems_attendance_updated_at" as cons
 export const EMS_ATTENDANCE_LOG_KEY = "ems_attendance_log" as const
 export const EMS_ATTENDANCE_CHECKIN_AT_KEY = "ems_attendance_checkin_at" as const
 export const EMS_ATTENDANCE_CHECKIN_TIME_KEY = "ems_attendance_checkin_time" as const
+/** Per-day Microsoft Teams join metadata (seconds + first/last timestamps). */
+export const EMS_TEAMS_BY_DAY_KEY = "ems_teams_by_day" as const
+
+export type MergeAttendanceOptions = {
+  at?: string
+  time?: string
+}
+
+export type TeamsAttendanceDayInfo = {
+  seconds: number
+  joinAt: string | null
+  leaveAt: string | null
+  email?: string
+}
 
 export type AttendanceStatusValue = "unmarked" | "present" | "absent" | "late"
 export type AttendanceSource = "manual" | "bulk" | "excel" | "integration" | "qr"
@@ -175,13 +189,64 @@ function stripLegacyAttendanceKeys(base: Record<string, unknown>) {
   delete base[EMS_ATTENDANCE_SOURCE_KEY]
 }
 
+export function formatDurationSeconds(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const rem = s % 60
+  if (h > 0) return m > 0 ? `${h}h ${m}m` : `${h}h`
+  if (m > 0) return rem > 0 && m < 5 ? `${m}m ${rem}s` : `${m} min`
+  return `${s}s`
+}
+
+function readTeamsByDayMap(
+  customData: Record<string, unknown> | null | undefined
+): Record<string, TeamsAttendanceDayInfo> {
+  const raw = customData?.[EMS_TEAMS_BY_DAY_KEY]
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {}
+  const out: Record<string, TeamsAttendanceDayInfo> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!v || typeof v !== "object" || Array.isArray(v)) continue
+    const row = v as Record<string, unknown>
+    const seconds = Number(row.seconds)
+    if (!Number.isFinite(seconds)) continue
+    out[k] = {
+      seconds,
+      joinAt: typeof row.joinAt === "string" ? row.joinAt : null,
+      leaveAt: typeof row.leaveAt === "string" ? row.leaveAt : null,
+      email: typeof row.email === "string" ? row.email : undefined,
+    }
+  }
+  return out
+}
+
+export function getTeamsAttendanceForDay(
+  customData: Record<string, unknown> | null | undefined,
+  dayKey: string
+): TeamsAttendanceDayInfo | null {
+  return readTeamsByDayMap(customData)[dayKey] || null
+}
+
+export function mergeTeamsAttendanceInfo(
+  existing: Record<string, unknown> | null | undefined,
+  dayKey: string,
+  info: TeamsAttendanceDayInfo
+): Record<string, unknown> {
+  const base = cloneCustom(existing)
+  const byDay = readTeamsByDayMap(base)
+  byDay[dayKey] = info
+  base[EMS_TEAMS_BY_DAY_KEY] = byDay
+  return base
+}
+
 /** Update one day. Pass full `dayKeys` so legacy → per-day migration can run once. */
 export function mergeAttendanceForDay(
   existing: Record<string, unknown> | null | undefined,
   dayKeys: string[],
   dayKey: string,
   status: AttendanceStatusValue,
-  source: AttendanceSource
+  source: AttendanceSource,
+  options?: MergeAttendanceOptions
 ): Record<string, unknown> {
   const base = cloneCustom(existing)
   let byDay = { ...readByDayMap(base) }
@@ -198,7 +263,7 @@ export function mergeAttendanceForDay(
     byDay[dayKey] = status
   }
 
-  appendAttendanceLog(base, { day: dayKey, status, source })
+  appendAttendanceLog(base, { day: dayKey, status, source, at: options?.at, time: options?.time })
 
   if (Object.keys(byDay).length === 0) {
     delete base[EMS_ATTENDANCE_BY_DAY_KEY]

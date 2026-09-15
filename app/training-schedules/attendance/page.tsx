@@ -23,6 +23,7 @@ import {
   Copy,
   Check,
   History,
+  Camera,
 } from "lucide-react"
 import QRCode from "qrcode"
 import { tmsDb } from "@/lib/supabase-client"
@@ -53,6 +54,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { toast } from "sonner"
+import { AttendanceSnapshotsDialog } from "@/components/attendance-snapshots-dialog"
+import { TeamsMeetingDetailsDialog } from "@/components/teams-meeting-details-dialog"
+import { WorkshopSection } from "@/components/workshop-section"
 import {
   countAttendanceSlots,
   getAttendanceForDay,
@@ -133,7 +137,7 @@ const SOURCE_LABEL: Record<string, string> = {
   manual: "Manual",
   bulk: "Quick action",
   excel: "Excel import",
-  integration: "Integration",
+  integration: "Microsoft Teams",
   qr: "QR check-in",
 }
 
@@ -183,6 +187,9 @@ export default function ScheduleAttendancePage() {
   const [applyingQuickAction, setApplyingQuickAction] = React.useState(false)
   const [generatingQr, setGeneratingQr] = React.useState(false)
   const [copiedLink, setCopiedLink] = React.useState(false)
+  const [snapshotsOpen, setSnapshotsOpen] = React.useState(false)
+  const [teamsDetailsOpen, setTeamsDetailsOpen] = React.useState(false)
+  const [savedMeetingUrl, setSavedMeetingUrl] = React.useState<string | null>(null)
   const fileRef = React.useRef<HTMLInputElement>(null)
 
   const backHref = `/training-schedules?tab=${encodeURIComponent(fromTab)}`
@@ -194,10 +201,31 @@ export default function ScheduleAttendancePage() {
     }
     setLoading(true)
     try {
-      const { data: schedule, error: se } = await tmsDb
+      const scheduleSelect = `
+          id,
+          status,
+          event_type,
+          branch,
+          batch_number,
+          trainer_name,
+          day_trainers,
+          schedule_type,
+          online_classroom_url,
+          courses ( name ),
+          schedule_ranges ( start_date, end_date ),
+          schedule_dates ( date )
+        `
+      let { data: schedule, error: se } = await tmsDb
         .from("schedules")
-        .select(
-          `
+        .select(scheduleSelect)
+        .eq("id", scheduleId)
+        .single()
+
+      if (se && /online_classroom_url|schema cache|column/i.test(se.message || "")) {
+        const retry = await tmsDb
+          .from("schedules")
+          .select(
+            `
           id,
           status,
           event_type,
@@ -210,19 +238,29 @@ export default function ScheduleAttendancePage() {
           schedule_ranges ( start_date, end_date ),
           schedule_dates ( date )
         `
-        )
-        .eq("id", scheduleId)
-        .single()
+          )
+          .eq("id", scheduleId)
+          .single()
+        schedule = retry.data
+        se = retry.error
+      }
 
       if (se || !schedule) {
         toast.error("Schedule not found")
         setScheduleMeta(null)
         setRows([])
         setCourseName("")
+        setSavedMeetingUrl(null)
         return
       }
 
       setCourseName((schedule.courses as { name?: string } | null)?.name || "Course")
+      setSavedMeetingUrl(
+        typeof (schedule as { online_classroom_url?: string | null }).online_classroom_url === "string" &&
+          (schedule as { online_classroom_url?: string | null }).online_classroom_url?.trim()
+          ? (schedule as { online_classroom_url: string }).online_classroom_url.trim()
+          : null
+      )
       setScheduleMeta({
         status: schedule.status,
         event_type: schedule.event_type,
@@ -283,7 +321,10 @@ export default function ScheduleAttendancePage() {
     return "Dates TBD"
   }, [scheduleMeta])
 
-  const meetingUrl = React.useMemo(() => pickMeetingUrl(rows), [rows])
+  const meetingUrl = React.useMemo(
+    () => savedMeetingUrl || pickMeetingUrl(rows),
+    [savedMeetingUrl, rows]
+  )
   const meetingProvider = meetingUrl ? detectProvider(meetingUrl) : null
 
   const trainingDayKeys = React.useMemo(
@@ -767,6 +808,15 @@ export default function ScheduleAttendancePage() {
             <Button
               variant="outline"
               className="gap-2 border-white/30 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+              onClick={() => setSnapshotsOpen(true)}
+              disabled={loading}
+            >
+              <Camera className="h-4 w-4" />
+              Snapshots
+            </Button>
+            <Button
+              variant="outline"
+              className="gap-2 border-white/30 bg-white/5 text-white hover:bg-white/10 hover:text-white"
               onClick={() => fileRef.current?.click()}
             >
               <Upload className="h-4 w-4" />
@@ -865,7 +915,7 @@ export default function ScheduleAttendancePage() {
                   <Video className="h-4 w-4 text-primary" />
                   Online classroom
                 </CardTitle>
-                <CardDescription>From payment records when a room link was sent</CardDescription>
+                <CardDescription>Saved for this schedule, or from payment records</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 {meetingUrl ? (
@@ -880,21 +930,33 @@ export default function ScheduleAttendancePage() {
                       {meetingUrl}
                     </a>
                     <p className="text-muted-foreground text-xs leading-relaxed">
-                      Links are typically set from the Submissions page when you email the online
-                      classroom URL to trainees. Use Teams or Zoom attendance reports, align columns
-                      with the import template, then import here.
+                      {meetingProvider === "Microsoft Teams"
+                        ? "After the Teams meeting ends, open details to see who joined and how long they stayed. TMS attendance is not changed."
+                        : "Links are typically set from the Submissions page when you email the online classroom URL to trainees. Use a Zoom attendance report, align columns with the import template, then import here."}
                     </p>
                   </>
                 ) : (
                   <p className="text-muted-foreground">
-                    No meeting URL found on participant payment records yet. For hybrid sessions,
-                    add links when processing payments or paste an attendance export after the
-                    session.
+                    No meeting URL saved yet. Open details, paste a Teams join URL, then Save link.
                   </p>
                 )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => setTeamsDetailsOpen(true)}
+                  disabled={loading || !scheduleId}
+                >
+                  <Video className="h-4 w-4" />
+                  See details
+                </Button>
               </CardContent>
             </Card>
           </div>
+
+          {scheduleId ? (
+            <WorkshopSection scheduleId={scheduleId} courseName={courseName} />
+          ) : null}
 
           <Card className="border-border/80 shadow-sm">
             <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1266,6 +1328,22 @@ export default function ScheduleAttendancePage() {
           </Card>
         </>
       )}
+
+      <AttendanceSnapshotsDialog
+        open={snapshotsOpen}
+        onOpenChange={setSnapshotsOpen}
+        scheduleId={scheduleId}
+        courseName={courseName}
+      />
+      {scheduleId ? (
+        <TeamsMeetingDetailsDialog
+          open={teamsDetailsOpen}
+          onOpenChange={setTeamsDetailsOpen}
+          scheduleId={scheduleId}
+          meetingUrl={meetingUrl}
+          onUrlSaved={setSavedMeetingUrl}
+        />
+      ) : null}
     </div>
   )
 }

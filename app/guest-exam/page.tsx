@@ -27,7 +27,7 @@ export default function GuestExamPage() {
 
   const [loading, setLoading] = React.useState(true)
   const [submitting, setSubmitting] = React.useState(false)
-  const [done, setDone] = React.useState<{ score: number; max: number } | null>(null)
+  const [done, setDone] = React.useState(false)
   const [exam, setExam] = React.useState<ExamRecord | null>(null)
   const [courseName, setCourseName] = React.useState("")
   const [questions, setQuestions] = React.useState<ExamQuestionDraft[]>([])
@@ -146,7 +146,7 @@ export default function GuestExamPage() {
         error = retry.error
       }
       if (error) throw error
-      setDone({ score, max })
+      setDone(true)
       toast.success("Exam submitted")
     } catch (e: unknown) {
       const message = e && typeof e === "object" && "message" in e ? String((e as { message: string }).message) : ""
@@ -199,10 +199,6 @@ export default function GuestExamPage() {
             <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600 dark:text-emerald-400" />
             <h2 className="mt-3 text-xl font-bold text-[#1A1D66] dark:text-foreground">Thank you, {firstName.trim()}!</h2>
             <p className="mt-2 text-muted-foreground">Your answers were submitted successfully.</p>
-            <p className="mt-4 text-3xl font-bold text-[#1A1D66] dark:text-foreground">
-              {done.score}
-              <span className="text-lg font-medium text-muted-foreground"> / {done.max}</span>
-            </p>
           </div>
         ) : (
           <>

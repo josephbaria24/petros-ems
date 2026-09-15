@@ -4,6 +4,7 @@
 
 import { tmsDb } from "@/lib/supabase-client"
 import { consumePendingCertOpen } from "@/lib/pending-cert-reminders"
+import { isOshCourse } from "@/lib/osh-program"
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
 import QRCode from "qrcode"
@@ -103,6 +104,21 @@ const AttendanceIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <path
       fill="currentColor"
       d="M6.75 9a3.25 3.25 0 1 0 0-6.5a3.25 3.25 0 0 0 0 6.5M17 6.5a2.5 2.5 0 1 1-5 0a2.5 2.5 0 0 1 5 0m-8 8c0-1.704.775-3.228 1.993-4.237A2 2 0 0 0 10 10H3.5a2 2 0 0 0-2 2s0 4 5.25 4c.953 0 1.733-.132 2.371-.347A5.5 5.5 0 0 1 9 14.5m10 0a4.5 4.5 0 1 1-9 0a4.5 4.5 0 0 1 9 0m-2.146-1.854a.5.5 0 0 0-.708 0L13.5 15.293l-.646-.647a.5.5 0 0 0-.708.708l1 1a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0 0-.708"
+    />
+  </svg>
+)
+
+const ProgramIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    {...props}
+  >
+    <path
+      fill="currentColor"
+      d="M7 2h8.172a2 2 0 0 1 1.414.586l2.828 2.828A2 2 0 0 1 20 6.828V20a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2m5 1.5V8a1 1 0 0 0 1 1h4.5L12 3.5ZM8.5 11.25a.75.75 0 0 0 0 1.5h7a.75.75 0 0 0 0-1.5zm0 3a.75.75 0 0 0 0 1.5h7a.75.75 0 0 0 0-1.5zm0 3a.75.75 0 0 0 0 1.5h4.5a.75.75 0 0 0 0-1.5z"
     />
   </svg>
 )
@@ -899,6 +915,17 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                 <ExamIcon className="h-3.5 w-3.5" />
                 Exam
               </Link>
+
+              {isOshCourse(String(row.original.course || "")) ? (
+                <Link
+                  href={`/training-schedules/program?scheduleId=${row.original.id}&from=${status}`}
+                  className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-foreground hover:bg-muted cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ProgramIcon className="h-3.5 w-3.5" />
+                  Program
+                </Link>
+              ) : null}
             </div>
           </div>
         )
