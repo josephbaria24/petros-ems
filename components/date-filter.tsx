@@ -32,7 +32,7 @@ export type DateRange = {
   to: Date
 }
 
-export type FilterPreset = "today" | "yesterday" | "last7days" | "last30days" | "thisWeek" | "lastWeek" | "thisMonth" | "lastMonth" | "thisYear" | "custom"
+export type FilterPreset = "all" | "today" | "yesterday" | "last7days" | "last30days" | "thisWeek" | "lastWeek" | "thisMonth" | "lastMonth" | "thisYear" | "custom"
 
 interface DateFilterProps {
   value: FilterPreset
@@ -56,6 +56,8 @@ export function DateFilter({ value, dateRange, onChange }: DateFilterProps) {
     const today = new Date()
     
     switch (preset) {
+      case "all":
+        return { from: new Date(2000, 0, 1), to: new Date(2099, 11, 31) }
       case "today":
         return { from: today, to: today }
       case "yesterday":
@@ -124,6 +126,7 @@ export function DateFilter({ value, dateRange, onChange }: DateFilterProps) {
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
+          <SelectItem value="all">All</SelectItem>
           <SelectItem value="today">Today</SelectItem>
           <SelectItem value="yesterday">Yesterday</SelectItem>
           <SelectItem value="last7days">Last 7 Days</SelectItem>

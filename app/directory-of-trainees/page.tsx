@@ -11,6 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Avatar, AvatarImage } from '@/components/ui/avatar'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { formatOshScheduleDates } from '@/lib/osh-program'
 
 interface Course {
   id: string
@@ -39,6 +42,8 @@ interface Trainee {
   id_picture_url?: string
   training_type?: string
   batch_number?: number
+  course_name?: string
+  schedule_date?: string
 }
 
 interface TrainingEntry {
@@ -50,6 +55,29 @@ interface TrainingEntry {
   branch?: string
   status?: string
   created_at: string
+}
+
+const ALL_COURSES = 'all'
+
+async function scheduleIdsForDates(from: string, to: string) {
+  if (!from && !to) return null
+
+  let rangeQuery = tmsDb.from('schedule_ranges').select('schedule_id')
+  if (from && to) rangeQuery = rangeQuery.lte('start_date', to).gte('end_date', from)
+  else if (from) rangeQuery = rangeQuery.gte('end_date', from)
+  else rangeQuery = rangeQuery.lte('start_date', to)
+
+  let dateQuery = tmsDb.from('schedule_dates').select('schedule_id')
+  if (from) dateQuery = dateQuery.gte('date', from)
+  if (to) dateQuery = dateQuery.lte('date', to)
+
+  const [{ data: ranges }, { data: dates }] = await Promise.all([rangeQuery, dateQuery])
+  return Array.from(
+    new Set([
+      ...(ranges || []).map((r) => r.schedule_id),
+      ...(dates || []).map((d) => d.schedule_id),
+    ])
+  )
 }
 
 interface ImportRow {
@@ -76,7 +104,9 @@ interface ImportRow {
 
 export default function DirectoryTabs() {
   const [courses, setCourses] = useState<Course[]>([])
-  const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null)
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(ALL_COURSES)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [trainees, setTrainees] = useState<Trainee[]>([])
   const [trainingList, setTrainingList] = useState<TrainingEntry[]>([])
   const [batchNumbers, setBatchNumbers] = useState<number[]>([])
@@ -115,24 +145,27 @@ export default function DirectoryTabs() {
 
   // 🔁 Fetch batch numbers for selected course
   useEffect(() => {
-    if (!selectedCourseId) return
-
     const fetchBatches = async () => {
-      const { data, error } = await tmsDb
+      let query = tmsDb
         .from('trainings')
         .select('batch_number')
-        .eq('course_id', selectedCourseId)
         .not('batch_number', 'is', null)
-    
+
+      if (selectedCourseId !== ALL_COURSES) {
+        query = query.eq('course_id', selectedCourseId)
+      }
+
+      const { data, error } = await query
+
       if (error) {
         console.error('Error fetching batches:', error)
         return
       }
-    
+
       const uniqueBatches = Array.from(
-        new Set(data.map((t: any) => t.batch_number))
+        new Set((data || []).map((t: { batch_number: number }) => t.batch_number))
       ).sort((a, b) => a - b)
-    
+
       setBatchNumbers(uniqueBatches)
       setSelectedBatch(null)
     }
@@ -140,41 +173,78 @@ export default function DirectoryTabs() {
     fetchBatches()
   }, [selectedCourseId])
 
-  // 👥 Fetch trainees for selected course and batch
+  // 👥 Fetch trainees for selected course, dates, and batch
   useEffect(() => {
-    if (!selectedCourseId) return
-
     const fetchTrainees = async () => {
       const from = (currentPage - 1) * itemsPerPage
       const to = from + itemsPerPage - 1
-    
+
+      const scheduleIds = await scheduleIdsForDates(dateFrom, dateTo)
+      if (scheduleIds && scheduleIds.length === 0) {
+        setTrainees([])
+        setTotalCount(0)
+        return
+      }
+
       let query = tmsDb
         .from('trainings')
         .select(`
           id, certificate_number, first_name, last_name, middle_initial, suffix, gender, age,
           company_name, company_position, mailing_city, company_region, company_industry,
           total_workers, company_email, email, phone_number, company_landline,
-          id_picture_url, training_type, batch_number
+          id_picture_url, training_type, batch_number, course_id, schedule_id,
+          courses ( name ),
+          schedules (
+            schedule_type,
+            schedule_ranges ( start_date, end_date ),
+            schedule_dates ( date )
+          )
         `, { count: 'exact' })
-        .eq('course_id', selectedCourseId)
         .order('last_name')
         .range(from, to)
-    
+
+      if (selectedCourseId !== ALL_COURSES) {
+        query = query.eq('course_id', selectedCourseId)
+      }
+
       if (selectedBatch !== null) {
         query = query.eq('batch_number', selectedBatch)
       }
-    
-      const { data, error, count } = await query
-    
-      if (error) console.error('Error fetching trainees:', error)
-      else {
-        setTrainees(data || [])
-        setTotalCount(count || 0)
+
+      if (scheduleIds) {
+        query = query.in('schedule_id', scheduleIds)
       }
+
+      const { data, error, count } = await query
+
+      if (error) {
+        console.error('Error fetching trainees:', error)
+        return
+      }
+
+      const mapped = (data || []).map((row) => {
+        const course = Array.isArray(row.courses) ? row.courses[0] : row.courses
+        const schedule = Array.isArray(row.schedules) ? row.schedules[0] : row.schedules
+        return {
+          ...row,
+          course_name: (course as { name?: string } | null)?.name || '',
+          schedule_date: schedule
+            ? formatOshScheduleDates(
+                schedule as {
+                  schedule_type?: string | null
+                  schedule_ranges?: { start_date?: string; end_date?: string }[] | null
+                  schedule_dates?: { date?: string }[] | null
+                }
+              )
+            : '',
+        }
+      })
+      setTrainees(mapped)
+      setTotalCount(count || 0)
     }
 
     fetchTrainees()
-  }, [selectedCourseId, selectedBatch, currentPage])
+  }, [selectedCourseId, selectedBatch, currentPage, dateFrom, dateTo])
 
   // 🧾 Fetch training list
   useEffect(() => {
@@ -363,8 +433,7 @@ export default function DirectoryTabs() {
       })
 
       // Refresh the trainee list if current course is selected
-      if (selectedCourseId === importCourseId) {
-        // Trigger refetch
+      if (selectedCourseId === ALL_COURSES || selectedCourseId === importCourseId) {
         setCurrentPage(1)
       }
 
@@ -395,21 +464,20 @@ export default function DirectoryTabs() {
         {/* 🧑 Directory of Trainees Tab */}
         <TabsContent value="directory" className="space-y-4">
           <div className="flex flex-wrap gap-4 items-end">
-            {/* Course Select */}
             <div className="w-64 space-y-1">
-              {selectedCourseId && (
-                <p className="text-sm text-muted-foreground">
-                  Selected Course:{' '}
-                  <span className="font-medium">
-                    {courses.find(c => c.id === selectedCourseId)?.name}
-                  </span>
-                </p>
-              )}
-              <Select onValueChange={(val) => { setSelectedCourseId(val); setCurrentPage(1); }}>
+              <Label>Course</Label>
+              <Select
+                value={selectedCourseId}
+                onValueChange={(val) => {
+                  setSelectedCourseId(val)
+                  setCurrentPage(1)
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Select course" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value={ALL_COURSES}>All</SelectItem>
                   {courses.map(course => (
                     <SelectItem key={course.id} value={course.id}>
                       {course.name}
@@ -419,22 +487,48 @@ export default function DirectoryTabs() {
               </Select>
             </div>
 
-            {/* Batch Select */}
+            <div className="w-44 space-y-1">
+              <Label htmlFor="directory-date-from">From date</Label>
+              <Input
+                id="directory-date-from"
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(e) => {
+                  setDateFrom(e.target.value)
+                  setCurrentPage(1)
+                }}
+              />
+            </div>
+
+            <div className="w-44 space-y-1">
+              <Label htmlFor="directory-date-to">To date</Label>
+              <Input
+                id="directory-date-to"
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(e) => {
+                  setDateTo(e.target.value)
+                  setCurrentPage(1)
+                }}
+              />
+            </div>
+
             <div className="w-40 space-y-1">
-              {selectedBatch !== null && (
-                <p className="text-sm text-muted-foreground">
-                  Selected Batch: <span className="font-medium">Batch {selectedBatch}</span>
-                </p>
-              )}
+              <Label>Batch</Label>
               <Select
-                value={selectedBatch !== null ? selectedBatch.toString() : ''}
-                onValueChange={(val) => { setSelectedBatch(val ? parseInt(val) : null); setCurrentPage(1); }}
-                disabled={!batchNumbers.length}
+                value={selectedBatch !== null ? selectedBatch.toString() : 'all'}
+                onValueChange={(val) => {
+                  setSelectedBatch(val === 'all' ? null : parseInt(val))
+                  setCurrentPage(1)
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select batch" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
                   {batchNumbers.map(batch => (
                     <SelectItem key={batch} value={batch.toString()}>
                       Batch {batch}
@@ -462,6 +556,8 @@ export default function DirectoryTabs() {
                   <TableRow className="bg-card border-b">
                     <TableHead className="font-semibold">No.</TableHead>
                     <TableHead className="font-semibold">Certificate No.</TableHead>
+                    <TableHead className="font-semibold">Course</TableHead>
+                    <TableHead className="font-semibold">Date</TableHead>
                     <TableHead className="font-semibold">Full Name</TableHead>
                     <TableHead className="font-semibold">Sex</TableHead>
                     <TableHead className="font-semibold">Age</TableHead>
@@ -483,8 +579,8 @@ export default function DirectoryTabs() {
                 <TableBody>
                   {trainees.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={18} className="text-center py-8 text-muted-foreground">
-                        {selectedCourseId ? 'No trainees found' : 'Please select a course'}
+                      <TableCell colSpan={20} className="text-center py-8 text-muted-foreground">
+                        No trainees found
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -492,6 +588,8 @@ export default function DirectoryTabs() {
                       <TableRow key={t.id} className="border-b bg-card dark:text-white text-primary">
                         <TableCell>{(currentPage - 1) * itemsPerPage + i + 1}</TableCell>
                         <TableCell>{t.certificate_number ?? '-'}</TableCell>
+                        <TableCell>{t.course_name || '-'}</TableCell>
+                        <TableCell className="whitespace-nowrap">{t.schedule_date || '-'}</TableCell>
                         <TableCell>{`${t.last_name}, ${t.first_name} ${t.middle_initial ?? ''} ${t.suffix ?? ''}`}</TableCell>
                         <TableCell>{t.gender ?? '-'}</TableCell>
                         <TableCell>{t.age ?? '-'}</TableCell>

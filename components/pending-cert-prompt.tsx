@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -18,31 +18,47 @@ import {
   type PendingCertSchedule,
 } from "@/lib/pending-cert-reminders"
 
-const CHIP_POS_STORAGE_KEY = "pending-cert-chip-position-v1"
+const CHIP_CORNER_STORAGE_KEY = "pending-cert-chip-corner-v2"
+const CHIP_POS_STORAGE_KEY_LEGACY = "pending-cert-chip-position-v1"
 const CHIP_DRAG_THRESHOLD_PX = 6
-const CHIP_EDGE_PAD = 12
+const CHIP_EDGE_PAD = 20
+const CHIP_CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"] as const
 
+type ChipCorner = (typeof CHIP_CORNERS)[number]
 type ChipPosition = { left: number; top: number }
 
-function loadChipPosition(): ChipPosition | null {
-  if (typeof window === "undefined") return null
+function isChipCorner(value: unknown): value is ChipCorner {
+  return CHIP_CORNERS.includes(value as ChipCorner)
+}
+
+function loadChipCorner(): ChipCorner {
+  if (typeof window === "undefined") return "bottom-right"
   try {
-    const raw = localStorage.getItem(CHIP_POS_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<ChipPosition>
-    if (typeof parsed.left !== "number" || typeof parsed.top !== "number") return null
-    if (!Number.isFinite(parsed.left) || !Number.isFinite(parsed.top)) return null
-    return { left: parsed.left, top: parsed.top }
+    localStorage.removeItem(CHIP_POS_STORAGE_KEY_LEGACY)
+    const raw = localStorage.getItem(CHIP_CORNER_STORAGE_KEY)
+    if (isChipCorner(raw)) return raw
   } catch {
-    return null
+    // ignore quota / private mode
+  }
+  return "bottom-right"
+}
+
+function saveChipCorner(corner: ChipCorner) {
+  try {
+    localStorage.setItem(CHIP_CORNER_STORAGE_KEY, corner)
+  } catch {
+    // ignore quota / private mode
   }
 }
 
-function saveChipPosition(pos: ChipPosition) {
-  try {
-    localStorage.setItem(CHIP_POS_STORAGE_KEY, JSON.stringify(pos))
-  } catch {
-    // ignore quota / private mode
+function getCornerPositions(width: number, height: number): Record<ChipCorner, ChipPosition> {
+  const maxLeft = Math.max(CHIP_EDGE_PAD, window.innerWidth - width - CHIP_EDGE_PAD)
+  const maxTop = Math.max(CHIP_EDGE_PAD, window.innerHeight - height - CHIP_EDGE_PAD)
+  return {
+    "top-left": { left: CHIP_EDGE_PAD, top: CHIP_EDGE_PAD },
+    "top-right": { left: maxLeft, top: CHIP_EDGE_PAD },
+    "bottom-left": { left: CHIP_EDGE_PAD, top: maxTop },
+    "bottom-right": { left: maxLeft, top: maxTop },
   }
 }
 
@@ -52,6 +68,22 @@ function clampChipPosition(pos: ChipPosition, width: number, height: number): Ch
   return {
     left: Math.min(maxLeft, Math.max(CHIP_EDGE_PAD, pos.left)),
     top: Math.min(maxTop, Math.max(CHIP_EDGE_PAD, pos.top)),
+  }
+}
+
+function nearestChipCorner(pos: ChipPosition, width: number, height: number): ChipCorner {
+  const cx = pos.left + width / 2
+  const cy = pos.top + height / 2
+  const horizontal = cx < window.innerWidth / 2 ? "left" : "right"
+  const vertical = cy < window.innerHeight / 2 ? "top" : "bottom"
+  return `${vertical}-${horizontal}` as ChipCorner
+}
+
+function offscreenChipStart(corner: ChipCorner, target: ChipPosition, width: number): ChipPosition {
+  const fromRight = corner.endsWith("right")
+  return {
+    left: fromRight ? window.innerWidth + 16 : -width - 16,
+    top: target.top,
   }
 }
 
@@ -220,9 +252,13 @@ export function PendingCertPrompt() {
   const [collapsed, setCollapsed] = useState(true)
   const [loading, setLoading] = useState(true)
   const [pickedId, setPickedId] = useState<string | null>(null)
+  const [chipCorner, setChipCorner] = useState<ChipCorner>("bottom-right")
   const [chipPos, setChipPos] = useState<ChipPosition | null>(null)
   const [draggingChip, setDraggingChip] = useState(false)
   const chipRef = useRef<HTMLButtonElement | null>(null)
+  const chipEnteredRef = useRef(false)
+  const draggingChipRef = useRef(false)
+  const chipCornerRef = useRef<ChipCorner>("bottom-right")
   const chipDragRef = useRef<{
     pointerId: number
     startX: number
@@ -232,24 +268,59 @@ export function PendingCertPrompt() {
     moved: boolean
   } | null>(null)
 
-  useEffect(() => {
-    setChipPos(loadChipPosition())
-  }, [])
+  useLayoutEffect(() => {
+    if (!collapsed || items.length === 0) return
+    const el = chipRef.current
+    if (!el || draggingChipRef.current) return
+
+    const corner = chipEnteredRef.current ? chipCorner : loadChipCorner()
+    const width = el.offsetWidth
+    const height = el.offsetHeight
+    const target = getCornerPositions(width, height)[corner]
+    chipCornerRef.current = corner
+
+    if (!chipEnteredRef.current) {
+      setChipCorner(corner)
+      setChipPos(offscreenChipStart(corner, target, width))
+      const inner = { id: 0 }
+      const outer = requestAnimationFrame(() => {
+        inner.id = requestAnimationFrame(() => {
+          chipEnteredRef.current = true
+          setChipPos(target)
+        })
+      })
+      return () => {
+        cancelAnimationFrame(outer)
+        cancelAnimationFrame(inner.id)
+      }
+    }
+
+    setChipPos((prev) => {
+      if (prev && prev.left === target.left && prev.top === target.top) return prev
+      return target
+    })
+  }, [collapsed, items.length, chipCorner])
 
   useEffect(() => {
-    const keepOnScreen = () => {
+    const keepInCorner = () => {
+      if (draggingChipRef.current) return
+      const el = chipRef.current
+      if (!el) return
+      const next = getCornerPositions(el.offsetWidth, el.offsetHeight)[chipCornerRef.current]
       setChipPos((prev) => {
-        if (!prev || !chipRef.current) return prev
-        const rect = chipRef.current.getBoundingClientRect()
-        const next = clampChipPosition(prev, rect.width, rect.height)
-        if (next.left === prev.left && next.top === prev.top) return prev
-        saveChipPosition(next)
+        if (prev && prev.left === next.left && prev.top === next.top) return prev
         return next
       })
     }
-    window.addEventListener("resize", keepOnScreen)
-    return () => window.removeEventListener("resize", keepOnScreen)
+    window.addEventListener("resize", keepInCorner)
+    return () => window.removeEventListener("resize", keepInCorner)
   }, [])
+
+  useEffect(() => {
+    if (collapsed) return
+    chipEnteredRef.current = false
+    setChipPos(null)
+  }, [collapsed])
 
   useEffect(() => {
     let cancelled = false
@@ -420,6 +491,7 @@ export function PendingCertPrompt() {
         moved: false,
       }
       el.setPointerCapture(e.pointerId)
+      draggingChipRef.current = true
       setDraggingChip(true)
     }
 
@@ -445,6 +517,7 @@ export function PendingCertPrompt() {
       const drag = chipDragRef.current
       if (!drag || drag.pointerId !== e.pointerId) return
       chipDragRef.current = null
+      draggingChipRef.current = false
       setDraggingChip(false)
       try {
         chipRef.current?.releasePointerCapture(e.pointerId)
@@ -452,10 +525,22 @@ export function PendingCertPrompt() {
         // already released
       }
       if (drag.moved) {
-        setChipPos((prev) => {
-          if (prev) saveChipPosition(prev)
-          return prev
-        })
+        const el = chipRef.current
+        const width = el?.offsetWidth ?? 188
+        const height = el?.offsetHeight ?? 40
+        const current = clampChipPosition(
+          {
+            left: drag.originLeft + (e.clientX - drag.startX),
+            top: drag.originTop + (e.clientY - drag.startY),
+          },
+          width,
+          height
+        )
+        const corner = nearestChipCorner(current, width, height)
+        chipCornerRef.current = corner
+        saveChipCorner(corner)
+        setChipCorner(corner)
+        setChipPos(getCornerPositions(width, height)[corner])
         return
       }
       setCollapsed(false)
@@ -474,9 +559,13 @@ export function PendingCertPrompt() {
           // Open is handled on pointer up when not dragged; block default click.
           e.preventDefault()
         }}
-        aria-label="Pending certificate reminders. Drag to move, click to open."
+        aria-label="Pending certificate reminders. Drag to a corner, click to open."
         className={`fixed bottom-5 right-5 z-[80] flex max-w-[12rem] touch-none select-none items-center gap-1.5 rounded-full border border-amber-500 bg-amber-400 px-2 py-1 text-left text-amber-950 shadow-md shadow-amber-500/30 ring-1 ring-amber-300/70 hover:bg-amber-300 ${
-          draggingChip ? "cursor-grabbing animate-none" : "cursor-grab animate-pulse"
+          chipPos ? "" : "invisible"
+        } ${
+          draggingChip
+            ? "cursor-grabbing animate-none"
+            : `cursor-grab animate-pulse ${chipPos ? "transition-[left,top] duration-500 ease-out" : ""}`
         }`}
       >
         <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-950 text-amber-100">
