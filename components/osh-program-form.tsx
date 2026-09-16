@@ -1,16 +1,26 @@
 "use client"
 
 import * as React from "react"
-import { Plus, Trash2 } from "lucide-react"
+import { Check, ChevronsUpDown, Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import {
   type OshProgram,
   type OshProgramSession,
 } from "@/lib/osh-program"
+import { type TrainerPerson } from "@/lib/trainer-repo-people"
 
 type OshProgramFormProps = {
   value: OshProgram
@@ -69,7 +79,145 @@ function CellInput({
   )
 }
 
+function ResourcePersonSelect({
+  value,
+  trainers,
+  disabled,
+  onSelectTrainer,
+  onCustomName,
+}: {
+  value: string
+  trainers: TrainerPerson[]
+  disabled?: boolean
+  onSelectTrainer: (trainer: TrainerPerson) => void
+  onCustomName: (name: string) => void
+}) {
+  const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState("")
+
+  const applyCustom = (name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    const match = trainers.find((t) => t.name.toLowerCase() === trimmed.toLowerCase())
+    if (match) onSelectTrainer(match)
+    else onCustomName(trimmed)
+    setOpen(false)
+    setQuery("")
+  }
+
+  if (disabled) {
+    return <CellInput value={value} disabled onChange={() => undefined} />
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setQuery("")
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          role="combobox"
+          aria-expanded={open}
+          className={cn(
+            "h-8 w-full justify-between px-1 text-left text-xs font-normal shadow-none hover:bg-transparent",
+            !value && "text-muted-foreground"
+          )}
+        >
+          <span className="truncate">{value || "Select trainer"}</span>
+          <ChevronsUpDown className="ml-1 h-3.5 w-3.5 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[min(92vw,360px)] p-0" align="start">
+        <Command shouldFilter>
+          <CommandInput
+            placeholder="Search trainer..."
+            value={query}
+            onValueChange={setQuery}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && query.trim()) {
+                e.preventDefault()
+                applyCustom(query)
+              }
+            }}
+          />
+          <CommandList onWheel={(e) => e.stopPropagation()}>
+            <CommandEmpty>
+              <div className="space-y-2 p-2 text-left text-xs text-muted-foreground">
+                <p>No trainer found in the repository.</p>
+                <Input
+                  placeholder="Type a name and press Enter"
+                  className="h-8 text-xs"
+                  defaultValue={query}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      applyCustom((e.target as HTMLInputElement).value)
+                    }
+                  }}
+                />
+              </div>
+            </CommandEmpty>
+            <CommandGroup heading="Trainer repository">
+              {trainers.map((trainer) => (
+                <CommandItem
+                  key={trainer.id}
+                  value={`${trainer.name} ${trainer.accreditation} ${trainer.validity}`}
+                  onSelect={() => {
+                    onSelectTrainer(trainer)
+                    setOpen(false)
+                    setQuery("")
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4 shrink-0",
+                      value === trainer.name ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate">{trainer.name}</span>
+                    {(trainer.accreditation || trainer.validity) && (
+                      <span className="block truncate text-[10px] text-muted-foreground">
+                        {[trainer.accreditation, trainer.validity].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 export function OshProgramForm({ value, onChange, readOnly }: OshProgramFormProps) {
+  const [trainers, setTrainers] = React.useState<TrainerPerson[]>([])
+
+  React.useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await fetch("/api/osh-program/trainers")
+        const payload = (await res.json().catch(() => ({}))) as { trainers?: TrainerPerson[] }
+        if (!cancelled && res.ok && Array.isArray(payload.trainers)) {
+          setTrainers(payload.trainers)
+        }
+      } catch {
+        // Keep the text fields usable if the repository is unavailable.
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const patch = (partial: Partial<OshProgram>) => onChange({ ...value, ...partial })
   const patchType = (key: keyof OshProgram["trainingTypes"], next: boolean) =>
     patch({ trainingTypes: { ...value.trainingTypes, [key]: next } })
@@ -264,10 +412,22 @@ export function OshProgramForm({ value, onChange, readOnly }: OshProgramFormProp
                     />
                   </td>
                   <td className="p-1">
-                    <CellInput value={s.resourcePerson} disabled={readOnly} onChange={(v) => updateSession(s.id, { resourcePerson: v })} />
+                    <ResourcePersonSelect
+                      value={s.resourcePerson}
+                      trainers={trainers}
+                      disabled={readOnly}
+                      onSelectTrainer={(trainer) =>
+                        updateSession(s.id, {
+                          resourcePerson: trainer.name,
+                          accreditation: trainer.accreditation,
+                          validity: trainer.validity,
+                        })
+                      }
+                      onCustomName={(name) => updateSession(s.id, { resourcePerson: name })}
+                    />
                   </td>
                   <td className="p-1">
-                    <CellInput value={s.accreditation} disabled={readOnly} onChange={(v) => updateSession(s.id, { accreditation: v })} />
+                    <CellInput value={s.accreditation} disabled={readOnly} onChange={(v) => updateSession(s.id, { accreditation: v })} placeholder="Auto-filled" />
                   </td>
                   <td className="p-1">
                     <CellInput value={s.validity} disabled={readOnly} onChange={(v) => updateSession(s.id, { validity: v })} placeholder="mm/dd/yyyy" />
@@ -324,8 +484,8 @@ export function OshProgramForm({ value, onChange, readOnly }: OshProgramFormProp
           </label>
         </div>
         <p className="text-[11px] text-muted-foreground">
-          The official COSH / BOSH PDF agenda stays as printed. Tick the boxes here, fill dates, venue, resource
-          persons and accreditation, then use Show preview to see the actual form before export.
+          The official COSH / BOSH PDF agenda stays as printed. Tick the boxes here, fill dates and venue, then
+          pick a resource person from the trainer repository so accreditation and validity fill in automatically.
         </p>
       </div>
     </div>

@@ -41,6 +41,8 @@ type TemplateLayout = {
   person: { x: number; w: number }
   accreditation: { x: number; w: number }
   validity: { x: number; w: number }
+  printedFacilitator: { x: number; w: number }
+  printedFacilitators: SessionSlot[]
   sessions: SessionSlot[]
 }
 
@@ -66,9 +68,17 @@ const COSH_LAYOUT: TemplateLayout = {
     submissionInitial: { x: 132.3, y: 598.1 },
     submissionActual: { x: 342.6, y: 597.5 },
   },
-  person: { x: 318, w: 72 },
-  accreditation: { x: 392, w: 96 },
-  validity: { x: 492, w: 70 },
+  person: { x: 314, w: 74 },
+  accreditation: { x: 398, w: 90 },
+  validity: { x: 502, w: 54 },
+  printedFacilitator: { x: 400, w: 66 },
+  printedFacilitators: [
+    { page: 0, y: 456.2 },
+    { page: 0, y: 197.9 },
+    { page: 1, y: 573.5 },
+    { page: 1, y: 398.5 },
+    { page: 1, y: 139 },
+  ],
   sessions: [
     { page: 0, y: 456.2 },
     { page: 0, y: 428.2 },
@@ -126,9 +136,17 @@ const BOSH_LAYOUT: TemplateLayout = {
     submissionInitial: { x: 153, y: 452.7 },
     submissionActual: { x: 362.9, y: 452.6 },
   },
-  person: { x: 346, w: 70 },
-  accreditation: { x: 418, w: 88 },
-  validity: { x: 510, w: 72 },
+  person: { x: 338, w: 74 },
+  accreditation: { x: 422, w: 86 },
+  validity: { x: 518, w: 60 },
+  printedFacilitator: { x: 416, w: 76 },
+  printedFacilitators: [
+    { page: 0, y: 277 },
+    { page: 1, y: 612.9 },
+    { page: 1, y: 422.7 },
+    { page: 1, y: 264.1 },
+    { page: 2, y: 636.3 },
+  ],
   sessions: [
     { page: 0, y: 277 },
     { page: 0, y: 235.1 },
@@ -186,11 +204,29 @@ function fitSize(font: PDFFont, text: string, size: number, maxWidth: number) {
   return s
 }
 
-function wrapText(font: PDFFont, text: string, size: number, maxWidth: number, maxLines: number) {
+function wrapAll(font: PDFFont, text: string, size: number, maxWidth: number) {
   const words = ascii(text).split(/\s+/).filter(Boolean)
-  if (!words.length) return []
   const lines: string[] = []
   let current = ""
+
+  const pushChunks = (token: string) => {
+    if (font.widthOfTextAtSize(token, size) <= maxWidth) {
+      current = token
+      return
+    }
+    let chunk = ""
+    for (const ch of token) {
+      const trial = chunk + ch
+      if (!chunk || font.widthOfTextAtSize(trial, size) <= maxWidth) {
+        chunk = trial
+      } else {
+        lines.push(chunk)
+        chunk = ch
+      }
+    }
+    current = chunk
+  }
+
   for (const word of words) {
     const next = current ? `${current} ${word}` : word
     if (font.widthOfTextAtSize(next, size) <= maxWidth) {
@@ -198,11 +234,27 @@ function wrapText(font: PDFFont, text: string, size: number, maxWidth: number, m
       continue
     }
     if (current) lines.push(current)
-    if (lines.length >= maxLines) return lines
-    current = word
+    pushChunks(word)
   }
-  if (current && lines.length < maxLines) lines.push(current)
+  if (current) lines.push(current)
   return lines
+}
+
+function layoutCell(font: PDFFont, text: string, maxWidth: number, maxHeight: number, startSize = 7) {
+  const maxPossibleLines = Math.max(1, Math.floor((maxHeight + 0.5) / 5))
+  for (let maxLines = 1; maxLines <= Math.min(4, maxPossibleLines + 1); maxLines++) {
+    for (let size = startSize; size >= 4.2; size -= 0.2) {
+      const lines = wrapAll(font, text, size, maxWidth)
+      const lineH = size + 0.45
+      if (lines.length <= maxLines && lines.length * lineH <= maxHeight + 0.5) {
+        return { lines, size, lineH }
+      }
+    }
+  }
+  const size = 4.2
+  const lineH = size + 0.45
+  const maxLines = Math.max(1, Math.floor(maxHeight / lineH))
+  return { lines: wrapAll(font, text, size, maxWidth).slice(0, maxLines), size, lineH }
 }
 
 function writeField(
@@ -216,9 +268,10 @@ function writeField(
   const clean = ascii(text)
   if (!clean || !box.w) return
   cover(page, box, box.h || 12)
-  const lines = wrapText(font, clean, size, box.w, maxLines)
-  lines.forEach((line, i) => {
-    const used = fitSize(font, line, size, box.w as number)
+  const maxH = (box.h || 12) + (maxLines - 1) * (size + 1)
+  const fitted = layoutCell(font, clean, box.w, Math.max(maxH, maxLines * (size + 1)), size)
+  fitted.lines.slice(0, maxLines).forEach((line, i) => {
+    const used = fitSize(font, line, fitted.size, box.w as number)
     page.drawText(line, {
       x: box.x + 1,
       y: box.y + 3 - i * (used + 1),
@@ -229,24 +282,58 @@ function writeField(
   })
 }
 
+function cellBand(slots: SessionSlot[], index: number) {
+  const slot = slots[index]
+  const prev = index > 0 ? slots[index - 1] : undefined
+  const next = slots[index + 1]
+  const top = prev && prev.page === slot.page ? prev.y - 9 : slot.y + 15
+  const bottom = next && next.page === slot.page ? next.y + 9 : slot.y - 11
+  return { top, bottom }
+}
+
+function isFacilitatorName(name: string) {
+  return /^\s*training\s+facilitator\s*$/i.test(name)
+}
+
+function hasPrintedFacilitator(layout: TemplateLayout, slot: SessionSlot) {
+  return layout.printedFacilitators.some(
+    (printed) => printed.page === slot.page && Math.abs(printed.y - slot.y) < 1.6
+  )
+}
+
 function writeCell(
   page: PDFPage,
   font: PDFFont,
   text: string,
   x: number,
-  y: number,
   w: number,
+  preferredY: number,
+  top: number,
+  bottom: number,
 ) {
   const clean = ascii(text)
-  cover(page, { x, y: y - 2, w, h: 16 })
   if (!clean) return
-  const lines = wrapText(font, clean, 7, w - 2, 2)
+  const maxW = Math.max(12, w - 2)
+  const maxH = Math.max(9, top - bottom - 8)
+  const { lines, size, lineH } = layoutCell(font, clean, maxW, maxH)
+  const block = (lines.length - 1) * lineH
+  const minLast = bottom + 6.5
+  const maxFirst = top - 3.2
+  let lastBaseline = preferredY + 5.8
+  let firstBaseline = lastBaseline + block
+  if (firstBaseline > maxFirst) {
+    firstBaseline = maxFirst
+    lastBaseline = firstBaseline - block
+  }
+  if (lastBaseline < minLast) {
+    lastBaseline = minLast
+    firstBaseline = lastBaseline + block
+  }
   lines.forEach((line, i) => {
-    const used = fitSize(font, line, 7, w - 2)
     page.drawText(line, {
-      x: x + 1,
-      y: y - i * (used + 1),
-      size: used,
+      x: x + 1.5,
+      y: firstBaseline - i * lineH,
+      size,
       font,
       color: BLACK,
     })
@@ -318,9 +405,20 @@ export async function fillOshProgramPdf(program: OshProgram): Promise<Uint8Array
     const session = program.sessions[i]
     const page = pages[slot.page]
     if (!session || !page) return
-    writeCell(page, font, session.resourcePerson, layout.person.x, slot.y, layout.person.w)
-    writeCell(page, font, session.accreditation, layout.accreditation.x, slot.y, layout.accreditation.w)
-    writeCell(page, font, session.validity, layout.validity.x, slot.y, layout.validity.w)
+    const { top, bottom } = cellBand(layout.sessions, i)
+    if (isFacilitatorName(session.resourcePerson)) return
+    if (!ascii(session.resourcePerson) && !ascii(session.accreditation) && !ascii(session.validity)) return
+    if (hasPrintedFacilitator(layout, slot)) {
+      cover(page, {
+        x: layout.printedFacilitator.x + 2,
+        y: slot.y + 0.6,
+        w: layout.printedFacilitator.w - 4,
+        h: 7.6,
+      })
+    }
+    writeCell(page, font, session.resourcePerson, layout.person.x, layout.person.w, slot.y, top, bottom)
+    writeCell(page, font, session.accreditation, layout.accreditation.x, layout.accreditation.w, slot.y, top, bottom)
+    writeCell(page, font, session.validity, layout.validity.x, layout.validity.w, slot.y, top, bottom)
   })
 
   const footerPage = kind === "cosh" ? pages[1] : pages[2]
