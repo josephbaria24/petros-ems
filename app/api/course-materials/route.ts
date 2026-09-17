@@ -94,7 +94,7 @@ export async function DELETE(req: NextRequest) {
 // PATCH — toggle active status or update password
 export async function PATCH(req: NextRequest) {
   const body = await req.json();
-  const { id, is_active, password, title } = body;
+  const { id, is_active, password, title, file_url, file_type } = body;
 
   if (!id) {
     return NextResponse.json({ error: "id is required" }, { status: 400 });
@@ -106,6 +106,8 @@ export async function PATCH(req: NextRequest) {
   if (typeof is_active === "boolean") updateData.is_active = is_active;
   if (password) updateData.password_hash = hashPassword(password);
   if (title) updateData.title = title;
+  if (typeof file_url === "string" && file_url.trim()) updateData.file_url = file_url.trim();
+  if (typeof file_type === "string" && file_type.trim()) updateData.file_type = file_type.trim();
 
   const { data, error } = await supabase
     .from("course_materials")

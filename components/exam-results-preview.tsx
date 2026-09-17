@@ -154,11 +154,11 @@ export function ExamResultsPreview({
   const bothTaken = rows.filter((r) => r.pre && r.post).length
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-[#1A1D66]/15 bg-white shadow-md dark:border-white/10 dark:bg-card">
+    <section className="overflow-hidden rounded-xl border bg-card">
       <div
         className={cn(
-          "flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-[#1A1D66] to-[#2a2f7a] px-5 py-3 text-white",
-          open && "border-b border-[#FFCC00]/50"
+          "flex flex-wrap items-center justify-between gap-3 bg-muted/60 px-5 py-3",
+          open && "border-b"
         )}
       >
         <button
@@ -167,21 +167,21 @@ export function ExamResultsPreview({
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >
-          <ChevronDown className={cn("h-5 w-5 shrink-0 transition-transform", open ? "rotate-180" : "rotate-0")} />
+          <ChevronDown className={cn("h-5 w-5 shrink-0 text-muted-foreground transition-transform", open ? "rotate-180" : "rotate-0")} />
           <span className="min-w-0">
             <span className="flex flex-wrap items-center gap-2">
-              <span className="text-lg font-bold tracking-tight">Results preview</span>
-              <Badge className="border-0 bg-[#FFCC00] text-[#1A1D66] hover:bg-[#FFCC00]">
+              <span className="text-base font-semibold">Results preview</span>
+              <Badge variant="secondary">
                 {rows.length} trainee{rows.length === 1 ? "" : "s"}
               </Badge>
               {!open ? (
-                <span className="text-xs text-white/75">
+                <span className="text-xs text-muted-foreground">
                   Pre {preTaken}/{rows.length} · Post {postTaken}/{rows.length} · Both {bothTaken}
                 </span>
               ) : null}
             </span>
             {open ? (
-              <span className="mt-1 block text-sm text-white/75">
+              <span className="mt-1 block text-sm text-muted-foreground">
                 Live scores for this schedule. Use Export summary for the printable Training Examination Result.
               </span>
             ) : null}
@@ -190,7 +190,7 @@ export function ExamResultsPreview({
         <Button
           size="sm"
           variant="outline"
-          className="gap-1.5 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+          className="gap-1.5"
           onClick={(e) => {
             e.stopPropagation()
             void load()
@@ -205,29 +205,29 @@ export function ExamResultsPreview({
       {open ? (
         <>
       <div className="grid gap-2 border-b border-border px-5 py-3 sm:grid-cols-3">
-        <div className="rounded-lg bg-[#1A1D66]/5 px-3 py-2 dark:bg-white/5">
+        <div className="rounded-lg bg-muted px-3 py-2">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Pre-test submitted</p>
-          <p className="text-lg font-bold text-[#1A1D66] dark:text-foreground">
+          <p className="text-lg font-bold">
             {preTaken}
             <span className="text-sm font-medium text-muted-foreground"> / {rows.length}</span>
           </p>
         </div>
-        <div className="rounded-lg bg-[#1A1D66]/5 px-3 py-2 dark:bg-white/5">
+        <div className="rounded-lg bg-muted px-3 py-2">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Post-test submitted</p>
-          <p className="text-lg font-bold text-[#1A1D66] dark:text-foreground">
+          <p className="text-lg font-bold">
             {postTaken}
             <span className="text-sm font-medium text-muted-foreground"> / {rows.length}</span>
           </p>
         </div>
-        <div className="rounded-lg bg-[#FFCC00]/15 px-3 py-2">
+        <div className="rounded-lg bg-muted px-3 py-2">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Completed both</p>
-          <p className="text-lg font-bold text-[#1A1D66] dark:text-foreground">{bothTaken}</p>
+          <p className="text-lg font-bold">{bothTaken}</p>
         </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin text-[#1A1D66] dark:text-[#FFCC00]" />
+          <Loader2 className="h-5 w-5 animate-spin" />
           Loading results…
         </div>
       ) : rows.length === 0 && unmatched.length === 0 ? (

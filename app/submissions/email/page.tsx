@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { tmsDb } from "@/lib/supabase-client"
@@ -37,7 +37,24 @@ import {
   History,
   CheckCircle2,
   XCircle,
+  Eye,
+  FileText,
+  Download,
+  Copy,
+  ExternalLink,
+  Plus,
+  Pencil,
+  Trash2,
+  RefreshCw,
 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 type ComposerEmailHistoryItem = {
   at: string
@@ -108,6 +125,53 @@ type CourseMaterial = {
   is_active: boolean
 }
 
+function mimeFromFilename(name: string) {
+  const ext = name.split(".").pop()?.toLowerCase() || ""
+  const map: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    bmp: "image/bmp",
+    svg: "image/svg+xml",
+    pdf: "application/pdf",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    csv: "text/csv",
+    txt: "text/plain",
+  }
+  return map[ext] || "application/octet-stream"
+}
+
+function isImageFilename(name: string) {
+  return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name)
+}
+
+function isPdfFilename(name: string) {
+  return /\.pdf$/i.test(name)
+}
+
+function attachmentDataUrl(att: LocalAttachment) {
+  return `data:${mimeFromFilename(att.filename)};base64,${att.content}`
+}
+
+function downloadAttachment(att: LocalAttachment) {
+  const a = document.createElement("a")
+  a.href = attachmentDataUrl(att)
+  a.download = att.filename
+  a.click()
+}
+
+function filenameForMaterial(material: CourseMaterial) {
+  const fromUrl = material.file_url.split("?")[0].split("/").pop() || ""
+  if (fromUrl.includes(".")) return decodeURIComponent(fromUrl)
+  const ext = material.file_type && !["other", "image"].includes(material.file_type) ? `.${material.file_type}` : ""
+  return `${material.title || "material"}${ext}`
+}
+
 type EmailComposerTemplate = {
   id: string
   name: string
@@ -157,6 +221,8 @@ export default function SubmissionsEmailPage() {
 
   const editorRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const materialReplaceInputRef = useRef<HTMLInputElement | null>(null)
+  const editingAnchorRef = useRef<HTMLAnchorElement | null>(null)
   const defaultHeaderInitializedRef = useRef(false)
 
   const [loading, setLoading] = useState(true)
@@ -172,6 +238,8 @@ export default function SubmissionsEmailPage() {
   const [headerHtml, setHeaderHtml] = useState("")
   const [footerHtml, setFooterHtml] = useState("")
   const [attachments, setAttachments] = useState<LocalAttachment[]>([])
+  const [previewAttachment, setPreviewAttachment] = useState<LocalAttachment | null>(null)
+  const [linkEditor, setLinkEditor] = useState<{ href: string; text: string } | null>(null)
   const [templates, setTemplates] = useState<EmailComposerTemplate[]>([])
   const [savingTemplate, setSavingTemplate] = useState(false)
   const [updatingTemplate, setUpdatingTemplate] = useState(false)
@@ -181,6 +249,16 @@ export default function SubmissionsEmailPage() {
   const [courseMaterials, setCourseMaterials] = useState<CourseMaterial[]>([])
   const [materialSearch, setMaterialSearch] = useState("")
   const [materialAttachingId, setMaterialAttachingId] = useState<string | null>(null)
+  const [materialDialogOpen, setMaterialDialogOpen] = useState(false)
+  const [uploadMaterialTitle, setUploadMaterialTitle] = useState("")
+  const [pendingMaterialFile, setPendingMaterialFile] = useState<File | null>(null)
+  const [uploadingMaterial, setUploadingMaterial] = useState(false)
+  const [replacingMaterialId, setReplacingMaterialId] = useState<string | null>(null)
+  const [busyMaterialId, setBusyMaterialId] = useState<string | null>(null)
+  const [renamingMaterialId, setRenamingMaterialId] = useState<string | null>(null)
+  const [renamingMaterialTitle, setRenamingMaterialTitle] = useState("")
+  const [viewingMaterial, setViewingMaterial] = useState<CourseMaterial | null>(null)
+  const [downloadingMaterial, setDownloadingMaterial] = useState(false)
   const [selectedTextColor, setSelectedTextColor] = useState("#000000")
   const [selectedTextSize, setSelectedTextSize] = useState("16")
 
@@ -352,21 +430,22 @@ export default function SubmissionsEmailPage() {
     loadData()
   }, [scheduleId])
 
-  useEffect(() => {
-    const loadCourseMaterials = async () => {
-      if (!courseId) return
-      try {
-        const response = await fetch(`/api/course-materials?courseId=${courseId}`)
-        const json = await response.json()
-        if (response.ok && Array.isArray(json.data)) {
-          setCourseMaterials(json.data.filter((m: CourseMaterial) => m.is_active))
-        }
-      } catch (error) {
-        console.error(error)
+  const loadCourseMaterials = useCallback(async (id = courseId) => {
+    if (!id) return
+    try {
+      const response = await fetch(`/api/course-materials?courseId=${id}`)
+      const json = await response.json()
+      if (response.ok && Array.isArray(json.data)) {
+        setCourseMaterials(json.data)
       }
+    } catch (error) {
+      console.error(error)
     }
-    loadCourseMaterials()
   }, [courseId])
+
+  useEffect(() => {
+    void loadCourseMaterials()
+  }, [loadCourseMaterials])
 
   useEffect(() => {
     const loadTemplates = async () => {
@@ -446,6 +525,33 @@ export default function SubmissionsEmailPage() {
       `
     )
     setEditorHtml(editorRef.current.innerHTML)
+  }
+
+  const onEditorClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const anchor = (event.target as HTMLElement | null)?.closest("a")
+    if (!anchor || !editorRef.current?.contains(anchor)) return
+    event.preventDefault()
+    event.stopPropagation()
+    const href = anchor.getAttribute("href") || ""
+    if (event.metaKey || event.ctrlKey) {
+      if (href) window.open(href, "_blank", "noopener,noreferrer")
+      return
+    }
+    editingAnchorRef.current = anchor
+    setLinkEditor({ href, text: (anchor.textContent || "").trim() })
+  }
+
+  const saveEditedLink = () => {
+    const anchor = editingAnchorRef.current
+    if (!anchor || !linkEditor) return
+    const href = linkEditor.href.trim()
+    const text = linkEditor.text.trim()
+    if (href) anchor.setAttribute("href", href)
+    if (text) anchor.textContent = text
+    if (editorRef.current) setEditorHtml(editorRef.current.innerHTML)
+    editingAnchorRef.current = null
+    setLinkEditor(null)
+    toast.success("Link updated")
   }
 
   const insertToken = (token: string) => {
@@ -544,6 +650,118 @@ export default function SubmissionsEmailPage() {
       toast.error(error.message || "Failed to attach course material")
     } finally {
       setMaterialAttachingId(null)
+    }
+  }
+
+  const uploadMaterialFile = async (file: File) => {
+    const formData = new FormData()
+    formData.append("material", file)
+    const uploadRes = await fetch("/api/upload-material", { method: "POST", body: formData })
+    const json = await uploadRes.json().catch(() => ({}))
+    if (!uploadRes.ok) throw new Error(json.error || "Upload failed")
+    return json as { url: string; fileType?: string }
+  }
+
+  const createCourseMaterial = async () => {
+    if (!courseId) {
+      toast.error("This schedule has no course, so materials can't be uploaded")
+      return
+    }
+    if (!pendingMaterialFile) {
+      toast.error("Please choose a file")
+      return
+    }
+    const title = uploadMaterialTitle.trim() || pendingMaterialFile.name.replace(/\.[^.]+$/, "")
+    setUploadingMaterial(true)
+    try {
+      const uploaded = await uploadMaterialFile(pendingMaterialFile)
+      const createRes = await fetch("/api/course-materials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          course_id: courseId,
+          title,
+          file_url: uploaded.url,
+          file_type: uploaded.fileType || "other",
+        }),
+      })
+      const json = await createRes.json().catch(() => ({}))
+      if (!createRes.ok) throw new Error(json.error || "Failed to save material")
+      toast.success(`Uploaded: ${title}`)
+      setMaterialDialogOpen(false)
+      setUploadMaterialTitle("")
+      setPendingMaterialFile(null)
+      await loadCourseMaterials()
+    } catch (error: any) {
+      toast.error(error.message || "Failed to upload material")
+    } finally {
+      setUploadingMaterial(false)
+    }
+  }
+
+  const replaceCourseMaterial = async (material: CourseMaterial, file: File) => {
+    setReplacingMaterialId(material.id)
+    try {
+      const uploaded = await uploadMaterialFile(file)
+      const res = await fetch("/api/course-materials", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: material.id,
+          file_url: uploaded.url,
+          file_type: uploaded.fileType || material.file_type,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || "Failed to replace file")
+      toast.success(`Replaced: ${material.title}`)
+      await loadCourseMaterials()
+    } catch (error: any) {
+      toast.error(error.message || "Failed to replace material")
+    } finally {
+      setReplacingMaterialId(null)
+      if (materialReplaceInputRef.current) materialReplaceInputRef.current.value = ""
+    }
+  }
+
+  const renameCourseMaterial = async (material: CourseMaterial) => {
+    const title = renamingMaterialTitle.trim()
+    if (!title) {
+      toast.error("Name is required")
+      return
+    }
+    setBusyMaterialId(material.id)
+    try {
+      const res = await fetch("/api/course-materials", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: material.id, title }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || "Failed to rename")
+      setCourseMaterials((prev) => prev.map((item) => (item.id === material.id ? { ...item, title } : item)))
+      setRenamingMaterialId(null)
+      toast.success("Name updated")
+    } catch (error: any) {
+      toast.error(error.message || "Failed to rename material")
+    } finally {
+      setBusyMaterialId(null)
+    }
+  }
+
+  const removeCourseMaterial = async (material: CourseMaterial) => {
+    if (!confirm(`Remove “${material.title}”?`)) return
+    setBusyMaterialId(material.id)
+    try {
+      const res = await fetch(`/api/course-materials?id=${material.id}`, { method: "DELETE" })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error || "Failed to remove")
+      setCourseMaterials((prev) => prev.filter((item) => item.id !== material.id))
+      toast.success("Material removed")
+    } catch (error: any) {
+      toast.error(error.message || "Failed to remove material")
+    } finally {
+      setBusyMaterialId(null)
     }
   }
 
@@ -783,23 +1001,25 @@ export default function SubmissionsEmailPage() {
     { label: "Room Link", token: "{{room_link}}", tooltip: "Insert room link variable" },
   ]
 
+  const sectionLabel = "text-xs font-semibold uppercase tracking-wide"
+
   return (
-    <div className="p-4 md:p-6 space-y-4 bg-background from-sky-50/60 via-white to-indigo-50/60 dark:bg-none dark:bg-background min-h-screen max-w-[1700px] mx-auto text-slate-900 dark:text-slate-100">
+    <div className="p-4 md:p-6 space-y-4 bg-muted dark:bg-background min-h-screen max-w-[1700px] mx-auto text-foreground">
       <style jsx global>{`
-        .dark .email-editor [style*="color: #000"],
-        .dark .email-editor [style*="color:#000"],
-        .dark .email-editor [style*="color: #000000"],
-        .dark .email-editor [style*="color:#000000"],
-        .dark .email-editor [style*="color: black"],
-        .dark .email-editor [style*="color:black"],
-        .dark .email-editor [style*="color: rgb(0, 0, 0)"],
-        .dark .email-editor [style*="color:rgb(0, 0, 0)"],
-        .dark .email-editor [style*="color: #141454"],
-        .dark .email-editor [style*="color:#141454"],
-        .dark .email-editor [style*="color: #1b1b63"],
-        .dark .email-editor [style*="color:#1b1b63"],
-        .dark .email-editor [style*="color: rgb(20, 20, 84)"],
-        .dark .email-editor [style*="color:rgb(20, 20, 84)"],
+        .email-editor [style*="color: #000"],
+        .email-editor [style*="color:#000"],
+        .email-editor [style*="color: #000000"],
+        .email-editor [style*="color:#000000"],
+        .email-editor [style*="color: black"],
+        .email-editor [style*="color:black"],
+        .email-editor [style*="color: rgb(0, 0, 0)"],
+        .email-editor [style*="color:rgb(0, 0, 0)"],
+        .email-editor [style*="color: #141454"],
+        .email-editor [style*="color:#141454"],
+        .email-editor [style*="color: #1b1b63"],
+        .email-editor [style*="color:#1b1b63"],
+        .email-editor [style*="color: rgb(20, 20, 84)"],
+        .email-editor [style*="color:rgb(20, 20, 84)"],
         .dark .email-preview-content [style*="color: #000"],
         .dark .email-preview-content [style*="color:#000"],
         .dark .email-preview-content [style*="color: #000000"],
@@ -816,13 +1036,24 @@ export default function SubmissionsEmailPage() {
         .dark .email-preview-content [style*="color:rgb(20, 20, 84)"] {
           color: #ffffff !important;
         }
-        .dark .email-editor,
+        .email-editor {
+          color: #ffffff;
+        }
         .dark .email-preview-content {
           color: #ffffff;
         }
-        .dark .email-editor a,
+        .email-editor a {
+          cursor: pointer;
+          color: #93c5fd !important;
+        }
+        .email-editor a[style*="background"] {
+          color: #ffffff !important;
+        }
         .dark .email-preview-content a {
           color: #93c5fd !important;
+        }
+        .dark .email-preview-content a[style*="background"] {
+          color: #ffffff !important;
         }
       `}</style>
       <div className="flex items-center justify-between gap-3">
@@ -845,18 +1076,18 @@ export default function SubmissionsEmailPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
-        <Card className="xl:col-span-3 py-2 gap-0 rounded-xl border border-border shadow-sm bg-card text-card-foreground xl:h-[calc(100vh-165px)] overflow-hidden">
-          <CardHeader className="-m-px bg-card border-b border-border rounded-t-xl text-center py-3">
-            <CardTitle className="flex items-center justify-center gap-2 text-foreground">
-              <Users className="h-5 w-5" />
+        <Card className="xl:col-span-3 py-2 gap-0 overflow-hidden rounded-xl border-0 bg-secondary shadow-sm text-secondary-foreground dark:bg-[#1b1d26] dark:text-white xl:h-[calc(100vh-165px)]">
+          <CardHeader className="-m-px rounded-t-xl bg-primary py-3 text-center dark:bg-[#141454]">
+            <CardTitle className="flex items-center justify-center gap-2 text-white">
+              <Users className="h-5 w-5 text-white" />
               Participants
             </CardTitle>
-            <CardDescription className="text-center">Select recipients for this email</CardDescription>
+            <CardDescription className="text-center text-white/80">Select recipients for this email</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 overflow-y-auto h-full p-5">
-            <div className="rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/70 dark:bg-indigo-950/25 p-2">
+            <div className="rounded-lg bg-muted p-2 dark:bg-[#161824]">
               <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">Templates</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary dark:text-[#daae02]">Templates</p>
                 <Button size="sm" variant="secondary" onClick={handleSaveTemplate} disabled={savingTemplate || updatingTemplate} className="h-7">
                   {savingTemplate ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save Current"}
                 </Button>
@@ -898,7 +1129,7 @@ export default function SubmissionsEmailPage() {
                     <p className="text-xs text-muted-foreground">No templates yet</p>
                   ) : (
                     templates.map((template) => (
-                      <div key={template.id} className="rounded border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 p-1.5">
+                      <div key={template.id} className="rounded bg-background p-1.5 dark:bg-[#0c0d14]">
                         <p className="text-xs font-medium truncate">{template.name}</p>
                         <div className="mt-1 flex gap-1">
                           <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => handleUseTemplate(template)}>Use</Button>
@@ -911,12 +1142,13 @@ export default function SubmissionsEmailPage() {
                 </div>
               </ScrollArea>
             </div>
+            <div className="space-y-3 rounded-lg bg-muted p-3 dark:bg-[#161824]">
             <div className="flex items-center gap-2">
               <Checkbox
                 checked={selectedIds.length > 0 && selectedIds.length === trainees.filter((t) => !!t.email).length}
                 onCheckedChange={(v) => onSelectAll(Boolean(v))}
               />
-              <span className="text-sm">Select all with email</span>
+              <span className="text-sm font-medium text-primary dark:text-white">Select all with email</span>
             </div>
             <div className="relative">
               <Search className="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -952,7 +1184,7 @@ export default function SubmissionsEmailPage() {
                     return (
                       <label
                         key={t.id}
-                        className="flex items-start gap-2 rounded border p-2 cursor-pointer hover:bg-muted/50"
+                        className="flex cursor-pointer items-start gap-2 rounded bg-background p-2 hover:bg-accent dark:bg-[#0c0d14] dark:hover:bg-[#2e3040]"
                       >
                         <Checkbox
                           checked={selectedIds.includes(t.id)}
@@ -991,45 +1223,48 @@ export default function SubmissionsEmailPage() {
                 )}
               </div>
             </ScrollArea>
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="xl:col-span-5 py-2 gap-0 rounded-xl border border-border shadow-sm bg-card text-card-foreground xl:h-[calc(100vh-165px)] overflow-hidden">
-          <CardHeader className="-m-px bg-card border-b border-border rounded-t-xl text-center py-3">
-            <CardTitle className="flex items-center justify-center gap-2 text-foreground">
-              <PenSquare className="h-5 w-5" />
+        <Card className="xl:col-span-5 py-2 gap-0 overflow-hidden rounded-xl border-0 bg-blue-950 shadow-sm text-slate-900 dark:bg-[#061428] dark:text-slate-100 xl:h-[calc(100vh-165px)]">
+          <CardHeader className="-m-px rounded-t-xl bg-blue-900 py-3 text-center dark:bg-[#0a1f3d]">
+            <CardTitle className="flex items-center justify-center gap-2 text-blue-50">
+              <PenSquare className="h-5 w-5 text-blue-200" />
               Email Editor
             </CardTitle>
-            <CardDescription className="text-center">Build your message, add room link and attachments</CardDescription>
+            <CardDescription className="text-center text-blue-200">Build your message, add room link and attachments</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 overflow-y-auto h-full p-5">
-            <div className="space-y-2">
-              <Label>Subject</Label>
-              <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+            <div className="space-y-2 rounded-lg bg-amber-300 p-3 text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+              <Label className={`${sectionLabel} text-amber-950 dark:text-amber-200`}>Subject</Label>
+              <Input value={subject} onChange={(e) => setSubject(e.target.value)} className="bg-amber-100 text-slate-900 dark:bg-zinc-950 dark:text-slate-100" />
             </div>
 
-            <div className="space-y-2">
-              <Label>Room Link</Label>
+            <div className="space-y-2 rounded-lg bg-cyan-300 p-3 text-cyan-950 dark:bg-cyan-950 dark:text-cyan-100">
+              <Label className={`${sectionLabel} text-cyan-950 dark:text-cyan-200`}>Room Link</Label>
               <Input
                 placeholder="https://zoom.us/..."
                 value={roomLink}
                 onChange={(e) => setRoomLink(e.target.value)}
+                className="bg-cyan-100 text-slate-900 dark:bg-zinc-950 dark:text-slate-100"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Header HTML (Optional)</Label>
+            <div className="space-y-2 rounded-lg bg-stone-300 p-3 text-stone-950 dark:bg-stone-950 dark:text-stone-100">
+              <Label className={`${sectionLabel} text-stone-900 dark:text-stone-200`}>Header HTML (Optional)</Label>
               <Textarea
                 rows={3}
                 placeholder="<div>...</div>"
                 value={headerHtml}
                 onChange={(e) => setHeaderHtml(e.target.value)}
+                className="bg-stone-100 text-slate-900 dark:bg-zinc-950 dark:text-slate-100"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Typography Tools</Label>
-              <div className="flex flex-wrap gap-2 p-2 rounded-md border bg-violet-50/60 dark:bg-violet-950/20 border-violet-200 dark:border-violet-900/60">
+            <div className="space-y-2 rounded-lg bg-blue-900 p-3 text-blue-50 dark:bg-[#0a1f3d]">
+              <Label className={`${sectionLabel} text-blue-100`}>Typography Tools</Label>
+              <div className="flex flex-wrap gap-2 rounded-md bg-blue-950 p-2 dark:bg-[#061428]">
                 <Tooltip><TooltipTrigger asChild><Button size="sm" variant="outline" onClick={() => formatCommand("bold")}><Bold className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Bold</TooltipContent></Tooltip>
                 <Tooltip><TooltipTrigger asChild><Button size="sm" variant="outline" onClick={() => formatCommand("italic")}><Italic className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Italic</TooltipContent></Tooltip>
                 <Tooltip><TooltipTrigger asChild><Button size="sm" variant="outline" onClick={() => formatCommand("underline")}><Underline className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Underline</TooltipContent></Tooltip>
@@ -1042,7 +1277,7 @@ export default function SubmissionsEmailPage() {
                 <Tooltip><TooltipTrigger asChild><Button size="sm" variant="outline" onClick={insertDivider}><Minus className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Insert Divider</TooltipContent></Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1 rounded border px-2 bg-background">
+                    <div className="flex items-center gap-1 rounded px-2 bg-background">
                       <Palette className="h-3.5 w-3.5 text-muted-foreground" />
                       <input
                         type="color"
@@ -1056,7 +1291,7 @@ export default function SubmissionsEmailPage() {
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1 rounded border px-2 bg-background">
+                    <div className="flex items-center gap-1 rounded px-2 bg-background">
                       <span className="text-[11px] text-muted-foreground">Size</span>
                       <select
                         value={selectedTextSize}
@@ -1089,29 +1324,32 @@ export default function SubmissionsEmailPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Email Body</Label>
+            <div className="space-y-2 rounded-lg bg-blue-900 p-3 text-blue-50 dark:bg-[#0a1f3d]">
+              <Label className={`${sectionLabel} text-blue-100`}>Email Body</Label>
               <div
                 ref={editorRef}
                 contentEditable
                 suppressContentEditableWarning
                 onInput={() => setEditorHtml(editorRef.current?.innerHTML || "")}
-                className="email-editor min-h-[260px] rounded-md border p-3 bg-white dark:bg-slate-950 outline-none focus:ring-2 focus:ring-violet-300 dark:focus:ring-violet-700 border-violet-200 dark:border-violet-900/60"
+                onClick={onEditorClick}
+                onAuxClick={onEditorClick}
+                className="email-editor min-h-[260px] rounded-md p-3 bg-blue-950 text-blue-50 outline-none focus:ring-2 focus:ring-blue-700 dark:bg-[#061428] dark:focus:ring-blue-800"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Footer HTML (Optional)</Label>
+            <div className="space-y-2 rounded-lg bg-stone-300 p-3 text-stone-950 dark:bg-stone-950 dark:text-stone-100">
+              <Label className={`${sectionLabel} text-stone-900 dark:text-stone-200`}>Footer HTML (Optional)</Label>
               <Textarea
                 rows={3}
                 placeholder="<div>...</div>"
                 value={footerHtml}
                 onChange={(e) => setFooterHtml(e.target.value)}
+                className="bg-stone-100 text-slate-900 dark:bg-zinc-950 dark:text-slate-100"
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Attachments</Label>
+            <div className="space-y-2 rounded-lg bg-[#f7edd0] p-3 text-[#141454] dark:bg-[#161824] dark:text-white">
+              <Label className={`${sectionLabel} text-[#141454] dark:text-[#daae02]`}>Attachments</Label>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1121,100 +1359,296 @@ export default function SubmissionsEmailPage() {
               />
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="outline" className="gap-2" onClick={() => fileInputRef.current?.click()}>
+                  <Button variant="outline" className="gap-2 text-slate-900 dark:text-slate-100" onClick={() => fileInputRef.current?.click()}>
                     <Upload className="h-4 w-4" />
                     Add Attachments
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Add attachment from your device</TooltipContent>
               </Tooltip>
-              <div className="rounded-md border border-border p-2 space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">Attach from uploaded course materials</p>
+              <div className="space-y-2 rounded-md bg-[#fff8e1] p-2 text-[#141454] dark:bg-[#0c0d14] dark:text-white">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-medium text-[#141454]/70 dark:text-[#d7d8e0]">Course materials</p>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="outline"
+                    className="h-7 w-7 text-slate-900 dark:text-slate-100"
+                    disabled={!courseId}
+                    onClick={() => {
+                      setUploadMaterialTitle("")
+                      setPendingMaterialFile(null)
+                      setMaterialDialogOpen(true)
+                    }}
+                    title="Upload a course material"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                <input
+                  ref={materialReplaceInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    const material = courseMaterials.find((item) => item.id === replacingMaterialId)
+                    if (file && material) void replaceCourseMaterial(material, file)
+                  }}
+                />
                 <Input
                   value={materialSearch}
                   onChange={(e) => setMaterialSearch(e.target.value)}
                   placeholder="Search materials..."
                 />
-                <ScrollArea className="h-36 pr-2">
+                <ScrollArea className="h-44 pr-2">
                   <div className="space-y-1">
                     {filteredMaterials.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">No uploaded materials found for this course.</p>
+                      <p className="text-xs text-muted-foreground">
+                        {courseId
+                          ? "No uploaded materials found for this course. Click + to add one."
+                          : "This schedule has no course, so materials can't be uploaded."}
+                      </p>
                     ) : (
-                      filteredMaterials.map((material) => (
-                        <div key={material.id} className="flex items-center justify-between gap-2 border rounded p-2 text-xs">
-                          <div className="min-w-0">
-                            <p className="font-medium truncate">{material.title}</p>
-                            <p className="text-muted-foreground uppercase">{material.file_type}</p>
+                      filteredMaterials.map((material) => {
+                        const busy =
+                          busyMaterialId === material.id ||
+                          replacingMaterialId === material.id ||
+                          materialAttachingId === material.id
+                        const renaming = renamingMaterialId === material.id
+                        return (
+                          <div key={material.id} className="flex items-center justify-between gap-2 rounded bg-white p-2 text-xs text-[#141454] dark:bg-[#1b1d26] dark:text-white">
+                            <div className="min-w-0 flex-1">
+                              {renaming ? (
+                                <Input
+                                  value={renamingMaterialTitle}
+                                  onChange={(e) => setRenamingMaterialTitle(e.target.value)}
+                                  className="h-7 text-xs"
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") void renameCourseMaterial(material)
+                                    if (e.key === "Escape") setRenamingMaterialId(null)
+                                  }}
+                                />
+                              ) : (
+                                <>
+                                  <p className="font-medium truncate text-[#141454] dark:text-white">{material.title}</p>
+                                  <p className="uppercase text-[#7c7d91] dark:text-[#c4c6d4]">{material.file_type}</p>
+                                </>
+                              )}
+                            </div>
+                            <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                              {renaming ? (
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-2"
+                                  disabled={busy}
+                                  onClick={() => void renameCourseMaterial(material)}
+                                >
+                                  Save
+                                </Button>
+                              ) : (
+                                <>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 text-slate-700 dark:text-slate-100"
+                                        disabled={busy}
+                                        onClick={() => setViewingMaterial(material)}
+                                      >
+                                        <Eye className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>View</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 text-slate-700 dark:text-slate-100"
+                                        disabled={busy}
+                                        onClick={() => {
+                                          setRenamingMaterialId(material.id)
+                                          setRenamingMaterialTitle(material.title)
+                                        }}
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Rename</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 text-slate-700 dark:text-slate-100"
+                                        disabled={busy}
+                                        onClick={() => {
+                                          setReplacingMaterialId(material.id)
+                                          materialReplaceInputRef.current?.click()
+                                        }}
+                                      >
+                                        {replacingMaterialId === material.id ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <RefreshCw className="h-3.5 w-3.5" />
+                                        )}
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Replace file</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7 text-destructive hover:text-destructive"
+                                        disabled={busy}
+                                        onClick={() => void removeCourseMaterial(material)}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Remove</TooltipContent>
+                                  </Tooltip>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-slate-900 dark:text-slate-100"
+                                    onClick={() => attachCourseMaterial(material)}
+                                    disabled={busy}
+                                  >
+                                    {materialAttachingId === material.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      "Attach"
+                                    )}
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </div>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7"
-                                onClick={() => attachCourseMaterial(material)}
-                                disabled={materialAttachingId === material.id}
-                              >
-                                {materialAttachingId === material.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  "Attach"
-                                )}
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Attach this material to email</TooltipContent>
-                          </Tooltip>
-                        </div>
-                      ))
+                        )
+                      })
                     )}
                   </div>
                 </ScrollArea>
               </div>
               {attachments.length > 0 && (
                 <div className="space-y-1">
-                  {attachments.map((att) => (
-                    <div key={att.filename} className="flex items-center justify-between text-sm border border-slate-200 dark:border-slate-700 rounded p-2">
-                      <span className="truncate">{att.filename}</span>
-                      <Button size="sm" variant="ghost" onClick={() => removeAttachment(att.filename)}>
-                        Remove
-                      </Button>
-                    </div>
-                  ))}
+                  {attachments.map((att) => {
+                    const image = isImageFilename(att.filename)
+                    return (
+                      <div
+                        key={att.filename}
+                        className="flex items-center justify-between gap-2 text-sm rounded bg-white p-2 text-[#141454] dark:bg-[#1b1d26] dark:text-white"
+                      >
+                        <button
+                          type="button"
+                          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                          onClick={() => setPreviewAttachment(att)}
+                          title={`View ${att.filename}`}
+                        >
+                          {image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={attachmentDataUrl(att)}
+                              alt=""
+                              className="h-10 w-10 shrink-0 rounded object-cover"
+                            />
+                          ) : (
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-muted">
+                              <FileText className="h-4 w-4 text-muted-foreground" />
+                            </span>
+                          )}
+                          <span className="truncate">{att.filename}</span>
+                        </button>
+                        <div className="flex shrink-0 items-center">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 px-2 text-slate-800 dark:text-slate-100"
+                            onClick={() => setPreviewAttachment(att)}
+                          >
+                            <Eye className="mr-1 h-3.5 w-3.5" />
+                            View
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-slate-800 dark:text-slate-100" onClick={() => removeAttachment(att.filename)}>
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="xl:col-span-4 py-2 gap-0 rounded-xl border border-border shadow-sm bg-card text-card-foreground xl:h-[calc(100vh-165px)] overflow-hidden">
-          <CardHeader className="-m-px bg-card border-b border-border rounded-t-xl text-center py-3">
-            <CardTitle className="flex items-center justify-center gap-2 text-foreground">
-              <Monitor className="h-5 w-5" />
+        <Card className="xl:col-span-4 py-2 gap-0 overflow-hidden rounded-xl border-0 bg-muted shadow-sm text-card-foreground dark:bg-[#161824] xl:h-[calc(100vh-165px)]">
+          <CardHeader className="-m-px rounded-t-xl bg-primary py-3 text-center dark:bg-[#141454]">
+            <CardTitle className="flex items-center justify-center gap-2 text-white">
+              <Monitor className="h-5 w-5 text-white" />
               Preview
             </CardTitle>
-            <CardDescription className="text-center">Live preview of your email content</CardDescription>
+            <CardDescription className="text-center text-white/80">Live preview of your email content</CardDescription>
           </CardHeader>
           <CardContent className="overflow-y-auto h-full p-2">
-            <div className="rounded-md border border-border bg-background p-4 min-h-[420px] xl:min-h-0 xl:h-full overflow-y-auto">
+            <div className="min-h-[420px] overflow-y-auto rounded-md bg-background p-4 xl:h-full xl:min-h-0 dark:bg-[#0c0d14]">
               <p className="text-xs text-muted-foreground mb-3">Subject: {subject || "(no subject)"}</p>
               <div
                 className="email-preview-content prose prose-sm max-w-none dark:prose-invert"
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
+              {attachments.length > 0 && (
+                <div className="mt-4 pt-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Attachments ({attachments.length})
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {attachments.map((att) => (
+                      <button
+                        key={`preview-${att.filename}`}
+                        type="button"
+                        className="overflow-hidden rounded-md bg-muted text-left hover:bg-accent dark:bg-[#1b1d26]"
+                        onClick={() => setPreviewAttachment(att)}
+                      >
+                        {isImageFilename(att.filename) ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={attachmentDataUrl(att)}
+                            alt={att.filename}
+                            className="h-24 w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-24 items-center justify-center bg-muted">
+                            <FileText className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                        )}
+                        <p className="truncate px-2 py-1.5 text-[11px]">{att.filename}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Card className="rounded-xl border border-border shadow-sm bg-card text-card-foreground">
-        <CardHeader className="border-b border-border py-3">
+      <Card className="rounded-xl border-0 bg-[#f7edd0] shadow-sm text-card-foreground dark:bg-[#161824]">
+        <CardHeader className="bg-[#daae02] py-3 dark:bg-[#141454]">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <CardTitle className="flex items-center gap-2 text-base text-zinc-900 dark:text-white">
-                <History className="h-4 w-4" />
+              <CardTitle className="flex items-center gap-2 text-base text-[#141454] dark:text-[#daae02]">
+                <History className="h-4 w-4 text-[#141454] dark:text-[#daae02]" />
                 Send History
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-[#141454]/80 dark:text-[#d7d8e0]">
                 Recent composer emails for this schedule — succeeds and failures are saved per participant.
               </CardDescription>
             </div>
@@ -1279,6 +1713,265 @@ export default function SubmissionsEmailPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={Boolean(previewAttachment)}
+        onOpenChange={(open) => {
+          if (!open) setPreviewAttachment(null)
+        }}
+      >
+        <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-3 sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="truncate pr-6">{previewAttachment?.filename || "Attachment"}</DialogTitle>
+            <DialogDescription>Preview this file before sending.</DialogDescription>
+          </DialogHeader>
+          {previewAttachment ? (
+            <>
+              <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-muted/30">
+                {isImageFilename(previewAttachment.filename) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={attachmentDataUrl(previewAttachment)}
+                    alt={previewAttachment.filename}
+                    className="mx-auto max-h-[70vh] w-full object-contain"
+                  />
+                ) : isPdfFilename(previewAttachment.filename) ? (
+                  <iframe
+                    title={previewAttachment.filename}
+                    src={attachmentDataUrl(previewAttachment)}
+                    className="h-[70vh] w-full"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+                    <FileText className="h-10 w-10 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      This file type can’t be previewed in the browser. Download it to open.
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => downloadAttachment(previewAttachment)}
+                >
+                  <Download className="h-4 w-4" />
+                  Download
+                </Button>
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(linkEditor)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLinkEditor(null)
+            editingAnchorRef.current = null
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Link</DialogTitle>
+            <DialogDescription>This is the URL behind the selected button or text.</DialogDescription>
+          </DialogHeader>
+          {linkEditor ? (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="email-link-text">Text</Label>
+                <Input
+                  id="email-link-text"
+                  value={linkEditor.text}
+                  onChange={(e) => setLinkEditor((prev) => (prev ? { ...prev, text: e.target.value } : prev))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="email-link-href">URL</Label>
+                <Input
+                  id="email-link-href"
+                  value={linkEditor.href}
+                  onChange={(e) => setLinkEditor((prev) => (prev ? { ...prev, href: e.target.value } : prev))}
+                />
+              </div>
+              <div className="flex flex-wrap justify-end gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(linkEditor.href)
+                      toast.success("Link copied")
+                    } catch {
+                      toast.error("Could not copy the link")
+                    }
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                  Copy
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => {
+                    if (linkEditor.href) window.open(linkEditor.href, "_blank", "noopener,noreferrer")
+                  }}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open
+                </Button>
+                <Button type="button" onClick={saveEditedLink}>
+                  Save
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={materialDialogOpen}
+        onOpenChange={(open) => {
+          if (uploadingMaterial) return
+          setMaterialDialogOpen(open)
+          if (!open) {
+            setUploadMaterialTitle("")
+            setPendingMaterialFile(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Upload course material</DialogTitle>
+            <DialogDescription>Name the file, then choose what to upload for this course.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="material-title">Name</Label>
+              <Input
+                id="material-title"
+                placeholder="Re-entry Plan Template"
+                value={uploadMaterialTitle}
+                onChange={(e) => setUploadMaterialTitle(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="material-file">File</Label>
+              <Input
+                id="material-file"
+                type="file"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] || null
+                  setPendingMaterialFile(file)
+                  if (file && !uploadMaterialTitle.trim()) {
+                    setUploadMaterialTitle(file.name.replace(/\.[^.]+$/, ""))
+                  }
+                }}
+              />
+              {pendingMaterialFile ? (
+                <p className="text-xs text-muted-foreground">{pendingMaterialFile.name}</p>
+              ) : null}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={uploadingMaterial}
+              onClick={() => setMaterialDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={uploadingMaterial || !pendingMaterialFile} onClick={() => void createCourseMaterial()}>
+              {uploadingMaterial ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+              Upload
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(viewingMaterial)}
+        onOpenChange={(open) => {
+          if (!open) setViewingMaterial(null)
+        }}
+      >
+        <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-3 sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="truncate pr-6">{viewingMaterial?.title || "Material"}</DialogTitle>
+            <DialogDescription>Preview this course material.</DialogDescription>
+          </DialogHeader>
+          {viewingMaterial ? (
+            <>
+              <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-muted/30">
+                {isImageFilename(viewingMaterial.title) || viewingMaterial.file_type === "image" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={viewingMaterial.file_url}
+                    alt={viewingMaterial.title}
+                    className="mx-auto max-h-[70vh] w-full object-contain"
+                  />
+                ) : viewingMaterial.file_type === "pdf" || isPdfFilename(viewingMaterial.title) || viewingMaterial.file_url.toLowerCase().includes(".pdf") ? (
+                  <iframe
+                    title={viewingMaterial.title}
+                    src={viewingMaterial.file_url}
+                    className="h-[70vh] w-full"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+                    <FileText className="h-10 w-10 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      This file type can’t be previewed here. Open or download it instead.
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5"
+                  disabled={downloadingMaterial}
+                  onClick={async () => {
+                    setDownloadingMaterial(true)
+                    try {
+                      const res = await fetch(`/api/image-proxy?url=${encodeURIComponent(viewingMaterial.file_url)}`)
+                      const blob = res.ok ? await res.blob() : await (await fetch(viewingMaterial.file_url)).blob()
+                      const a = document.createElement("a")
+                      a.href = URL.createObjectURL(blob)
+                      a.download = filenameForMaterial(viewingMaterial)
+                      a.click()
+                      URL.revokeObjectURL(a.href)
+                    } catch {
+                      window.open(viewingMaterial.file_url, "_blank", "noopener,noreferrer")
+                    } finally {
+                      setDownloadingMaterial(false)
+                    }
+                  }}
+                >
+                  {downloadingMaterial ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  Download
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => window.open(viewingMaterial.file_url, "_blank", "noopener,noreferrer")}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open
+                </Button>
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

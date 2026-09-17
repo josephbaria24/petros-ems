@@ -4,14 +4,17 @@ import * as React from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { format, parseISO } from "date-fns"
-import { ArrowLeft, Calendar, ClipboardList, FileSpreadsheet, Loader2 } from "lucide-react"
+import { ArrowLeft, Calendar, ClipboardList, FileSpreadsheet, Inbox, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { ExamPanel } from "@/components/exam-panel"
 import { ExamResultsPreview } from "@/components/exam-results-preview"
 import { ExamResultSummaryDialog } from "@/components/exam-result-summary-dialog"
+import { SubmissionBinPanel } from "@/components/submission-bin-panel"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { tmsDb } from "@/lib/supabase-client"
+import { missingSubmissionBinSchema } from "@/lib/submission-bin"
 import {
   mapDbQuestion,
   pickCanonicalExam,
@@ -100,6 +103,7 @@ export default function ScheduleExamPage() {
   })
   const [tablesMissing, setTablesMissing] = React.useState(false)
   const [summaryOpen, setSummaryOpen] = React.useState(false)
+  const [submissionCount, setSubmissionCount] = React.useState(0)
 
   const load = React.useCallback(async () => {
     if (!scheduleId) {
@@ -262,6 +266,13 @@ export default function ScheduleExamPage() {
 
     setSlots(next)
     setLoading(false)
+
+    const { count, error: countErr } = await tmsDb
+      .from("submission_bin_items")
+      .select("id", { count: "exact", head: true })
+      .eq("schedule_id", scheduleId)
+    if (!countErr) setSubmissionCount(count || 0)
+    else if (missingSubmissionBinSchema(countErr.message || "")) setSubmissionCount(0)
   }, [scheduleId])
 
   React.useEffect(() => {
@@ -434,69 +445,30 @@ export default function ScheduleExamPage() {
     },
   ]
 
+  const tabTriggerClass =
+    "group gap-1.5 px-3 data-[state=active]:bg-[#FFCC00] data-[state=active]:text-[#141454] data-[state=active]:shadow-none dark:data-[state=active]:bg-[#FFCC00] dark:data-[state=active]:text-[#141454]"
+
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
-      <div className="overflow-hidden rounded-2xl border border-[#FFCC00]/40 bg-gradient-to-br from-[#1A1D66] via-[#24286f] to-[#141654] text-white shadow-md">
-        <div className="h-1.5 bg-[#FFCC00]" />
-        <div className="relative space-y-2 p-5 sm:p-6">
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.07]"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 20% 20%, #FFCC00 0, transparent 40%), radial-gradient(circle at 80% 0%, #ffffff 0, transparent 35%)",
-            }}
-          />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="relative mb-1 -ml-2 gap-1 text-white/75 hover:bg-white/10 hover:text-white"
-            asChild
-          >
+    <div className="w-full min-w-0 space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Button variant="ghost" size="sm" className="mb-1 -ml-2 h-7 gap-1 px-2 text-muted-foreground" asChild>
             <Link href={backHref}>
               <ArrowLeft className="h-4 w-4" />
               Schedules
             </Link>
           </Button>
-          <div className="relative flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">Exam</h1>
-                <Badge className="gap-1 border-0 bg-[#FFCC00] text-[#1A1D66] hover:bg-[#FFCC00]">
-                  <ClipboardList className="h-3 w-3" />
-                  Pre & post tests
-                </Badge>
-              </div>
-              <p className="max-w-2xl text-sm text-white/80 md:text-base">
-                <span className="font-semibold text-[#FFCC00]">{courseName || "Training"}</span>
-                {courseTitle ? (
-                  <>
-                    {" — "}
-                    <span className="text-white/90">{courseTitle}</span>
-                  </>
-                ) : null}
-                {scheduleDateLabel ? (
-                  <>
-                    {" — "}
-                    <span className="inline-flex items-center gap-1.5 text-white">
-                      <Calendar className="h-3.5 w-3.5 text-[#FFCC00]" />
-                      {scheduleDateLabel}
-                    </span>
-                  </>
-                ) : null}
-                {" — "}
-                create one exam per training (shared across every schedule of this course), or attach Google / Microsoft Form links.
-              </p>
-            </div>
-            <Button
-              size="sm"
-              className="shrink-0 gap-1.5 bg-[#FFCC00] text-[#1A1D66] hover:bg-[#e6b800]"
-              disabled={loading}
-              onClick={() => setSummaryOpen(true)}
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-              Export summary
-            </Button>
-          </div>
+          <h1 className="text-2xl font-semibold tracking-tight">Exam & submissions</h1>
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{courseName || "Training"}</span>
+            {courseTitle ? <span>{courseTitle}</span> : null}
+            {scheduleDateLabel ? (
+              <span className="inline-flex items-center gap-1">
+                <Calendar className="h-3.5 w-3.5" />
+                {scheduleDateLabel}
+              </span>
+            ) : null}
+          </p>
         </div>
       </div>
 
@@ -510,71 +482,109 @@ export default function ScheduleExamPage() {
 
       {loading ? (
         <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
-          <Loader2 className="h-8 w-8 animate-spin text-[#1A1D66] dark:text-[#FFCC00]" />
+          <Loader2 className="h-8 w-8 animate-spin" />
           Loading exams…
         </div>
       ) : (
-        <>
-          <ExamResultsPreview
-            scheduleId={scheduleId}
-            pretestExamId={slots.pretest.exam?.id || null}
-            posttestExamId={slots.posttest.exam?.id || null}
-          />
-          <div className="grid gap-5 lg:grid-cols-2">
-          {panels.map((p) => {
-            const slot = slots[p.kind]
-            return (
-              <ExamPanel
-                key={p.kind}
-                kind={p.kind}
-                title={p.title}
-                description={p.description}
-                courseName={courseName}
-                scheduleId={scheduleId}
-                exam={slot.exam}
-                questions={slot.questions}
-                saving={slot.saving}
-                onChangeMode={(mode: ExamMode) =>
-                  patchSlot(p.kind, (prev) => ({
-                    ...prev,
-                    exam: prev.exam
-                      ? { ...prev.exam, mode }
-                      : {
-                          id: "",
-                          schedule_id: scheduleId,
-                          course_id: courseId,
-                          kind: p.kind,
-                          mode,
-                          title: p.title,
-                          external_url: null,
-                          is_published: true,
-                        },
-                  }))
-                }
-                onChangeExternalUrl={(url) =>
-                  patchSlot(p.kind, (prev) => ({
-                    ...prev,
-                    exam: prev.exam
-                      ? { ...prev.exam, external_url: url, mode: "external" }
-                      : {
-                          id: "",
-                          schedule_id: scheduleId,
-                          course_id: courseId,
-                          kind: p.kind,
-                          mode: "external",
-                          title: p.title,
-                          external_url: url,
-                          is_published: true,
-                        },
-                  }))
-                }
-                onChangeQuestions={(questions) => patchSlot(p.kind, { questions })}
-                onSave={() => saveSlot(p.kind)}
-              />
-            )
-          })}
-          </div>
-        </>
+        <Tabs defaultValue="exam" className="gap-4">
+          <TabsList className="h-10">
+            <TabsTrigger value="exam" className={tabTriggerClass}>
+              <ClipboardList className="h-4 w-4" />
+              Exam / Test
+            </TabsTrigger>
+            <TabsTrigger value="submissions" className={tabTriggerClass}>
+              <Inbox className="h-4 w-4" />
+              Submissions
+              <Badge
+                variant="secondary"
+                className="h-5 min-w-5 rounded-full px-1.5 text-[10px] font-semibold group-data-[state=active]:bg-[#141454] group-data-[state=active]:text-white"
+              >
+                {submissionCount}
+              </Badge>
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="exam" className="space-y-4">
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setSummaryOpen(true)}
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Export summary
+              </Button>
+            </div>
+            <ExamResultsPreview
+              scheduleId={scheduleId}
+              pretestExamId={slots.pretest.exam?.id || null}
+              posttestExamId={slots.posttest.exam?.id || null}
+            />
+            <div className="grid gap-4 xl:grid-cols-2">
+              {panels.map((p) => {
+                const slot = slots[p.kind]
+                return (
+                  <ExamPanel
+                    key={p.kind}
+                    kind={p.kind}
+                    title={p.title}
+                    description={p.description}
+                    courseName={courseName}
+                    scheduleId={scheduleId}
+                    exam={slot.exam}
+                    questions={slot.questions}
+                    saving={slot.saving}
+                    onChangeMode={(mode: ExamMode) =>
+                      patchSlot(p.kind, (prev) => ({
+                        ...prev,
+                        exam: prev.exam
+                          ? { ...prev.exam, mode }
+                          : {
+                              id: "",
+                              schedule_id: scheduleId,
+                              course_id: courseId,
+                              kind: p.kind,
+                              mode,
+                              title: p.title,
+                              external_url: null,
+                              is_published: true,
+                            },
+                      }))
+                    }
+                    onChangeExternalUrl={(url) =>
+                      patchSlot(p.kind, (prev) => ({
+                        ...prev,
+                        exam: prev.exam
+                          ? { ...prev.exam, external_url: url, mode: "external" }
+                          : {
+                              id: "",
+                              schedule_id: scheduleId,
+                              course_id: courseId,
+                              kind: p.kind,
+                              mode: "external",
+                              title: p.title,
+                              external_url: url,
+                              is_published: true,
+                            },
+                      }))
+                    }
+                    onChangeQuestions={(questions) => patchSlot(p.kind, { questions })}
+                    onSave={() => saveSlot(p.kind)}
+                  />
+                )
+              })}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="submissions">
+            <SubmissionBinPanel
+              scheduleId={scheduleId}
+              courseName={courseName}
+              onCountChange={setSubmissionCount}
+            />
+          </TabsContent>
+        </Tabs>
       )}
 
       <ExamResultSummaryDialog
