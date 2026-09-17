@@ -2,23 +2,60 @@
 
 import * as React from "react"
 import { useSearchParams } from "next/navigation"
-import { CheckCircle2, Loader2 } from "lucide-react"
+import { CheckCircle2, Loader2, TriangleAlert } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { tmsDb } from "@/lib/supabase-client"
 import {
   composeRespondentName,
   gradeAnswer,
-  isValidExamEmail,
   mapDbQuestion,
-  normalizeMiddleInitial,
   type ExamQuestionDraft,
   type ExamRecord,
 } from "@/lib/exam"
 import { cn } from "@/lib/utils"
+
+type TraineeOption = {
+  id: string
+  first_name: string | null
+  last_name: string | null
+  middle_initial: string | null
+  email: string | null
+  status: string | null
+}
+
+function isActiveTrainee(t: TraineeOption) {
+  const s = `${t.status || ""}`.toLowerCase()
+  return !s.includes("cancel") && !s.includes("declin")
+}
+
+function traineeLabel(t: TraineeOption) {
+  const last = (t.last_name || "").trim()
+  const first = (t.first_name || "").trim()
+  const mi = (t.middle_initial || "").trim()
+  const name = composeRespondentName(last, first, mi)
+  return name || "Unnamed participant"
+}
 
 export default function GuestExamPage() {
   const searchParams = useSearchParams()
@@ -31,11 +68,26 @@ export default function GuestExamPage() {
   const [exam, setExam] = React.useState<ExamRecord | null>(null)
   const [courseName, setCourseName] = React.useState("")
   const [questions, setQuestions] = React.useState<ExamQuestionDraft[]>([])
-  const [email, setEmail] = React.useState("")
-  const [lastName, setLastName] = React.useState("")
-  const [firstName, setFirstName] = React.useState("")
-  const [middleInitial, setMiddleInitial] = React.useState("")
+  const [trainees, setTrainees] = React.useState<TraineeOption[]>([])
+  const [selectedTraineeId, setSelectedTraineeId] = React.useState("")
+  const [nameFilter, setNameFilter] = React.useState("")
   const [answers, setAnswers] = React.useState<Record<string, string>>({})
+  const [selectConfirmOpen, setSelectConfirmOpen] = React.useState(false)
+  const [confirmOpen, setConfirmOpen] = React.useState(false)
+  const previousTraineeId = React.useRef("")
+
+  const scheduleId = scheduleIdParam || exam?.schedule_id || null
+  const selectedTrainee = trainees.find((t) => t.id === selectedTraineeId) || null
+
+  const filteredTrainees = React.useMemo(() => {
+    const q = nameFilter.trim().toLowerCase()
+    const list = trainees.filter(isActiveTrainee)
+    if (!q) return list
+    return list.filter((t) => {
+      const name = `${t.last_name || ""} ${t.first_name || ""} ${t.email || ""}`.toLowerCase()
+      return name.includes(q)
+    })
+  }, [trainees, nameFilter])
 
   React.useEffect(() => {
     let cancelled = false
@@ -70,6 +122,16 @@ export default function GuestExamPage() {
         if (!cancelled) setCourseName(course?.name || "")
       }
 
+      const rosterScheduleId = scheduleIdParam || examRow.schedule_id || null
+      if (rosterScheduleId) {
+        const { data: rows } = await tmsDb
+          .from("trainings")
+          .select("id, first_name, last_name, middle_initial, email, status")
+          .eq("schedule_id", rosterScheduleId)
+          .order("last_name", { ascending: true })
+        if (!cancelled) setTrainees((rows as TraineeOption[]) || [])
+      }
+
       const { data: qs, error: qe } = await tmsDb
         .from("exam_questions")
         .select("id, question_type, question_text, options, answers, points, sort_order")
@@ -89,20 +151,27 @@ export default function GuestExamPage() {
     return () => {
       cancelled = true
     }
-  }, [examId])
+  }, [examId, scheduleIdParam])
+
+  const answeredCount = questions.filter((q) => String(answers[q.id || q.clientId] || "").trim()).length
+
+  const requestSubmit = () => {
+    if (!selectedTrainee) {
+      toast.error("Select your name from the participant list")
+      return
+    }
+    const unanswered = questions.find((q) => !String(answers[q.id || q.clientId] || "").trim())
+    if (unanswered) {
+      toast.error("Please answer all questions")
+      return
+    }
+    setConfirmOpen(true)
+  }
 
   const submit = async () => {
     if (!exam) return
-    if (!isValidExamEmail(email)) {
-      toast.error("Please enter a valid email")
-      return
-    }
-    if (!lastName.trim()) {
-      toast.error("Please enter your last name")
-      return
-    }
-    if (!firstName.trim()) {
-      toast.error("Please enter your first name")
+    if (!selectedTrainee) {
+      toast.error("Select your name from the participant list")
       return
     }
     const unanswered = questions.find((q) => !String(answers[q.id || q.clientId] || "").trim())
@@ -111,8 +180,11 @@ export default function GuestExamPage() {
       return
     }
 
-    const mi = normalizeMiddleInitial(middleInitial)
-    const respondentName = composeRespondentName(lastName, firstName, mi)
+    const respondentName = composeRespondentName(
+      selectedTrainee.last_name || "",
+      selectedTrainee.first_name || "",
+      selectedTrainee.middle_initial || ""
+    )
 
     setSubmitting(true)
     try {
@@ -131,12 +203,12 @@ export default function GuestExamPage() {
       const responsePayload: Record<string, unknown> = {
         exam_id: exam.id,
         respondent_name: respondentName,
-        respondent_email: email.trim(),
+        respondent_email: (selectedTrainee.email || "").trim() || null,
         answers: payloadAnswers,
         score,
         max_score: max,
       }
-      const responseScheduleId = scheduleIdParam || exam.schedule_id || null
+      const responseScheduleId = scheduleId
       if (responseScheduleId) responsePayload.schedule_id = responseScheduleId
 
       let { error } = await tmsDb.from("exam_responses").insert(responsePayload)
@@ -146,6 +218,7 @@ export default function GuestExamPage() {
         error = retry.error
       }
       if (error) throw error
+      setConfirmOpen(false)
       setDone(true)
       toast.success("Exam submitted")
     } catch (e: unknown) {
@@ -197,64 +270,77 @@ export default function GuestExamPage() {
         {done ? (
           <div className="rounded-2xl border border-[#FFCC00]/50 bg-white p-8 text-center shadow-md dark:border-[#FFCC00]/30 dark:bg-card">
             <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600 dark:text-emerald-400" />
-            <h2 className="mt-3 text-xl font-bold text-[#1A1D66] dark:text-foreground">Thank you, {firstName.trim()}!</h2>
+            <h2 className="mt-3 text-xl font-bold text-[#1A1D66] dark:text-foreground">
+              Thank you, {(selectedTrainee?.first_name || "").trim() || "participant"}!
+            </h2>
             <p className="mt-2 text-muted-foreground">Your answers were submitted successfully.</p>
           </div>
         ) : (
           <>
             <div className="rounded-2xl border border-[#1A1D66]/10 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-card">
               <p className="mb-4 text-sm font-semibold text-[#1A1D66] dark:text-foreground">Your details</p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5 sm:col-span-2">
-                  <Label htmlFor="guest-email">Email *</Label>
-                  <Input
-                    id="guest-email"
-                    type="email"
-                    required
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@email.com"
-                  />
+              <div className="space-y-2">
+                <Label>Select your name *</Label>
+                <Select
+                  value={selectedTraineeId}
+                  onValueChange={(value) => {
+                    previousTraineeId.current = selectedTraineeId
+                    setSelectedTraineeId(value)
+                    setNameFilter("")
+                    setSelectConfirmOpen(true)
+                  }}
+                >
+                  <SelectTrigger className="h-11 w-full border border-input bg-background text-base">
+                    <SelectValue placeholder="Select from participants" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-80">
+                    <div className="sticky top-0 z-10 border-b bg-popover p-2">
+                      <Input
+                        value={nameFilter}
+                        onChange={(event) => setNameFilter(event.target.value)}
+                        placeholder="Search name or email…"
+                        className="h-9 border border-input bg-background"
+                        onKeyDown={(event) => event.stopPropagation()}
+                      />
+                    </div>
+                    {filteredTrainees.length === 0 ? (
+                      <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                        {trainees.length === 0
+                          ? "No participants found for this training."
+                          : "No matching participant."}
+                      </p>
+                    ) : (
+                      filteredTrainees.map((t) => (
+                        <SelectItem key={t.id} value={t.id} className="text-base py-2.5">
+                          {t.last_name || ""}, {t.first_name || ""}
+                          {t.email ? ` · ${t.email}` : ""}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+                  <p className="flex items-start gap-2">
+                    <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      Make sure you select <strong>your own name</strong>. Choosing someone else will attach this exam to their record and can mix up scores.
+                    </span>
+                  </p>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="guest-last-name">Last name *</Label>
-                  <Input
-                    id="guest-last-name"
-                    required
-                    autoComplete="family-name"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    placeholder="Last name"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="guest-first-name">First name *</Label>
-                  <Input
-                    id="guest-first-name"
-                    required
-                    autoComplete="given-name"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="First name"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="guest-mi">Middle initial (optional)</Label>
-                  <Input
-                    id="guest-mi"
-                    autoComplete="additional-name"
-                    maxLength={2}
-                    value={middleInitial}
-                    onChange={(e) => setMiddleInitial(normalizeMiddleInitial(e.target.value))}
-                    placeholder="M"
-                    className="max-w-[5rem] uppercase"
-                  />
-                </div>
+                {selectedTrainee ? (
+                  <div className="rounded-xl border bg-muted/50 px-3 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Selected participant</p>
+                    <p className="mt-1 text-base font-semibold">{traineeLabel(selectedTrainee)}</p>
+                    <p className="text-sm text-muted-foreground">{selectedTrainee.email || "No email on file"}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Double-check this is you before answering and submitting.
+                    </p>
+                  </div>
+                ) : null}
+                <p className="text-xs text-muted-foreground">
+                  Choose your name from the registered participants for this schedule.
+                </p>
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">
-                Use the same name and email as in your training registration.
-              </p>
             </div>
 
             {questions.map((q, i) => {
@@ -318,14 +404,90 @@ export default function GuestExamPage() {
             <Button
               className="h-11 w-full gap-2 bg-[#1A1D66] text-base text-white hover:bg-[#141654] dark:bg-[#FFCC00] dark:text-[#1A1D66] dark:hover:bg-[#e6b800]"
               disabled={submitting || !questions.length}
-              onClick={() => void submit()}
+              onClick={requestSubmit}
             >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Submit exam
+              Review and submit
             </Button>
           </>
         )}
       </main>
+
+      <AlertDialog open={selectConfirmOpen} onOpenChange={setSelectConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm your name</AlertDialogTitle>
+            <AlertDialogDescription>
+              Select your own name only. Picking someone else can mix up exam scores and create conflicts on their record.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {selectedTrainee ? (
+            <div className="rounded-xl border bg-muted/40 p-4 text-sm">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">You selected</p>
+              <p className="mt-1 text-base font-semibold">{traineeLabel(selectedTrainee)}</p>
+              <p className="text-muted-foreground">{selectedTrainee.email || "No email on file"}</p>
+            </div>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setSelectedTraineeId(previousTraineeId.current)
+              }}
+            >
+              Choose a different name
+            </AlertDialogCancel>
+            <AlertDialogAction className="bg-[#1A1D66] text-white hover:bg-[#141654]">
+              This is my name
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm your exam submission</AlertDialogTitle>
+            <AlertDialogDescription>
+              This exam will be saved under the selected participant. Please confirm the name is correct.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {selectedTrainee ? (
+            <div className="space-y-3 rounded-xl border bg-muted/40 p-4 text-sm">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Exam</p>
+                <p className="font-medium">
+                  {exam.title || (exam.kind === "pretest" ? "Pre-test" : "Post-test")}
+                  {courseName ? ` · ${courseName}` : ""}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Submitting as</p>
+                <p className="text-base font-semibold">{traineeLabel(selectedTrainee)}</p>
+                <p className="text-muted-foreground">{selectedTrainee.email || "No email on file"}</p>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Answers</p>
+                <p className="font-medium">
+                  {answeredCount} of {questions.length} questions answered
+                </p>
+              </div>
+            </div>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={submitting}>Go back</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={submitting}
+              className="bg-[#1A1D66] text-white hover:bg-[#141654]"
+              onClick={(e) => {
+                e.preventDefault()
+                void submit()
+              }}
+            >
+              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {submitting ? "Submitting…" : "Yes, submit as this name"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
