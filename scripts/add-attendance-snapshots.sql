@@ -2,4 +2,4 @@
 ALTER TABLE tms.schedules
   ADD COLUMN IF NOT EXISTS attendance_snapshots jsonb DEFAULT '[]'::jsonb;
 
-COMMENT ON COLUMN tms.schedules.attendance_snapshots IS 'Screenshot photos for the attendance page: [{id, url, name, created_at}]';
+COMMENT ON COLUMN tms.schedules.attendance_snapshots IS 'Screenshot photos per training day: [{id, url, name, created_at, day}]';

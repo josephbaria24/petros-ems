@@ -54,7 +54,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { toast } from "sonner"
-import { AttendanceSnapshotsDialog } from "@/components/attendance-snapshots-dialog"
+import { AttendanceSnapshotsDialog, parseAttendanceSnapshots, snapshotsForDay, type AttendanceSnapshot } from "@/components/attendance-snapshots-dialog"
 import { TeamsMeetingDetailsDialog } from "@/components/teams-meeting-details-dialog"
 import { WorkshopSection } from "@/components/workshop-section"
 import {
@@ -187,7 +187,8 @@ export default function ScheduleAttendancePage() {
   const [applyingQuickAction, setApplyingQuickAction] = React.useState(false)
   const [generatingQr, setGeneratingQr] = React.useState(false)
   const [copiedLink, setCopiedLink] = React.useState(false)
-  const [snapshotsOpen, setSnapshotsOpen] = React.useState(false)
+  const [snapshotsDay, setSnapshotsDay] = React.useState<string | null>(null)
+  const [attendanceSnapshots, setAttendanceSnapshots] = React.useState<AttendanceSnapshot[]>([])
   const [teamsDetailsOpen, setTeamsDetailsOpen] = React.useState(false)
   const [savedMeetingUrl, setSavedMeetingUrl] = React.useState<string | null>(null)
   const fileRef = React.useRef<HTMLInputElement>(null)
@@ -211,6 +212,7 @@ export default function ScheduleAttendancePage() {
           day_trainers,
           schedule_type,
           online_classroom_url,
+          attendance_snapshots,
           courses ( name ),
           schedule_ranges ( start_date, end_date ),
           schedule_dates ( date )
@@ -221,7 +223,7 @@ export default function ScheduleAttendancePage() {
         .eq("id", scheduleId)
         .single()
 
-      if (se && /online_classroom_url|schema cache|column/i.test(se.message || "")) {
+      if (se && /online_classroom_url|attendance_snapshots|schema cache|column/i.test(se.message || "")) {
         const retry = await tmsDb
           .from("schedules")
           .select(
@@ -251,10 +253,14 @@ export default function ScheduleAttendancePage() {
         setRows([])
         setCourseName("")
         setSavedMeetingUrl(null)
+        setAttendanceSnapshots([])
         return
       }
 
       setCourseName((schedule.courses as { name?: string } | null)?.name || "Course")
+      setAttendanceSnapshots(
+        parseAttendanceSnapshots((schedule as { attendance_snapshots?: unknown }).attendance_snapshots)
+      )
       setSavedMeetingUrl(
         typeof (schedule as { online_classroom_url?: string | null }).online_classroom_url === "string" &&
           (schedule as { online_classroom_url?: string | null }).online_classroom_url?.trim()
@@ -331,6 +337,22 @@ export default function ScheduleAttendancePage() {
     () => getTrainingDayKeys(scheduleMeta),
     [scheduleMeta]
   )
+  const snapshotDayKeys = React.useMemo(
+    () => (trainingDayKeys.length > 0 ? trainingDayKeys : ["all"]),
+    [trainingDayKeys]
+  )
+  const untaggedFallbackDay = snapshotDayKeys[0]
+  const snapshotCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const dk of snapshotDayKeys) {
+      counts[dk] = snapshotsForDay(
+        attendanceSnapshots,
+        dk,
+        dk === untaggedFallbackDay ? untaggedFallbackDay : undefined
+      ).length
+    }
+    return counts
+  }, [attendanceSnapshots, snapshotDayKeys, untaggedFallbackDay])
 
   const counts = React.useMemo(
     () => countAttendanceSlots(rows, trainingDayKeys),
@@ -808,15 +830,6 @@ export default function ScheduleAttendancePage() {
             <Button
               variant="outline"
               className="gap-2 border-white/30 bg-white/5 text-white hover:bg-white/10 hover:text-white"
-              onClick={() => setSnapshotsOpen(true)}
-              disabled={loading}
-            >
-              <Camera className="h-4 w-4" />
-              Snapshots
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2 border-white/30 bg-white/5 text-white hover:bg-white/10 hover:text-white"
               onClick={() => fileRef.current?.click()}
             >
               <Upload className="h-4 w-4" />
@@ -1095,18 +1108,45 @@ export default function ScheduleAttendancePage() {
                       <TableHead className="hidden min-w-[120px] lg:table-cell">Company</TableHead>
                       <TableHead className="w-[88px] text-center">History</TableHead>
                       {trainingDayKeys.length > 0 ? (
-                        trainingDayKeys.map((dk) => (
-                          <TableHead
-                            key={dk}
-                            className="min-w-[104px] whitespace-nowrap px-1 text-center align-bottom text-xs font-semibold"
-                            title={format(parseISO(dk), "EEEE, MMMM d, yyyy")}
-                          >
-                            <div className="text-muted-foreground">{format(parseISO(dk), "EEE")}</div>
-                            <div>{format(parseISO(dk), "MMM d")}</div>
-                          </TableHead>
-                        ))
+                        trainingDayKeys.map((dk) => {
+                          const count = snapshotCounts[dk] || 0
+                          return (
+                            <TableHead
+                              key={dk}
+                              className="min-w-[112px] whitespace-nowrap px-1 text-center align-bottom text-xs font-semibold"
+                              title={format(parseISO(dk), "EEEE, MMMM d, yyyy")}
+                            >
+                              <div className="text-muted-foreground">{format(parseISO(dk), "EEE")}</div>
+                              <div>{format(parseISO(dk), "MMM d")}</div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="mt-1 h-7 w-full gap-1 px-1 text-[10px] font-medium text-[#1A1D66] hover:bg-[#1A1D66]/10 dark:text-[#FFCC00] dark:hover:bg-white/10"
+                                onClick={() => setSnapshotsDay(dk)}
+                                title={`Photos for ${format(parseISO(dk), "EEEE, MMMM d, yyyy")}`}
+                              >
+                                <Camera className="h-3.5 w-3.5" />
+                                {count > 0 ? count : "Photos"}
+                              </Button>
+                            </TableHead>
+                          )
+                        })
                       ) : (
-                        <TableHead className="w-[160px]">Attendance</TableHead>
+                        <TableHead className="w-[160px]">
+                          Attendance
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="mt-1 h-7 gap-1 px-1 text-[10px] font-medium text-[#1A1D66] hover:bg-[#1A1D66]/10 dark:text-[#FFCC00]"
+                            onClick={() => setSnapshotsDay("all")}
+                            title="Photos for this schedule"
+                          >
+                            <Camera className="h-3.5 w-3.5" />
+                            {(snapshotCounts.all || 0) > 0 ? snapshotCounts.all : "Photos"}
+                          </Button>
+                        </TableHead>
                       )}
                     </TableRow>
                   </TableHeader>
@@ -1329,12 +1369,24 @@ export default function ScheduleAttendancePage() {
         </>
       )}
 
-      <AttendanceSnapshotsDialog
-        open={snapshotsOpen}
-        onOpenChange={setSnapshotsOpen}
-        scheduleId={scheduleId}
-        courseName={courseName}
-      />
+      {scheduleId && snapshotsDay ? (
+        <AttendanceSnapshotsDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setSnapshotsDay(null)
+          }}
+          scheduleId={scheduleId}
+          courseName={courseName}
+          day={snapshotsDay}
+          dayLabel={
+            snapshotsDay === "all"
+              ? "This schedule"
+              : format(parseISO(snapshotsDay), "EEEE, MMM d, yyyy")
+          }
+          untaggedFallbackDay={untaggedFallbackDay}
+          onSnapshotsChange={setAttendanceSnapshots}
+        />
+      ) : null}
       {scheduleId ? (
         <TeamsMeetingDetailsDialog
           open={teamsDetailsOpen}

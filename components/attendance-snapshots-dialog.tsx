@@ -26,6 +26,42 @@ export type AttendanceSnapshot = {
   url: string
   name: string
   created_at: string
+  day?: string
+}
+
+export function parseAttendanceSnapshots(raw: unknown): AttendanceSnapshot[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((item): item is AttendanceSnapshot => {
+    if (!item || typeof item !== "object") return false
+    const row = item as Record<string, unknown>
+    return typeof row.id === "string" && typeof row.url === "string"
+  })
+}
+
+export function snapshotsForDay(
+  all: AttendanceSnapshot[],
+  day: string,
+  untaggedFallbackDay?: string
+) {
+  return all.filter((item) => {
+    if (item.day === day) return true
+    if (!item.day && untaggedFallbackDay === day) return true
+    return false
+  })
+}
+
+function mergeDaySnapshots(
+  all: AttendanceSnapshot[],
+  day: string,
+  dayItems: AttendanceSnapshot[],
+  untaggedFallbackDay?: string
+) {
+  const rest = all.filter((item) => {
+    if (item.day === day) return false
+    if (!item.day && untaggedFallbackDay === day) return false
+    return true
+  })
+  return [...rest, ...dayItems.map((item) => ({ ...item, day }))]
 }
 
 function newId() {
@@ -51,6 +87,10 @@ type AttendanceSnapshotsDialogProps = {
   onOpenChange: (open: boolean) => void
   scheduleId: string
   courseName: string
+  day: string
+  dayLabel: string
+  untaggedFallbackDay?: string
+  onSnapshotsChange?: (next: AttendanceSnapshot[]) => void
 }
 
 export function AttendanceSnapshotsDialog({
@@ -58,18 +98,27 @@ export function AttendanceSnapshotsDialog({
   onOpenChange,
   scheduleId,
   courseName,
+  day,
+  dayLabel,
+  untaggedFallbackDay,
+  onSnapshotsChange,
 }: AttendanceSnapshotsDialogProps) {
   const fileRef = React.useRef<HTMLInputElement>(null)
   const [loading, setLoading] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
   const [uploading, setUploading] = React.useState(false)
-  const [snapshots, setSnapshots] = React.useState<AttendanceSnapshot[]>([])
+  const [allSnapshots, setAllSnapshots] = React.useState<AttendanceSnapshot[]>([])
   const [editing, setEditing] = React.useState<AttendanceSnapshot | null>(null)
   const [busyId, setBusyId] = React.useState<string | null>(null)
+  const snapshots = React.useMemo(
+    () => snapshotsForDay(allSnapshots, day, untaggedFallbackDay),
+    [allSnapshots, day, untaggedFallbackDay]
+  )
 
   const persist = React.useCallback(
-    async (next: AttendanceSnapshot[]) => {
+    async (nextDayItems: AttendanceSnapshot[]) => {
       setSaving(true)
+      const next = mergeDaySnapshots(allSnapshots, day, nextDayItems, untaggedFallbackDay)
       const { error } = await tmsDb
         .from("schedules")
         .update({ attendance_snapshots: next })
@@ -86,10 +135,11 @@ export function AttendanceSnapshotsDialog({
         }
         return false
       }
-      setSnapshots(next)
+      setAllSnapshots(next)
+      onSnapshotsChange?.(next)
       return true
     },
-    [scheduleId]
+    [allSnapshots, day, onSnapshotsChange, scheduleId, untaggedFallbackDay]
   )
 
   React.useEffect(() => {
@@ -111,8 +161,8 @@ export function AttendanceSnapshotsDialog({
         }
         setSnapshots([])
       } else {
-        const raw = (data as { attendance_snapshots?: AttendanceSnapshot[] | null })?.attendance_snapshots
-        setSnapshots(Array.isArray(raw) ? raw : [])
+        const raw = (data as { attendance_snapshots?: unknown })?.attendance_snapshots
+        setAllSnapshots(parseAttendanceSnapshots(raw))
       }
       setLoading(false)
     }
@@ -135,6 +185,7 @@ export function AttendanceSnapshotsDialog({
           url,
           name: file.name.replace(/\.[^.]+$/, "") || "Snapshot",
           created_at: new Date().toISOString(),
+          day,
         })
       }
       if (!added.length) {
@@ -191,10 +242,11 @@ export function AttendanceSnapshotsDialog({
           <DialogHeader className="border-b border-[#FFCC00]/40 bg-gradient-to-r from-[#1A1D66] to-[#24286f] px-5 py-4 text-white">
             <DialogTitle className="flex items-center gap-2 text-white">
               <Camera className="h-5 w-5 text-[#FFCC00]" />
-              Attendance snapshots
+              {dayLabel} snapshots
             </DialogTitle>
             <DialogDescription className="text-white/75">
-              Upload screenshots for {courseName || "this training"}. Download, crop, or remove them anytime.
+              Upload attendance photos for {dayLabel}
+              {courseName ? ` · ${courseName}` : ""}. Download, crop, or remove them anytime.
             </DialogDescription>
           </DialogHeader>
 
@@ -239,7 +291,7 @@ export function AttendanceSnapshotsDialog({
               >
                 <Camera className="h-8 w-8 text-[#1A1D66]/50 dark:text-muted-foreground" />
                 <p className="mt-2 text-sm font-medium">No snapshots yet</p>
-                <p className="mt-1 text-xs text-muted-foreground">Click to upload attendance screenshots.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Click to upload photos for this training day.</p>
               </button>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
