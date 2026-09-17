@@ -430,10 +430,9 @@ export default function SubmissionsEmailPage() {
     loadData()
   }, [scheduleId])
 
-  const loadCourseMaterials = useCallback(async (id = courseId) => {
-    if (!id) return
+  const loadCourseMaterials = useCallback(async () => {
     try {
-      const response = await fetch(`/api/course-materials?courseId=${id}`)
+      const response = await fetch("/api/course-materials?all=1")
       const json = await response.json()
       if (response.ok && Array.isArray(json.data)) {
         setCourseMaterials(json.data)
@@ -441,7 +440,7 @@ export default function SubmissionsEmailPage() {
     } catch (error) {
       console.error(error)
     }
-  }, [courseId])
+  }, [])
 
   useEffect(() => {
     void loadCourseMaterials()
@@ -1368,7 +1367,9 @@ export default function SubmissionsEmailPage() {
               </Tooltip>
               <div className="space-y-2 rounded-md bg-[#fff8e1] p-2 text-[#141454] dark:bg-[#0c0d14] dark:text-white">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium text-[#141454]/70 dark:text-[#d7d8e0]">Course materials</p>
+                  <p className="text-xs font-medium text-[#141454]/70 dark:text-[#d7d8e0]">
+                    Course materials · shared across all trainings
+                  </p>
                   <Button
                     type="button"
                     size="icon"
@@ -1405,8 +1406,8 @@ export default function SubmissionsEmailPage() {
                     {filteredMaterials.length === 0 ? (
                       <p className="text-xs text-muted-foreground">
                         {courseId
-                          ? "No uploaded materials found for this course. Click + to add one."
-                          : "This schedule has no course, so materials can't be uploaded."}
+                          ? "No uploaded materials yet. Click + to add one — it will be available on every training."
+                          : "No uploaded materials yet. Open a schedule that has a course to upload one."}
                       </p>
                     ) : (
                       filteredMaterials.map((material) => {
@@ -1849,7 +1850,9 @@ export default function SubmissionsEmailPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Upload course material</DialogTitle>
-            <DialogDescription>Name the file, then choose what to upload for this course.</DialogDescription>
+            <DialogDescription>
+              Name the file, then choose what to upload. It will be available in the email composer for all trainings, not only this schedule.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">

@@ -18,20 +18,26 @@ function hashPassword(password: string): string {
   return createHash("sha256").update(password).digest("hex");
 }
 
-// GET — list materials for a course
+// GET — list materials for a course, or all trainings when all=1
 export async function GET(req: NextRequest) {
   const courseId = req.nextUrl.searchParams.get("courseId");
+  const all = req.nextUrl.searchParams.get("all") === "1";
 
-  if (!courseId) {
+  if (!courseId && !all) {
     return NextResponse.json({ error: "courseId is required" }, { status: 400 });
   }
 
   const supabase = getSupabase();
-  const { data, error } = await supabase
+  let query = supabase
     .from("course_materials")
     .select("id, course_id, title, file_url, file_type, is_active, created_at, updated_at")
-    .eq("course_id", courseId)
     .order("created_at", { ascending: false });
+
+  if (!all && courseId) {
+    query = query.eq("course_id", courseId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
