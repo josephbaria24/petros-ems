@@ -247,6 +247,7 @@ export default function SubmissionsEmailPage() {
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null)
   const [editingTemplateName, setEditingTemplateName] = useState("")
   const [participantSearch, setParticipantSearch] = useState("")
+  const [templateSearch, setTemplateSearch] = useState("")
   const [courseMaterials, setCourseMaterials] = useState<CourseMaterial[]>([])
   const [materialSearch, setMaterialSearch] = useState("")
   const [materialAttachingId, setMaterialAttachingId] = useState<string | null>(null)
@@ -288,6 +289,12 @@ export default function SubmissionsEmailPage() {
       return fullName.includes(q) || email.includes(q)
     })
   }, [trainees, participantSearch])
+
+  const filteredTemplates = useMemo(() => {
+    const q = templateSearch.trim().toLowerCase()
+    if (!q) return templates
+    return templates.filter((t) => t.name.toLowerCase().includes(q))
+  }, [templates, templateSearch])
 
   const sendHistoryFeed = useMemo(() => {
     const rows: Array<{
@@ -1062,7 +1069,7 @@ export default function SubmissionsEmailPage() {
     { label: "Course", token: "{{course_name}}", tooltip: "Insert course name variable" },
     { label: "Schedule", token: "{{schedule}}", tooltip: "Insert schedule variable" },
     { label: "Room Link", token: "{{room_link}}", tooltip: "Insert room link variable" },
-    { label: "Submission Link", token: "{{submission_link}}", tooltip: "Insert this schedule's public submission link" },
+    { label: "Submission Link", token: "{{submission_link}}", tooltip: "Insert this schedule's shared drop-box link (same for all trainees here)" },
   ]
 
   const sectionLabel = "text-xs font-semibold uppercase tracking-wide"
@@ -1187,12 +1194,23 @@ export default function SubmissionsEmailPage() {
                   </div>
                 </div>
               )}
-              <ScrollArea className="h-32 pr-2">
+              <div className="relative mb-2">
+                <Search className="h-4 w-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={templateSearch}
+                  onChange={(e) => setTemplateSearch(e.target.value)}
+                  placeholder="Search templates..."
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+              <ScrollArea className="h-64 pr-2">
                 <div className="space-y-1">
-                  {templates.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No templates yet</p>
+                  {filteredTemplates.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {templates.length === 0 ? "No templates yet" : "No matching templates."}
+                    </p>
                   ) : (
-                    templates.map((template) => (
+                    filteredTemplates.map((template) => (
                       <div key={template.id} className="rounded bg-background p-1.5 dark:bg-[#0c0d14]">
                         <p className="text-xs font-medium truncate">{template.name}</p>
                         <div className="mt-1 flex gap-1">
@@ -1317,6 +1335,18 @@ export default function SubmissionsEmailPage() {
 
             <div className="space-y-2 rounded-lg bg-emerald-300 p-3 text-emerald-950 dark:bg-emerald-950 dark:text-emerald-100">
               <Label className={`${sectionLabel} text-emerald-950 dark:text-emerald-200`}>Submission Link</Label>
+              <div className="rounded-md bg-emerald-100 px-3 py-2 text-sm dark:bg-zinc-950">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">
+                  This training
+                </p>
+                <p className="font-semibold text-slate-900 dark:text-slate-100">
+                  {courseName || "Current schedule"}
+                  {scheduleDateText ? ` • ${scheduleDateText}` : ""}
+                </p>
+                <p className="mt-1 text-xs text-emerald-900/80 dark:text-emerald-200/80">
+                  One shared drop box for everyone on this schedule — not a separate link per trainee.
+                </p>
+              </div>
               <Input
                 readOnly
                 value={submissionLink}
@@ -1324,7 +1354,7 @@ export default function SubmissionsEmailPage() {
                 className="bg-emerald-100 text-slate-900 dark:bg-zinc-950 dark:text-slate-100"
               />
               <p className="text-xs text-emerald-950/80 dark:text-emerald-200/80">
-                Public drop box for this schedule — same link as Exam / Test → Submissions. No login required.
+                Keep <span className="font-semibold">{"{{submission_link}}"}</span> in the template. Preview and Send fill it with this schedule’s URL, so you don’t pick the wrong class’s box.
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button
