@@ -1264,7 +1264,7 @@ export default function SubmissionsEmailPage() {
 
             <div className="space-y-2 rounded-lg bg-blue-900 p-3 text-blue-50 dark:bg-[#0a1f3d]">
               <Label className={`${sectionLabel} text-blue-100`}>Typography Tools</Label>
-              <div className="flex flex-wrap gap-2 rounded-md bg-blue-950 p-2 dark:bg-[#061428]">
+              <div className="flex flex-wrap gap-2 rounded-md bg-blue-950 p-2 text-slate-900 dark:bg-[#061428] dark:text-slate-100">
                 <Tooltip><TooltipTrigger asChild><Button size="sm" variant="outline" onClick={() => formatCommand("bold")}><Bold className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Bold</TooltipContent></Tooltip>
                 <Tooltip><TooltipTrigger asChild><Button size="sm" variant="outline" onClick={() => formatCommand("italic")}><Italic className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Italic</TooltipContent></Tooltip>
                 <Tooltip><TooltipTrigger asChild><Button size="sm" variant="outline" onClick={() => formatCommand("underline")}><Underline className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Underline</TooltipContent></Tooltip>
@@ -1277,7 +1277,7 @@ export default function SubmissionsEmailPage() {
                 <Tooltip><TooltipTrigger asChild><Button size="sm" variant="outline" onClick={insertDivider}><Minus className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Insert Divider</TooltipContent></Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1 rounded px-2 bg-background">
+                    <div className="flex items-center gap-1 rounded px-2 bg-background text-slate-900 dark:text-slate-100">
                       <Palette className="h-3.5 w-3.5 text-muted-foreground" />
                       <input
                         type="color"
@@ -1291,12 +1291,12 @@ export default function SubmissionsEmailPage() {
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <div className="flex items-center gap-1 rounded px-2 bg-background">
-                      <span className="text-[11px] text-muted-foreground">Size</span>
+                    <div className="flex items-center gap-1 rounded px-2 bg-background text-slate-900 dark:text-slate-100">
+                      <span className="text-[11px] text-slate-600 dark:text-slate-300">Size</span>
                       <select
                         value={selectedTextSize}
                         onChange={(e) => applyTextSize(e.target.value)}
-                        className="h-6 text-xs bg-transparent outline-none"
+                        className="h-6 text-xs bg-transparent outline-none text-slate-900 dark:text-slate-100"
                       >
                         <option value="12">12</option>
                         <option value="14">14</option>
@@ -1316,7 +1316,7 @@ export default function SubmissionsEmailPage() {
                 {tokenButtons.map((item) => (
                   <Tooltip key={item.token}>
                     <TooltipTrigger asChild>
-                      <Button size="sm" variant="secondary" onClick={() => insertToken(item.token)}>{item.label}</Button>
+                      <Button size="sm" variant="secondary" className="text-slate-900 dark:text-slate-100" onClick={() => insertToken(item.token)}>{item.label}</Button>
                     </TooltipTrigger>
                     <TooltipContent>{item.tooltip}</TooltipContent>
                   </Tooltip>
