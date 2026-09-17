@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { tmsDb } from "@/lib/supabase-client"
+import { buildGuestSubmissionBinUrl } from "@/lib/submission-bin"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -261,6 +262,17 @@ export default function SubmissionsEmailPage() {
   const [downloadingMaterial, setDownloadingMaterial] = useState(false)
   const [selectedTextColor, setSelectedTextColor] = useState("#000000")
   const [selectedTextSize, setSelectedTextSize] = useState("16")
+
+  const [origin, setOrigin] = useState("")
+
+  useEffect(() => {
+    setOrigin(window.location.origin)
+  }, [])
+
+  const submissionLink = useMemo(() => {
+    if (!scheduleId || !origin) return ""
+    return buildGuestSubmissionBinUrl(origin, scheduleId)
+  }, [scheduleId, origin])
 
   const selectedParticipants = useMemo(
     () => trainees.filter((t) => selectedIds.includes(t.id) && t.email),
@@ -560,6 +572,56 @@ export default function SubmissionsEmailPage() {
     setEditorHtml(editorRef.current.innerHTML)
   }
 
+  const insertSubmissionLink = () => {
+    if (!editorRef.current) return
+    editorRef.current.focus()
+    document.execCommand(
+      "insertHTML",
+      false,
+      `
+      <p style="margin:16px 0 8px 0;">Please submit your re-entry plan or other files using this schedule's drop box:</p>
+      <p style="margin:0 0 16px 0;">
+        <a
+          href="{{submission_link}}"
+          target="_blank"
+          rel="noopener noreferrer"
+          style="
+            display:inline-block;
+            background:#1A1D66;
+            color:#FFCC00;
+            text-decoration:none;
+            padding:10px 18px;
+            border-radius:8px;
+            font-weight:600;
+            font-size:14px;
+            line-height:1.2;
+          "
+        >
+          Open submission link
+        </a>
+      </p>
+      <p style="margin:0 0 16px 0;font-size:13px;">
+        Or copy this link: <a href="{{submission_link}}" target="_blank" rel="noopener noreferrer">{{submission_link}}</a>
+      </p>
+      `
+    )
+    setEditorHtml(editorRef.current.innerHTML)
+    toast.success("Submission link added to the email")
+  }
+
+  const copySubmissionLink = async () => {
+    if (!submissionLink) {
+      toast.error("This email has no training schedule, so a submission link can't be created")
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(submissionLink)
+      toast.success("Submission link copied")
+    } catch {
+      toast.error("Could not copy the submission link")
+    }
+  }
+
   const applyTextColor = (color: string) => {
     if (!editorRef.current) return
     editorRef.current.focus()
@@ -774,8 +836,9 @@ export default function SubmissionsEmailPage() {
       course_name: courseName || "Course",
       schedule: scheduleDateText || "Schedule TBD",
       room_link: roomLink || "#",
+      submission_link: submissionLink || "#",
     })
-  }, [headerHtml, editorHtml, footerHtml, courseName, scheduleDateText, roomLink])
+  }, [headerHtml, editorHtml, footerHtml, courseName, scheduleDateText, roomLink, submissionLink])
 
   const handleSendEmails = async () => {
     if (!subject.trim()) {
@@ -808,6 +871,7 @@ export default function SubmissionsEmailPage() {
           course_name: courseName || "Course",
           schedule: scheduleDateText || "Schedule TBD",
           room_link: roomLink || "",
+          submission_link: submissionLink || "",
         })
 
         let status: "sent" | "failed" = "failed"
@@ -998,6 +1062,7 @@ export default function SubmissionsEmailPage() {
     { label: "Course", token: "{{course_name}}", tooltip: "Insert course name variable" },
     { label: "Schedule", token: "{{schedule}}", tooltip: "Insert schedule variable" },
     { label: "Room Link", token: "{{room_link}}", tooltip: "Insert room link variable" },
+    { label: "Submission Link", token: "{{submission_link}}", tooltip: "Insert this schedule's public submission link" },
   ]
 
   const sectionLabel = "text-xs font-semibold uppercase tracking-wide"
@@ -1232,7 +1297,7 @@ export default function SubmissionsEmailPage() {
               <PenSquare className="h-5 w-5 text-blue-200" />
               Email Editor
             </CardTitle>
-            <CardDescription className="text-center text-blue-200">Build your message, add room link and attachments</CardDescription>
+              <CardDescription className="text-center text-blue-200">Build your message, add room link, submission link and attachments</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 overflow-y-auto h-full p-5">
             <div className="space-y-2 rounded-lg bg-amber-300 p-3 text-amber-950 dark:bg-amber-950 dark:text-amber-100">
@@ -1248,6 +1313,54 @@ export default function SubmissionsEmailPage() {
                 onChange={(e) => setRoomLink(e.target.value)}
                 className="bg-cyan-100 text-slate-900 dark:bg-zinc-950 dark:text-slate-100"
               />
+            </div>
+
+            <div className="space-y-2 rounded-lg bg-emerald-300 p-3 text-emerald-950 dark:bg-emerald-950 dark:text-emerald-100">
+              <Label className={`${sectionLabel} text-emerald-950 dark:text-emerald-200`}>Submission Link</Label>
+              <Input
+                readOnly
+                value={submissionLink}
+                placeholder="Opens when this email is tied to a training schedule"
+                className="bg-emerald-100 text-slate-900 dark:bg-zinc-950 dark:text-slate-100"
+              />
+              <p className="text-xs text-emerald-950/80 dark:text-emerald-200/80">
+                Public drop box for this schedule — same link as Exam / Test → Submissions. No login required.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-slate-900 dark:text-slate-100"
+                  disabled={!submissionLink}
+                  onClick={() => void copySubmissionLink()}
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  Copy
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-slate-900 dark:text-slate-100"
+                  disabled={!submissionLink}
+                  onClick={() => window.open(submissionLink, "_blank", "noopener,noreferrer")}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-slate-900 dark:text-slate-100"
+                  disabled={!submissionLink}
+                  onClick={insertSubmissionLink}
+                >
+                  <MousePointer className="h-3.5 w-3.5" />
+                  Insert in email
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-2 rounded-lg bg-stone-300 p-3 text-stone-950 dark:bg-stone-950 dark:text-stone-100">
