@@ -575,6 +575,7 @@ export default function ParticipantDirectoryDialog({
     const spec = CERTIFICATE_PAGE_SIZES[certificatePageSize]
     return { w: spec.width, h: spec.height }
   }, [isIdTemplateSelected, certificatePageSize])
+  const previewRasterScale = isIdTemplateSelected ? 2 : 3
 
   const getCertificateCacheKey = useCallback(
     (traineeId: string, templateType: TemplateType) =>
@@ -747,10 +748,12 @@ export default function ParticipantDirectoryDialog({
     const canvas = previewCanvasRef.current
     if (!canvas) return
 
-    canvas.width = canvasSize.w
-    canvas.height = canvasSize.h
+    canvas.width = Math.round(canvasSize.w * previewRasterScale)
+    canvas.height = Math.round(canvasSize.h * previewRasterScale)
     const ctx = canvas.getContext("2d")
     if (!ctx) return
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = "high"
 
     let cancelled = false
 
@@ -810,9 +813,9 @@ export default function ParticipantDirectoryDialog({
           const baseH = typeof f.boxHeight === "number" ? f.boxHeight * canvas.height : (f.fontSize || 0.12) * canvas.height
           const w = typeof fo.boxWidth === "number" ? fo.boxWidth * canvas.width : (typeof fo.fontSize === "number" ? fo.fontSize * canvas.height : baseW)
           const h = typeof fo.boxHeight === "number" ? fo.boxHeight * canvas.height : (typeof fo.fontSize === "number" ? fo.fontSize * canvas.height : baseH)
-          ctx.setLineDash([6, 4])
+          ctx.setLineDash([6 * previewRasterScale, 4 * previewRasterScale])
           ctx.strokeStyle = f.id === activeFieldId ? "#0ea5e9" : "#22c55e"
-          ctx.lineWidth = 2
+          ctx.lineWidth = 2 * previewRasterScale
           ctx.strokeRect(x, y, w, h)
           ctx.setLineDash([])
 
@@ -827,7 +830,7 @@ export default function ParticipantDirectoryDialog({
           } else {
             // Fallback placeholder (helps debug CORS / missing photos)
             ctx.fillStyle = "rgba(0,0,0,0.35)"
-            ctx.font = "12px Arial"
+            ctx.font = `${12 * previewRasterScale}px Arial`
             ctx.textAlign = "center"
             ctx.fillText(
               hasPhoto ? "Photo not available" : "No photo",
@@ -872,8 +875,8 @@ export default function ParticipantDirectoryDialog({
           if (f.align === "center") boxX = x - maxW / 2
           if (f.align === "right") boxX = x - maxW
           ctx.strokeStyle = "#0ea5e9"
-          ctx.lineWidth = 2
-          ctx.strokeRect(boxX - 6, y - fontPx, maxW + 12, lines.length * lh + 8)
+          ctx.lineWidth = 2 * previewRasterScale
+          ctx.strokeRect(boxX - 6 * previewRasterScale, y - fontPx, maxW + 12 * previewRasterScale, lines.length * lh + 8 * previewRasterScale)
           ctx.restore()
         }
       })
@@ -932,6 +935,7 @@ export default function ParticipantDirectoryDialog({
     activeFieldId,
     canvasSize.w,
     canvasSize.h,
+    previewRasterScale,
     courseName,
     scheduleRange,
   ])
@@ -2800,8 +2804,8 @@ export default function ParticipantDirectoryDialog({
 
         if (canvasX >= x && canvasX <= x + boxW && canvasY >= y && canvasY <= y + boxH) {
           // check handles first
-          const handleSize = 10
-          const sidePad = 6
+          const handleSize = 10 * previewRasterScale
+          const sidePad = 6 * previewRasterScale
           const inCorner = canvasX >= x + boxW - handleSize && canvasY >= y + boxH - handleSize
           const rightHit = canvasX >= x + boxW - sidePad && canvasX <= x + boxW + sidePad
           const bottomHit = canvasY >= y + boxH - sidePad && canvasY <= y + boxH + sidePad

@@ -7,6 +7,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { formatCertificateHolderDisplayName } from "@/lib/certificate-name";
 import { compressImageForPdf } from "@/lib/compress-pdf-image";
+import { resolveCertificatePageDimensions } from "@/lib/certificate-page-sizes";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -331,11 +332,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. Embed template images (JPEG-downscale so email PDFs stay under SMTP 10MB)
+    // 6. Embed template images at print resolution. Page size stays in PDF points
+    // (A4/Letter/etc). Do not use compressed pixel size as the page size — that
+    // made downloads look like 72 DPI even when the uploaded template was sharp.
     const pdfDoc = await PDFDocument.create();
+    const pageDims = resolveCertificatePageDimensions(pageSize, isIDTemplate);
+    const CANVAS_WIDTH = pageDims.width;
+    const CANVAS_HEIGHT = pageDims.height;
+    const backDims = resolveCertificatePageDimensions(pageSize, isIDTemplate);
+    const BACK_CANVAS_WIDTH = backDims.width;
+    const BACK_CANVAS_HEIGHT = backDims.height;
     const templateJpegOpts = {
-      maxEdge: isIDTemplate ? 1600 : 1800,
-      quality: 0.72,
+      maxEdge: isIDTemplate ? 2700 : 3300,
+      quality: 0.9,
       preferJpeg: true as const,
     };
     const frontCompressed = await compressImageForPdf(imageBytes, templateJpegOpts);
@@ -352,11 +361,6 @@ export async function POST(req: NextRequest) {
           ? await pdfDoc.embedPng(backCompressed.bytes)
           : await pdfDoc.embedJpg(backCompressed.bytes);
     }
-
-    const CANVAS_WIDTH = templateImage.width;
-    const CANVAS_HEIGHT = templateImage.height;
-    const BACK_CANVAS_WIDTH = backTemplateImage?.width ?? CANVAS_WIDTH;
-    const BACK_CANVAS_HEIGHT = backTemplateImage?.height ?? CANVAS_HEIGHT;
 
     // 7. Layout overrides (Check precomputed first)
     let offsetX = 0;
@@ -433,8 +437,8 @@ export async function POST(req: NextRequest) {
           const photoBytes = await photoResponse.arrayBuffer();
           const keepAlpha = trainee.picture_2x2_url.toLowerCase().includes("png");
           const photoCompressed = await compressImageForPdf(photoBytes, {
-            maxEdge: 720,
-            quality: 0.78,
+            maxEdge: 1200,
+            quality: 0.9,
             preferJpeg: !keepAlpha,
           });
           const traineeImage =

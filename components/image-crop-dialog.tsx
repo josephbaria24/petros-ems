@@ -162,6 +162,7 @@ export function ImageCropDialog({
 
   // Trainee photos (2x2 / ID) often have transparent BG after removal.
   // JPEG cannot store alpha and flattens transparency to black — always use PNG for those.
+  const isTemplate = imageType === "template"
   const preserveAlpha = imageType === "2x2" || imageType === "id"
   const outputMime = preserveAlpha ? "image/png" : "image/jpeg"
   const outputExt = preserveAlpha ? "png" : "jpg"
@@ -178,8 +179,8 @@ export function ImageCropDialog({
       const cropHeight = pixelCrop.height * scaleY
       const rotRad = (rotation * Math.PI) / 180
 
-      // Cap output size so phone photos do not become 10MB+ PNGs (Vercel 413).
-      const maxEdge = 900
+      // Photos stay small for Vercel. Certificate templates keep print resolution.
+      const maxEdge = isTemplate ? 4000 : 900
       const rawW = rotation === 90 || rotation === 270 ? cropHeight : cropWidth
       const rawH = rotation === 90 || rotation === 270 ? cropWidth : cropHeight
       const outScale = Math.min(1, maxEdge / Math.max(rawW, rawH))
@@ -191,6 +192,7 @@ export function ImageCropDialog({
 
       // Keep transparent pixels transparent (do not fill with black/white).
       ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = "high"
       ctx.translate(canvas.width / 2, canvas.height / 2)
       ctx.rotate(rotRad)
@@ -230,11 +232,11 @@ export function ImageCropDialog({
         if (preserveAlpha) {
           canvas.toBlob(finish, "image/png")
         } else {
-          canvas.toBlob(finish, "image/jpeg", 0.85)
+          canvas.toBlob(finish, "image/jpeg", isTemplate ? 0.92 : 0.85)
         }
       })
     },
-    [rotation, preserveAlpha]
+    [rotation, preserveAlpha, isTemplate]
   )
 
   const uploadImage = async (blob: Blob, filename: string): Promise<string> => {
@@ -260,9 +262,13 @@ export function ImageCropDialog({
 
     setSaving(true)
     try {
-      const { compressForUpload } = await import("@/lib/compress-image-blob")
+      const { compressForUpload, TEMPLATE_COMPRESS_OPTS } = await import("@/lib/compress-image-blob")
       const rawCropped = await getCroppedImg(imgRef.current, completedCrop)
-      const croppedBlob = await compressForUpload(rawCropped, preserveAlpha)
+      const croppedBlob = await compressForUpload(
+        rawCropped,
+        preserveAlpha,
+        isTemplate ? TEMPLATE_COMPRESS_OPTS : undefined,
+      )
       const fileName = `cropped_${imageType}_${Date.now()}.${outputExt}`
 
       if (isLocalMode && onLocalSave) {
