@@ -3229,6 +3229,14 @@ export default function ParticipantDirectoryDialog({
       payment_method: selectedTrainee.payment_method || null,
       payment_status: selectedTrainee.payment_status || null,
       amount_paid: selectedTrainee.amount_paid == null ? null : Number(selectedTrainee.amount_paid),
+      custom_data: {
+        ...(selectedTrainee.custom_data || {}),
+        shipping_same_as_home: !!selectedTrainee.custom_data?.shipping_same_as_home,
+        shipping_street: selectedTrainee.custom_data?.shipping_street || "",
+        shipping_city: selectedTrainee.custom_data?.shipping_city || "",
+        shipping_province: selectedTrainee.custom_data?.shipping_province || "",
+        facebook_profile_url: selectedTrainee.custom_data?.facebook_profile_url || "",
+      },
     }
 
     const { data, error } = await tmsDb
@@ -3272,6 +3280,20 @@ export default function ParticipantDirectoryDialog({
 
   const patchSelectedTrainee = <K extends keyof Trainee>(key: K, value: Trainee[K]) => {
     setSelectedTrainee((prev) => (prev ? { ...prev, [key]: value } : prev))
+  }
+
+  const patchSelectedCustomData = (key: string, value: string | boolean) => {
+    setSelectedTrainee((prev) =>
+      prev
+        ? {
+            ...prev,
+            custom_data: {
+              ...(prev.custom_data || {}),
+              [key]: value,
+            },
+          }
+        : prev
+    )
   }
 
   const startLongOperation = (title: string, message: string = "") => {
@@ -3840,6 +3862,14 @@ export default function ParticipantDirectoryDialog({
                         onChange={(e) => patchSelectedTrainee("phone_number", e.target.value)}
                       />
                     </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Facebook Profile</Label>
+                      <Input
+                        value={selectedTrainee.custom_data?.facebook_profile_url || ""}
+                        onChange={(e) => patchSelectedCustomData("facebook_profile_url", e.target.value)}
+                        placeholder="https://www.facebook.com/..."
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -3872,6 +3902,33 @@ export default function ParticipantDirectoryDialog({
                       <Input
                         value={selectedTrainee.region || ""}
                         onChange={(e) => patchSelectedTrainee("region", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold border-b pb-1">Shipping Address</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label>Street</Label>
+                      <Input
+                        value={selectedTrainee.custom_data?.shipping_street || ""}
+                        onChange={(e) => patchSelectedCustomData("shipping_street", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>City</Label>
+                      <Input
+                        value={selectedTrainee.custom_data?.shipping_city || ""}
+                        onChange={(e) => patchSelectedCustomData("shipping_city", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Province</Label>
+                      <Input
+                        value={selectedTrainee.custom_data?.shipping_province || ""}
+                        onChange={(e) => patchSelectedCustomData("shipping_province", e.target.value)}
                       />
                     </div>
                   </div>

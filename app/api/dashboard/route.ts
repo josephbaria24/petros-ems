@@ -121,6 +121,40 @@ function isCurrentlyOngoing(
   return today >= start && today <= end
 }
 
+function unwrapRel<T>(rel: T | T[] | null | undefined): T | null {
+  if (!rel) return null
+  return Array.isArray(rel) ? rel[0] ?? null : rel
+}
+
+/** Amount actually due for a training after voucher/manual discount (+ PVC if added). */
+function trainingDueAmount(training: any): number {
+  const course = unwrapRel(training?.courses) as any
+  const schedule = unwrapRel(training?.schedules) as any
+  const eventType = `${schedule?.event_type || ""}`.toLowerCase()
+
+  let base = 0
+  if (eventType === "online") base = Number(course?.online_fee) || 0
+  else if (eventType === "face-to-face") base = Number(course?.face_to_face_fee) || 0
+  else if (eventType === "elearning") base = Number(course?.elearning_fee) || 0
+  else base = Number(course?.training_fee) || 0
+  if (!base) base = Number(training?.training_fee) || Number(course?.training_fee) || 0
+
+  const hasDiscount = Boolean(training?.has_discount)
+  const discountedRaw = training?.discounted_fee
+  const discounted =
+    hasDiscount && discountedRaw != null && discountedRaw !== ""
+      ? Number(discountedRaw)
+      : null
+  const pvc = training?.add_pvc_id ? Number(training?.pvc_fee ?? 0) : 0
+  const fee = (discounted != null && Number.isFinite(discounted) ? discounted : base) + pvc
+  return Math.max(0, Number.isFinite(fee) ? fee : 0)
+}
+
+function courseNameFromTraining(training: any): string {
+  const course = unwrapRel(training?.courses) as any
+  return course?.name || "Other"
+}
+
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url)
@@ -153,7 +187,28 @@ export async function GET(req: NextRequest) {
         .limit(10000),
       tmsServerDb
         .from("payments")
-        .select("amount_paid, payment_date, trainings(courses(name))")
+        .select(`
+          amount_paid,
+          payment_date,
+          training_id,
+          trainings (
+            id,
+            has_discount,
+            discounted_fee,
+            add_pvc_id,
+            pvc_fee,
+            courses (
+              name,
+              training_fee,
+              online_fee,
+              face_to_face_fee,
+              elearning_fee
+            ),
+            schedules (
+              event_type
+            )
+          )
+        `)
         .gte("payment_date", from)
         .lte("payment_date", to)
         .limit(50000),
@@ -199,8 +254,6 @@ export async function GET(req: NextRequest) {
     const monthlyTarget = Number(settingsRes.data?.setting_value?.amount || 1000000)
     const ycTrainings = ycRes.data || []
 
-    const totalRevenue = payments.reduce((s, p) => s + (Number(p.amount_paid) || 0), 0)
-
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
     // Enrollment trend
@@ -208,9 +261,46 @@ export async function GET(req: NextRequest) {
     trainings.forEach(t => { me[new Date(t.created_at).getMonth()]++ })
     const enrollmentTrend = months.map((m, i) => ({ month: m, enrollments: me[i] }))
 
-    // Revenue by month
+    // Count collected payments, but never more than the discounted amount due
+    const dueByTraining: Record<string, number> = {}
+    const remainingDue: Record<string, number> = {}
+    const trainingCourseName: Record<string, string> = {}
+    for (const p of payments as any[]) {
+      const training = unwrapRel(p.trainings)
+      const id = (training as any)?.id || p.training_id
+      if (!id || dueByTraining[id] != null) continue
+      const due = trainingDueAmount(training)
+      dueByTraining[id] = due
+      remainingDue[id] = due
+      trainingCourseName[id] = courseNameFromTraining(training)
+    }
+
+    const datedPayments = [...(payments as any[])].sort((a, b) => {
+      const ta = new Date(a.payment_date || 0).getTime()
+      const tb = new Date(b.payment_date || 0).getTime()
+      return ta - tb
+    })
+
+    let totalRevenue = 0
     const mr = new Array(12).fill(0)
-    payments.forEach(p => { mr[new Date(p.payment_date).getMonth()] += Number(p.amount_paid) || 0 })
+    const rev: Record<string, number> = {}
+    for (const p of datedPayments) {
+      const training = unwrapRel(p.trainings)
+      const id = (training as any)?.id || p.training_id
+      const paid = Number(p.amount_paid) || 0
+      const due = id != null ? remainingDue[id] : undefined
+      const counted =
+        due != null && dueByTraining[id] > 0 ? Math.min(paid, Math.max(0, due)) : paid
+      if (id != null && remainingDue[id] != null) {
+        remainingDue[id] = Math.max(0, remainingDue[id] - counted)
+      }
+      totalRevenue += counted
+      const month = new Date(p.payment_date).getMonth()
+      if (!Number.isNaN(month)) mr[month] += counted
+      const name = (id && trainingCourseName[id]) || courseNameFromTraining(training)
+      rev[name] = (rev[name] || 0) + counted
+    }
+
     const revenueData = months.map((m, i) => ({ month: m, revenue: Math.round(mr[i]), target: monthlyTarget }))
 
     // Course popularity & participants per course (same counts, different slices)
@@ -225,14 +315,6 @@ export async function GET(req: NextRequest) {
     const coursePopularity = byCourseParticipants.slice(0, 7)
     const participantsPerCourse = byCourseParticipants.slice(0, 8)
 
-    // Revenue per course (payments in range, grouped by training's course)
-    const rev: Record<string, number> = {}
-    payments.forEach((p: any) => {
-      const tr = p.trainings
-      const training = Array.isArray(tr) ? tr[0] : tr
-      const name = training?.courses?.name || "Other"
-      rev[name] = (rev[name] || 0) + (Number(p.amount_paid) || 0)
-    })
     const revenuePerCourse = Object.entries(rev)
       .map(([name, value]) => ({ name, value: Math.round(value) }))
       .sort((a, b) => b.value - a.value)

@@ -1025,13 +1025,22 @@ const handleBulkMoveSchedule = async () => {
           continue;
         }
 
+        const listPrice = Number(trainee.training_fee) || 0
+        const discounted =
+          trainee.has_discount && trainee.discounted_fee != null
+            ? Number(trainee.discounted_fee)
+            : null
+        const pvcFee = trainee.add_pvc_id ? Number(trainee.pvc_fee ?? 0) : 0
+        const amountDue =
+          (discounted != null && Number.isFinite(discounted) ? discounted : listPrice) + pvcFee
+
         const { error: paymentError } = await tmsDb
           .from("payments")
           .insert({
             training_id: traineeId,
             payment_method: trainee.payment_method || "Counter",
             payment_status: "completed",
-            amount_paid: trainee.training_fee || 0,
+            amount_paid: amountDue,
             receipt_link: null,
           });
 

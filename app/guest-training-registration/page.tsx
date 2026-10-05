@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Card, CardContent } from "@/components/ui/card"
-import { Check, User, Briefcase, Upload, ArrowLeft, CreditCard, Calendar, CheckCircle2, Crop, X, XCircle, AlertTriangle, FileText } from "lucide-react"
+import { Check, User, Briefcase, Upload, ArrowLeft, CreditCard, Calendar, CheckCircle2, Crop, X, XCircle, AlertTriangle, FileText, HelpCircle, ExternalLink } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -69,7 +71,7 @@ function SearchableDropdown({
         variant="outline"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full justify-between text-left font-normal"
+        className="h-10 w-full justify-between rounded-xl border-[#d5dcf2] bg-white text-left font-normal text-[#141454] shadow-none hover:bg-[#f7f8ff]"
       >
         <span className="truncate block">
           {selectedItem ? selectedItem.name : placeholder}
@@ -122,6 +124,72 @@ function SearchableDropdown({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function normalizeFacebookUrl(raw: string) {
+  const trimmed = (raw || "").trim()
+  if (!trimmed) return ""
+  if (/^https?:\/\//i.test(trimmed)) return trimmed
+  return `https://${trimmed}`
+}
+
+function isFacebookProfileUrl(raw: string) {
+  try {
+    const u = new URL(normalizeFacebookUrl(raw))
+    const host = u.hostname.replace(/^www\./i, "").toLowerCase()
+    return host === "facebook.com" || host === "fb.com" || host === "m.facebook.com"
+  } catch {
+    return false
+  }
+}
+
+const MICROSOFT_ACCOUNT_SIGNUP_URL = "https://signup.live.com/signup"
+
+function Req() {
+  return <span className="text-[#b8860b]"> *</span>
+}
+
+function FormSection({
+  title,
+  hint,
+  children,
+}: {
+  title: string
+  hint?: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="rounded-2xl border border-[#e4e8f8] bg-[#fcfdff] p-3 sm:p-4">
+      <div className="mb-3 flex items-start gap-2">
+        <span className="mt-0.5 h-4 w-1 shrink-0 rounded-full bg-[#ffb800]" aria-hidden />
+        <div>
+          <h3 className="text-sm font-semibold text-[#00044a]">{title}</h3>
+          {hint ? <p className="mt-0.5 text-xs leading-snug text-[#6b7194]">{hint}</p> : null}
+        </div>
+      </div>
+      {children}
+    </section>
+  )
+}
+
+function TeamsMicrosoftNotice() {
+  return (
+    <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-left text-sm text-sky-950">
+      <p className="font-semibold">Microsoft account required for this online training</p>
+      <p className="mt-1 text-sky-900">
+        This session is conducted on Microsoft Teams. You need a Microsoft account (Outlook, Hotmail, or a work/school account) to join the meeting.
+      </p>
+      <a
+        href={MICROSOFT_ACCOUNT_SIGNUP_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-[#00044a] px-3 py-2 text-xs font-semibold text-white hover:bg-[#070f72]"
+      >
+        I don&apos;t have one — create a Microsoft account
+        <ExternalLink className="h-3.5 w-3.5" />
+      </a>
     </div>
   )
 }
@@ -307,12 +375,45 @@ export default function GuestTrainingRegistration() {
     const newErrors: any = {}
     let firstErrorField: string | null = null
 
+    const shippingSame = !!form.shipping_same_as_home
+    if (shippingSame) {
+      setForm((prev: any) => ({
+        ...prev,
+        shipping_street: prev.mailing_street || "",
+        shipping_city: prev.mailing_city || "",
+        shipping_province: prev.mailing_province || "",
+      }))
+    }
+
     requiredPersonalFields.forEach((field) => {
       if (!form[field] || form[field].toString().trim() === "") {
         newErrors[field] = true
         if (!firstErrorField) firstErrorField = field
       }
     })
+
+    if (!shippingSame) {
+      ;(["shipping_street", "shipping_city", "shipping_province"] as const).forEach((field) => {
+        if (!form[field] || form[field].toString().trim() === "") {
+          newErrors[field] = true
+          if (!firstErrorField) firstErrorField = field
+        }
+      })
+    }
+
+    if (!form.facebook_profile_url || form.facebook_profile_url.toString().trim() === "") {
+      newErrors.facebook_profile_url = true
+      if (!firstErrorField) firstErrorField = "facebook_profile_url"
+    } else if (!isFacebookProfileUrl(form.facebook_profile_url)) {
+      newErrors.facebook_profile_url = true
+      if (!firstErrorField) firstErrorField = "facebook_profile_url"
+      toast.error("Please paste a valid Facebook profile link.")
+    } else {
+      setForm((prev: any) => ({
+        ...prev,
+        facebook_profile_url: normalizeFacebookUrl(prev.facebook_profile_url || ""),
+      }))
+    }
 
     if (form.email) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -403,6 +504,11 @@ export default function GuestTrainingRegistration() {
       mailing_street: existingData.mailing_street || "",
       mailing_city: existingData.mailing_city || "",
       mailing_province: existingData.mailing_province || "",
+      shipping_same_as_home: existingData.custom_data?.shipping_same_as_home ?? false,
+      shipping_street: existingData.custom_data?.shipping_street || "",
+      shipping_city: existingData.custom_data?.shipping_city || "",
+      shipping_province: existingData.custom_data?.shipping_province || "",
+      facebook_profile_url: existingData.custom_data?.facebook_profile_url || "",
       employment_status: existingData.employment_status || "",
       company_name: existingData.company_name || "",
       company_position: existingData.company_position || "",
@@ -838,10 +944,16 @@ export default function GuestTrainingRegistration() {
       formattedValue = value.replace(/\b\w/g, (char) => char.toUpperCase());
     }
 
-    setForm((prev: any) => ({
-      ...prev,
-      [name]: formattedValue
-    }));
+    setForm((prev: any) => {
+      const next: any = { ...prev, [name]: formattedValue }
+      if (
+        prev.shipping_same_as_home &&
+        (name === "mailing_street" || name === "mailing_city" || name === "mailing_province")
+      ) {
+        next[name.replace("mailing_", "shipping_")] = formattedValue
+      }
+      return next
+    });
 
     setErrors((prev) => ({ ...prev, [name]: false }));
   };
@@ -1027,6 +1139,16 @@ export default function GuestTrainingRegistration() {
           customData[key] = value
         }
       })
+
+      if (form.shipping_same_as_home) {
+        customData.shipping_same_as_home = true
+        customData.shipping_street = form.mailing_street || ""
+        customData.shipping_city = form.mailing_city || ""
+        customData.shipping_province = form.mailing_province || ""
+      }
+      if (form.facebook_profile_url) {
+        customData.facebook_profile_url = normalizeFacebookUrl(form.facebook_profile_url)
+      }
 
       // Custom registration stores payment in form.payment_method; default flow uses paymentMethod state.
       // Never let React default "BPI" overwrite mainData.payment_method from the form.
@@ -1470,8 +1592,8 @@ export default function GuestTrainingRegistration() {
             </div>
           )}
 
-          <div className="flex flex-1 items-center justify-center overflow-auto bg-gradient-to-b from-white to-[#f9faff] p-2 sm:p-4 md:p-6 lg:p-8">
-            <div className="max-h-full w-full max-w-2xl overflow-auto bg-white">
+          <div className="flex flex-1 justify-center overflow-y-auto bg-gradient-to-b from-[#f7f8ff] to-white px-3 py-4 sm:p-6 lg:p-8">
+            <div className="guest-reg-fields w-full max-w-2xl">
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={activeViewKey}
@@ -1572,6 +1694,11 @@ export default function GuestTrainingRegistration() {
                     <p className="text-lg text-gray-600 max-w-md mx-auto">
                       Begin your training journey with us. Please complete all required fields to get started.
                     </p>
+                    {scheduleEventType.toLowerCase() === "online" ? (
+                      <div className="mx-auto max-w-md text-left">
+                        <TeamsMicrosoftNotice />
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="max-w-md mx-auto">
@@ -1594,17 +1721,19 @@ export default function GuestTrainingRegistration() {
                 </div>
               )}
               {step === 1 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <h2 className="text-3xl font-bold">Personal Details</h2>
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-[#00044a] sm:text-2xl">Personal Details</h2>
+                    <p className="mt-1 text-sm text-[#6b7194]">Tell us a bit about yourself</p>
                   </div>
-                  <p className="text-gray-500">Tell us a bit about yourself</p>
+                  {scheduleEventType.toLowerCase() === "online" ? <TeamsMicrosoftNotice /> : null}
 
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="professional_title" className="text-sm font-medium">
-                          Professional Title <span className="text-muted-foreground font-normal">(optional)</span>
+                  <div className="space-y-3">
+                    <FormSection title="Your name" hint="As it should appear on your certificate.">
+                    <div className="grid grid-cols-[minmax(0,1.7fr)_minmax(0,0.85fr)] gap-x-3 gap-y-3">
+                      <div className="col-span-2 space-y-1.5">
+                        <Label htmlFor="professional_title">
+                          Professional Title <span className="font-normal text-[#8b93b5]">(optional)</span>
                         </Label>
                         <Input
                           id="professional_title"
@@ -1618,8 +1747,8 @@ export default function GuestTrainingRegistration() {
                           (e.g. Juan Dela Cruz, RN).
                         </p>
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="first_name" className="text-sm font-medium">First Name *</Label>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="first_name">First Name<Req /></Label>
                         <Input
                           id="first_name"
                           name="first_name"
@@ -1634,12 +1763,12 @@ export default function GuestTrainingRegistration() {
                           <p className="text-red-500 text-xs">First name is required</p>
                         )}
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="middle_initial" className="text-sm font-medium">Middle Initial</Label>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="middle_initial">Middle Initial</Label>
                         <Input id="middle_initial" name="middle_initial" value={form.middle_initial || ""} onChange={handleChange} placeholder="M.I." maxLength={1} />
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="last_name" className="text-sm font-medium">Last Name *</Label>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="last_name">Last Name<Req /></Label>
                         <Input
                           id="last_name"
                           name="last_name"
@@ -1650,12 +1779,17 @@ export default function GuestTrainingRegistration() {
                         />
 
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="suffix" className="text-sm font-medium">Suffix</Label>
-                        <Input id="suffix" name="suffix" onChange={handleChange} placeholder="Jr., Sr., etc." />
+                      <div className="space-y-1.5">
+                        <Label htmlFor="suffix">Suffix</Label>
+                        <Input id="suffix" name="suffix" onChange={handleChange} placeholder="Jr. or Sr." />
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="phone_number" className="text-sm font-medium">Mobile Number *</Label>
+                    </div>
+                    </FormSection>
+
+                    <FormSection title="How we can reach you">
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-3">
+                      <div className="col-span-2 space-y-1.5 sm:col-span-1">
+                        <Label htmlFor="phone_number">Mobile Number<Req /></Label>
                         <Input
                           id="phone_number"
                           name="phone_number"
@@ -1674,8 +1808,8 @@ export default function GuestTrainingRegistration() {
                         )}
                       </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="email" className="text-sm font-medium">Email Address *</Label>
+                      <div className="col-span-2 space-y-1.5 sm:col-span-1">
+                        <Label htmlFor="email">Email Address<Req /></Label>
                         <Input
                           id="email"
                           name="email"
@@ -1690,8 +1824,8 @@ export default function GuestTrainingRegistration() {
                           <p className="text-red-500 text-xs">Valid email address is required</p>
                         )}
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="gender" className="text-sm font-medium">Gender *</Label>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="gender">Gender<Req /></Label>
 
                         <div className={errors.gender ? "border border-red-500 rounded-md p-1" : ""}>
                           <Select
@@ -1715,28 +1849,172 @@ export default function GuestTrainingRegistration() {
                           <p className="text-red-500 text-xs">Gender is required</p>
                         )}
                       </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="age" className="text-sm font-medium">Age *</Label>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="age">Age<Req /></Label>
                         <Input id="age" name="age" type="number" onChange={handleChange} placeholder="18" required />
                       </div>
-                      <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="mailing_street" className="text-sm font-medium">Street Address *</Label>
-                        <Input id="mailing_street" name="mailing_street" onChange={handleChange} placeholder="House no., Street, Barangay" required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="mailing_city" className="text-sm font-medium">City *</Label>
-                        <Input id="mailing_city" name="mailing_city" onChange={handleChange} placeholder="Enter city" required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="mailing_province" className="text-sm font-medium">Province *</Label>
-                        <Input id="mailing_province" name="mailing_province" onChange={handleChange} placeholder="Enter province" required />
-                      </div>
                     </div>
+                    </FormSection>
 
-                    <div className="space-y-3 pt-2">
-                      <Label className="text-sm font-medium">Employment Status *</Label>
+                    <FormSection title="Home address" hint="Use the address on your ID.">
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-3">
+                      <div className="col-span-2 space-y-1.5">
+                        <Label htmlFor="mailing_street">Street Address<Req /></Label>
+                        <Input
+                          id="mailing_street"
+                          name="mailing_street"
+                          value={form.mailing_street || ""}
+                          onChange={handleChange}
+                          placeholder="House no., Street, Barangay"
+                          className={errors.mailing_street ? "border-red-500 focus:ring-red-500" : ""}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="mailing_city">City<Req /></Label>
+                        <Input
+                          id="mailing_city"
+                          name="mailing_city"
+                          value={form.mailing_city || ""}
+                          onChange={handleChange}
+                          placeholder="Enter city"
+                          className={errors.mailing_city ? "border-red-500 focus:ring-red-500" : ""}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="mailing_province">Province<Req /></Label>
+                        <Input
+                          id="mailing_province"
+                          name="mailing_province"
+                          value={form.mailing_province || ""}
+                          onChange={handleChange}
+                          placeholder="Enter province"
+                          className={errors.mailing_province ? "border-red-500 focus:ring-red-500" : ""}
+                          required
+                        />
+                      </div>
 
-                      <div className={errors.employment_status ? "border border-red-500 rounded-md p-2" : ""}>
+                    </div>
+                    </FormSection>
+
+                    <FormSection title="Shipping address" hint="Where we should send certificates or materials.">
+                      <div className="mb-3 flex items-center justify-between gap-3 rounded-xl bg-[#f4f6ff] px-3 py-2">
+                        <Label htmlFor="shipping_same_as_home" className="cursor-pointer">
+                          Same as home address
+                        </Label>
+                        <Switch
+                          id="shipping_same_as_home"
+                          checked={!!form.shipping_same_as_home}
+                          onCheckedChange={(checked) => {
+                            setForm((prev: any) => ({
+                              ...prev,
+                              shipping_same_as_home: checked,
+                              ...(checked
+                                ? {
+                                    shipping_street: prev.mailing_street || "",
+                                    shipping_city: prev.mailing_city || "",
+                                    shipping_province: prev.mailing_province || "",
+                                  }
+                                : {}),
+                            }))
+                            setErrors((prev) => ({
+                              ...prev,
+                              shipping_street: false,
+                              shipping_city: false,
+                              shipping_province: false,
+                            }))
+                          }}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-3">
+                        <div className="col-span-2 space-y-1.5">
+                          <Label htmlFor="shipping_street">Street Address<Req /></Label>
+                          <Input
+                            id="shipping_street"
+                            name="shipping_street"
+                            value={form.shipping_street || ""}
+                            onChange={handleChange}
+                            placeholder="House no., Street, Barangay"
+                            disabled={!!form.shipping_same_as_home}
+                            className={errors.shipping_street ? "border-red-500 focus:ring-red-500" : ""}
+                            required={!form.shipping_same_as_home}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="shipping_city">City<Req /></Label>
+                          <Input
+                            id="shipping_city"
+                            name="shipping_city"
+                            value={form.shipping_city || ""}
+                            onChange={handleChange}
+                            placeholder="Enter city"
+                            disabled={!!form.shipping_same_as_home}
+                            className={errors.shipping_city ? "border-red-500 focus:ring-red-500" : ""}
+                            required={!form.shipping_same_as_home}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="shipping_province">Province<Req /></Label>
+                          <Input
+                            id="shipping_province"
+                            name="shipping_province"
+                            value={form.shipping_province || ""}
+                            onChange={handleChange}
+                            placeholder="Enter province"
+                            disabled={!!form.shipping_same_as_home}
+                            className={errors.shipping_province ? "border-red-500 focus:ring-red-500" : ""}
+                            required={!form.shipping_same_as_home}
+                          />
+                        </div>
+                      </div>
+                    </FormSection>
+
+                    <FormSection title="Facebook" hint="We use this to confirm your registration.">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="facebook_profile_url">Facebook Profile Link<Req /></Label>
+                        <Input
+                          id="facebook_profile_url"
+                          name="facebook_profile_url"
+                          value={form.facebook_profile_url || ""}
+                          onChange={handleChange}
+                          placeholder="https://www.facebook.com/your.profile"
+                          className={errors.facebook_profile_url ? "border-red-500 focus:ring-red-500" : ""}
+                          required
+                        />
+                        {errors.facebook_profile_url && (
+                          <p className="text-red-500 text-xs">A valid Facebook profile link is required</p>
+                        )}
+                        <Collapsible>
+                          <CollapsibleTrigger className="flex items-center gap-1.5 text-xs font-medium text-indigo-700 hover:underline">
+                            <HelpCircle className="h-3.5 w-3.5" />
+                            How to get your Facebook profile link
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="mt-2 rounded-md border bg-white p-3 text-xs text-gray-700 space-y-2">
+                            <p className="font-semibold">On a computer</p>
+                            <ol className="list-decimal pl-4 space-y-1">
+                              <li>Open <span className="font-medium">facebook.com</span> and sign in.</li>
+                              <li>Click your name or profile photo to open your profile.</li>
+                              <li>Copy the full address from the browser bar (starts with facebook.com/…).</li>
+                            </ol>
+                            <p className="font-semibold pt-1">On the Facebook app</p>
+                            <ol className="list-decimal pl-4 space-y-1">
+                              <li>Open Facebook and tap your profile photo.</li>
+                              <li>Tap the three dots (•••) on your profile.</li>
+                              <li>Tap <span className="font-medium">Copy link</span>, then paste it here.</li>
+                            </ol>
+                            <p className="text-muted-foreground">
+                              Example: https://www.facebook.com/juan.delacruz or https://www.facebook.com/profile.php?id=1000…
+                            </p>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      </div>
+                    </FormSection>
+
+                    <FormSection title="Work status">
+                      <Label>Employment Status<Req /></Label>
+
+                      <div className={errors.employment_status ? "mt-2 rounded-md border border-red-500 p-2" : "mt-2"}>
                         <RadioGroup
                           value={form.employment_status || ""}
                           onValueChange={(val) => {
@@ -1749,15 +2027,15 @@ export default function GuestTrainingRegistration() {
                             setErrors((prev) => ({ ...prev, employment_status: false }))
                           }}
 
-                          className="flex gap-6"
+                          className="grid grid-cols-2 gap-2"
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 rounded-xl border border-[#e4e8f8] bg-white px-3 py-2.5">
                             <RadioGroupItem value="Unemployed" id="unemployed" />
-                            <Label htmlFor="unemployed" className="font-normal cursor-pointer">Unemployed</Label>
+                            <Label htmlFor="unemployed" className="cursor-pointer font-medium">Unemployed</Label>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 rounded-xl border border-[#e4e8f8] bg-white px-3 py-2.5">
                             <RadioGroupItem value="Employed" id="employed" />
-                            <Label htmlFor="employed" className="font-normal cursor-pointer">Employed</Label>
+                            <Label htmlFor="employed" className="cursor-pointer font-medium">Employed</Label>
                           </div>
                         </RadioGroup>
                       </div>
@@ -1782,8 +2060,8 @@ export default function GuestTrainingRegistration() {
 
                           {form.is_student && (
                             <div className="space-y-2">
-                              <Label htmlFor="school_name" className="text-sm font-medium">
-                                School / University Name *
+                              <Label htmlFor="school_name">
+                                School / University Name<Req />
                               </Label>
                               <Input
                                 id="school_name"
@@ -1801,7 +2079,7 @@ export default function GuestTrainingRegistration() {
                       {errors.employment_status && (
                         <p className="text-red-500 text-xs">Employment status is required</p>
                       )}
-                    </div>
+                    </FormSection>
 
                   </div>
 
@@ -1818,7 +2096,7 @@ export default function GuestTrainingRegistration() {
                         }
                       }}
                       size="lg"
-                      className="cursor-pointer bg-[#00044a] text-white hover:bg-[#070f72]"
+                      className="w-full cursor-pointer bg-[#00044a] text-white hover:bg-[#070f72] sm:w-auto"
                     >
                       Continue
                     </Button>
@@ -1827,16 +2105,16 @@ export default function GuestTrainingRegistration() {
               )}
 
               {step === 2 && (
-                <div className="space-y-6">
+                <div className="space-y-4">
                   <div>
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">Employment Details</h2>
-                    <p className="text-gray-600">Share your employment information</p>
+                    <h2 className="text-xl font-bold text-[#00044a] sm:text-2xl">Employment Details</h2>
+                    <p className="mt-1 text-sm text-[#6b7194]">Share your employment information</p>
                   </div>
 
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="company_name" className="text-sm font-medium">Company Name</Label>
+                  <FormSection title="Company">
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-3">
+                      <div className="col-span-2 space-y-1.5">
+                        <Label htmlFor="company_name">Company Name</Label>
                         <Input id="company_name" required={isEmployed} name="company_name" onChange={handleChange} placeholder="Enter company name" />
                       </div>
                       <div className="space-y-2">
@@ -1903,7 +2181,7 @@ export default function GuestTrainingRegistration() {
                         <Input id="total_workers" required={isEmployed} name="total_workers" type="number" onChange={handleChange} placeholder="e.g., 50" />
                       </div>
                     </div>
-                  </div>
+                  </FormSection>
 
                   <div className="flex justify-end pt-4">
                     <Button
@@ -1912,7 +2190,7 @@ export default function GuestTrainingRegistration() {
                         setStep(3)
                       }}
                       size="lg"
-                      className="cursor-pointer bg-[#00044a] text-white hover:bg-[#070f72]"
+                      className="w-full cursor-pointer bg-[#00044a] text-white hover:bg-[#070f72] sm:w-auto"
                     >
                       Continue
                     </Button>
@@ -1921,10 +2199,10 @@ export default function GuestTrainingRegistration() {
               )}
 
               {step === 3 && (
-                <div className="space-y-6">
+                <div className="space-y-4">
                   <div>
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">Verification Details</h2>
-                    <p className="text-gray-600">Upload your identification documents</p>
+                    <h2 className="text-xl font-bold text-[#00044a] sm:text-2xl">Verification Details</h2>
+                    <p className="mt-1 text-sm text-[#6b7194]">Upload your identification documents</p>
                   </div>
 
                   {/* Important Notice */}
@@ -1947,7 +2225,7 @@ export default function GuestTrainingRegistration() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="space-y-3">
                       <Label htmlFor="id_picture" className="text-sm font-medium">Valid ID *</Label>
                       <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-blue-500 transition-colors">
@@ -2037,7 +2315,7 @@ export default function GuestTrainingRegistration() {
                         setStep(4)
                       }}
                       size="lg"
-                      className="cursor-pointer bg-[#00044a] text-white hover:bg-[#070f72]"
+                      className="w-full cursor-pointer bg-[#00044a] text-white hover:bg-[#070f72] sm:w-auto"
                       disabled={uploading}
                     >
                       {uploading ? "Uploading..." : "Continue"}
@@ -2047,10 +2325,10 @@ export default function GuestTrainingRegistration() {
               )}
 
               {step === 4 && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div>
-                    <h2 className="text-3xl font-bold text-gray-900 mb-2">Review & Confirm</h2>
-                    <p className="text-gray-600">Please review your information before submitting</p>
+                    <h2 className="text-xl font-bold text-[#00044a] sm:text-2xl">Review & Confirm</h2>
+                    <p className="mt-1 text-sm text-[#6b7194]">Please review your information before submitting</p>
                   </div>
 
                   {!isSubmitted ? (
@@ -2084,7 +2362,31 @@ export default function GuestTrainingRegistration() {
                             <p><strong>Name:</strong> {form.first_name} {form.middle_initial} {form.last_name} {form.suffix}</p>
                             <p><strong>Email:</strong> {form.email}</p>
                             <p><strong>Phone:</strong> {form.phone_number}</p>
-                            <p><strong>Address:</strong> {form.mailing_street}, {form.mailing_city}, {form.mailing_province}</p>
+                            {scheduleEventType.toLowerCase() === "online" ? (
+                              <p className="mt-2 text-sm text-sky-900">
+                                This training is online via Microsoft Teams. A Microsoft account is required to join.{" "}
+                                <a
+                                  href={MICROSOFT_ACCOUNT_SIGNUP_URL}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-semibold underline"
+                                >
+                                  Create a Microsoft account
+                                </a>
+                              </p>
+                            ) : null}
+                            <p><strong>Home address:</strong> {form.mailing_street}, {form.mailing_city}, {form.mailing_province}</p>
+                            <p>
+                              <strong>Shipping address:</strong>{" "}
+                              {form.shipping_same_as_home
+                                ? `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province} (same as home)`
+                                : `${form.shipping_street}, ${form.shipping_city}, ${form.shipping_province}`}
+                            </p>
+                            {form.facebook_profile_url ? (
+                              <p className="break-all">
+                                <strong>Facebook:</strong> {form.facebook_profile_url}
+                              </p>
+                            ) : null}
                           </fieldset>
 
                           <fieldset className="border border-gray-300 rounded-md px-4 pt-4 pb-2 bg-slate-50 relative">
