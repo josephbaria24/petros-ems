@@ -3,8 +3,10 @@ import { tmsDb } from "@/lib/supabase-client"
 
 export async function exportTraineeExcel(
   scheduleId: string, 
-  scheduleRange: string
-): Promise<void> {
+  scheduleRange: string,
+  options?: { download?: boolean }
+): Promise<Blob | void> {
+  const download = options?.download !== false
   try {
     console.log("\n" + "=".repeat(60))
     console.log("📊 STARTING EXCEL EXPORT")
@@ -220,6 +222,8 @@ export async function exportTraineeExcel(
     console.log("\n📥 Downloading Excel file...")
     const blob = await response.blob()
     console.log(`📦 File size: ${(blob.size / 1024).toFixed(2)} KB`)
+
+    if (!download) return blob
     
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -247,6 +251,7 @@ export async function exportTraineeExcel(
     console.error("Error:", error)
     console.error("Stack:", error.stack)
     console.error("=".repeat(60) + "\n")
+    if (!download) throw error
     alert(`Failed to export Excel: ${error.message}`)
   }
 }

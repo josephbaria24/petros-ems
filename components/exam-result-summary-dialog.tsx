@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { createRoot } from "react-dom/client"
+import { flushSync } from "react-dom"
 import { tmsDb } from "@/lib/supabase-client"
 import { cn } from "@/lib/utils"
 import { filterExamResponsesForSchedule, matchExamResponse } from "@/lib/exam"
@@ -133,6 +135,140 @@ const DEFAULT_META: ExamSummaryMeta = {
 
 const ROWS_PER_PAGE = 18
 
+export async function loadExamSummary(args: {
+  scheduleId: string
+  courseName: string
+  pretestExamId: string | null
+  posttestExamId: string | null
+  pretestQuestionCount: number
+  posttestQuestionCount: number
+}): Promise<{ meta: ExamSummaryMeta; rows: ExamSummaryRow[] }> {
+  const {
+    scheduleId,
+    courseName,
+    pretestExamId,
+    posttestExamId,
+    pretestQuestionCount,
+    posttestQuestionCount,
+  } = args
+
+  const { data: schedule, error: se } = await tmsDb
+    .from("schedules")
+    .select(
+      `
+      id,
+      event_type,
+      branch,
+      schedule_type,
+      schedule_ranges ( start_date, end_date ),
+      schedule_dates ( date )
+    `
+    )
+    .eq("id", scheduleId)
+    .single()
+
+  if (se || !schedule) {
+    throw new Error(se?.message || "Could not load schedule for summary")
+  }
+
+  const { data: trainings, error: te } = await tmsDb
+    .from("trainings")
+    .select("id, first_name, last_name, middle_initial, email, training_type, status")
+    .eq("schedule_id", scheduleId)
+    .order("last_name", { ascending: true })
+
+  if (te) throw new Error(te.message || "Could not load participants")
+
+  const active = (trainings || []).filter((t) => {
+    const s = `${t.status || ""}`.toLowerCase()
+    return !s.includes("cancel") && !s.includes("declin")
+  })
+
+  let preResponses: {
+    respondent_name: string | null
+    respondent_email: string | null
+    schedule_id?: string | null
+    score: number | null
+    max_score: number | null
+  }[] = []
+  let postResponses: typeof preResponses = []
+
+  if (pretestExamId) {
+    const preRes = await tmsDb
+      .from("exam_responses")
+      .select("respondent_name, respondent_email, schedule_id, score, max_score, created_at")
+      .eq("exam_id", pretestExamId)
+    if (preRes.error && /schedule_id|schema cache|column/i.test(preRes.error.message || "")) {
+      const fallback = await tmsDb
+        .from("exam_responses")
+        .select("respondent_name, respondent_email, score, max_score, created_at")
+        .eq("exam_id", pretestExamId)
+      preResponses = fallback.data || []
+    } else {
+      preResponses = preRes.data || []
+    }
+  }
+  if (posttestExamId) {
+    const postRes = await tmsDb
+      .from("exam_responses")
+      .select("respondent_name, respondent_email, schedule_id, score, max_score, created_at")
+      .eq("exam_id", posttestExamId)
+    if (postRes.error && /schedule_id|schema cache|column/i.test(postRes.error.message || "")) {
+      const fallback = await tmsDb
+        .from("exam_responses")
+        .select("respondent_name, respondent_email, score, max_score, created_at")
+        .eq("exam_id", posttestExamId)
+      postResponses = fallback.data || []
+    } else {
+      postResponses = postRes.data || []
+    }
+  }
+
+  const forThisSchedule = <T extends { schedule_id?: string | null }>(rows: T[]) =>
+    filterExamResponsesForSchedule(rows, scheduleId)
+
+  preResponses = forThisSchedule(preResponses)
+  postResponses = forThisSchedule(postResponses)
+
+  const defaultMaxPre = pretestQuestionCount || null
+  const defaultMaxPost = posttestQuestionCount || null
+  const totalItems = Math.max(pretestQuestionCount || 0, posttestQuestionCount || 0) || ""
+
+  const event = String(schedule.event_type || "").toLowerCase()
+  const isOnline = event.includes("online") || event.includes("virtual") || event.includes("zoom")
+  const firstType = active[0]?.training_type || ""
+
+  const meta: ExamSummaryMeta = {
+    ...DEFAULT_META,
+    training: courseName || "Training",
+    inclusiveDates: formatInclusiveDates(schedule),
+    trainingType: firstType
+      ? `${firstType}`.replace(/_/g, " ")
+      : isOnline
+        ? "Online Training"
+        : "Face-to-Face Training",
+    venuePlatform: isOnline ? "Zoom Meetings" : schedule.branch || "—",
+    totalItems: totalItems ? String(totalItems) : "",
+  }
+
+  const rows: ExamSummaryRow[] = active.map((t) => {
+    const pre = matchExamResponse(preResponses, t)
+    const post = matchExamResponse(postResponses, t)
+    return {
+      traineeId: t.id,
+      lastName: (t.last_name || "").trim(),
+      firstName: (t.first_name || "").trim(),
+      middleInitial: (t.middle_initial || "").trim().charAt(0).toUpperCase(),
+      preScore: pre?.score ?? null,
+      preMax: pre?.max_score ?? defaultMaxPre,
+      postScore: post?.score ?? null,
+      postMax: post?.max_score ?? defaultMaxPost,
+    }
+  })
+
+  return { meta, rows }
+}
+
 export function ExamResultSummaryDialog({
   open,
   onOpenChange,
@@ -157,131 +293,22 @@ export function ExamResultSummaryDialog({
   const load = React.useCallback(async () => {
     setLoading(true)
     try {
-      const { data: schedule, error: se } = await tmsDb
-        .from("schedules")
-        .select(
-          `
-          id,
-          event_type,
-          branch,
-          schedule_type,
-          schedule_ranges ( start_date, end_date ),
-          schedule_dates ( date )
-        `
-        )
-        .eq("id", scheduleId)
-        .single()
-
-      if (se || !schedule) {
-        toast.error("Could not load schedule for summary")
-        return
-      }
-
-      const { data: trainings, error: te } = await tmsDb
-        .from("trainings")
-        .select("id, first_name, last_name, middle_initial, email, training_type, status")
-        .eq("schedule_id", scheduleId)
-        .order("last_name", { ascending: true })
-
-      if (te) {
-        toast.error("Could not load participants", { description: te.message })
-        return
-      }
-
-      const active = (trainings || []).filter((t) => {
-        const s = `${t.status || ""}`.toLowerCase()
-        return !s.includes("cancel") && !s.includes("declin")
+      const result = await loadExamSummary({
+        scheduleId,
+        courseName,
+        pretestExamId,
+        posttestExamId,
+        pretestQuestionCount,
+        posttestQuestionCount,
       })
-
-      let preResponses: {
-        respondent_name: string | null
-        respondent_email: string | null
-        schedule_id?: string | null
-        score: number | null
-        max_score: number | null
-      }[] = []
-      let postResponses: typeof preResponses = []
-
-      if (pretestExamId) {
-        const preRes = await tmsDb
-          .from("exam_responses")
-          .select("respondent_name, respondent_email, schedule_id, score, max_score, created_at")
-          .eq("exam_id", pretestExamId)
-        if (preRes.error && /schedule_id|schema cache|column/i.test(preRes.error.message || "")) {
-          const fallback = await tmsDb
-            .from("exam_responses")
-            .select("respondent_name, respondent_email, score, max_score, created_at")
-            .eq("exam_id", pretestExamId)
-          preResponses = fallback.data || []
-        } else {
-          preResponses = preRes.data || []
-        }
-      }
-      if (posttestExamId) {
-        const postRes = await tmsDb
-          .from("exam_responses")
-          .select("respondent_name, respondent_email, schedule_id, score, max_score, created_at")
-          .eq("exam_id", posttestExamId)
-        if (postRes.error && /schedule_id|schema cache|column/i.test(postRes.error.message || "")) {
-          const fallback = await tmsDb
-            .from("exam_responses")
-            .select("respondent_name, respondent_email, score, max_score, created_at")
-            .eq("exam_id", posttestExamId)
-          postResponses = fallback.data || []
-        } else {
-          postResponses = postRes.data || []
-        }
-      }
-
-      const forThisSchedule = <T extends { schedule_id?: string | null }>(rows: T[]) =>
-        filterExamResponsesForSchedule(rows, scheduleId)
-
-      preResponses = forThisSchedule(preResponses)
-      postResponses = forThisSchedule(postResponses)
-
-      const defaultMaxPre = pretestQuestionCount || null
-      const defaultMaxPost = posttestQuestionCount || null
-      const totalItems =
-        Math.max(pretestQuestionCount || 0, posttestQuestionCount || 0) || ""
-
-      const event = String(schedule.event_type || "").toLowerCase()
-      const isOnline = event.includes("online") || event.includes("virtual") || event.includes("zoom")
-      const firstType = active[0]?.training_type || ""
-
-      const nextMeta: ExamSummaryMeta = {
-        ...DEFAULT_META,
-        training: courseName || "Training",
-        inclusiveDates: formatInclusiveDates(schedule),
-        trainingType: firstType
-          ? `${firstType}`.replace(/_/g, " ")
-          : isOnline
-            ? "Online Training"
-            : "Face-to-Face Training",
-        venuePlatform: isOnline ? "Zoom Meetings" : schedule.branch || "—",
-        totalItems: totalItems ? String(totalItems) : "",
-      }
-
-      const nextRows: ExamSummaryRow[] = active.map((t) => {
-        const pre = matchExamResponse(preResponses, t)
-        const post = matchExamResponse(postResponses, t)
-        return {
-          traineeId: t.id,
-          lastName: (t.last_name || "").trim(),
-          firstName: (t.first_name || "").trim(),
-          middleInitial: (t.middle_initial || "").trim().charAt(0).toUpperCase(),
-          preScore: pre?.score ?? null,
-          preMax: pre?.max_score ?? defaultMaxPre,
-          postScore: post?.score ?? null,
-          postMax: post?.max_score ?? defaultMaxPost,
-        }
-      })
-
-      setMeta(nextMeta)
-      setDraftMeta(nextMeta)
-      setRows(nextRows)
-      setDraftRows(nextRows)
+      setMeta(result.meta)
+      setDraftMeta(result.meta)
+      setRows(result.rows)
+      setDraftRows(result.rows)
       setResultsDirty(false)
       setEditing(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load summary")
     } finally {
       setLoading(false)
     }
@@ -347,35 +374,14 @@ export function ExamResultSummaryDialog({
     if (!previewRef.current) return
     setExporting(true)
     try {
-      const html2canvas = (await import("html2canvas")).default
-      const { jsPDF } = await import("jspdf")
-      const pagesEls = previewRef.current.querySelectorAll<HTMLElement>("[data-exam-summary-page]")
-      if (!pagesEls.length) {
-        toast.error("Nothing to export")
-        return
-      }
-      const pdf = new jsPDF("p", "mm", "a4")
-      const pageWidth = pdf.internal.pageSize.getWidth()
-      const pageHeight = pdf.internal.pageSize.getHeight()
-
-      for (let i = 0; i < pagesEls.length; i++) {
-        const canvas = await html2canvas(pagesEls[i], {
-          scale: 2,
-          backgroundColor: "#ffffff",
-          useCORS: true,
-        })
-        const img = canvas.toDataURL("image/png")
-        const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height)
-        const w = canvas.width * ratio
-        const h = canvas.height * ratio
-        const x = (pageWidth - w) / 2
-        const y = 6
-        if (i > 0) pdf.addPage()
-        pdf.addImage(img, "PNG", x, y, w, h)
-      }
-
+      const blob = await summaryElementToPdfBlob(previewRef.current)
       const safe = (courseName || "exam-result").replace(/[^\w\-]+/g, "-").slice(0, 40)
-      pdf.save(`${safe}-examination-result.pdf`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `${safe}-examination-result.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
       toast.success("Summary exported")
     } catch (e) {
       console.error(e)
@@ -817,4 +823,73 @@ function ScoreCells({
       <td className="border border-black px-1.5 py-1.5 text-center">{scorePercent(score, max)}</td>
     </>
   )
+}
+
+export async function summaryElementToPdfBlob(root: HTMLElement): Promise<Blob> {
+  const html2canvas = (await import("html2canvas")).default
+  const { jsPDF } = await import("jspdf")
+  const pagesEls = root.querySelectorAll<HTMLElement>("[data-exam-summary-page]")
+  if (!pagesEls.length) throw new Error("Nothing to export")
+  const pdf = new jsPDF("p", "mm", "a4")
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+
+  for (let i = 0; i < pagesEls.length; i++) {
+    const canvas = await html2canvas(pagesEls[i], {
+      scale: 2,
+      backgroundColor: "#ffffff",
+      useCORS: true,
+    })
+    const img = canvas.toDataURL("image/png")
+    const ratio = Math.min(pageWidth / canvas.width, pageHeight / canvas.height)
+    const w = canvas.width * ratio
+    const h = canvas.height * ratio
+    const x = (pageWidth - w) / 2
+    const y = 6
+    if (i > 0) pdf.addPage()
+    pdf.addImage(img, "PNG", x, y, w, h)
+  }
+
+  return pdf.output("blob")
+}
+
+export async function buildExamSummaryPdfBlob(args: {
+  scheduleId: string
+  courseName: string
+  pretestExamId: string | null
+  posttestExamId: string | null
+  pretestQuestionCount: number
+  posttestQuestionCount: number
+}): Promise<Blob> {
+  const { meta, rows } = await loadExamSummary(args)
+  const pages = Math.max(1, Math.ceil(rows.length / ROWS_PER_PAGE) || 1)
+  const host = document.createElement("div")
+  host.style.cssText = "position:fixed;left:-12000px;top:0;width:980px;background:#ffffff;z-index:-1;"
+  document.body.appendChild(host)
+  const root = createRoot(host)
+  try {
+    flushSync(() => {
+      root.render(
+        <div className="space-y-6 bg-white">
+          {Array.from({ length: pages }).map((_, pageIndex) => (
+            <SummaryPage
+              key={pageIndex}
+              meta={meta}
+              rows={rows.slice(pageIndex * ROWS_PER_PAGE, pageIndex * ROWS_PER_PAGE + ROWS_PER_PAGE)}
+              startIndex={pageIndex * ROWS_PER_PAGE}
+              pageLabel={`${pageIndex + 1}-${pages}`}
+              editing={false}
+              onMetaChange={() => {}}
+              onRowChange={() => {}}
+            />
+          ))}
+        </div>
+      )
+    })
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    return await summaryElementToPdfBlob(host)
+  } finally {
+    root.unmount()
+    host.remove()
+  }
 }

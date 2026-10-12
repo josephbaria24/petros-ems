@@ -19,7 +19,7 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table"
-import { ArrowUpDown, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode, Download, CalendarClock } from "lucide-react"
+import { ArrowUpDown, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode, Download, CalendarClock, FolderArchive } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -579,6 +579,29 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const handleDownloadPassers = (participant: Participant) => {
     setSelectedParticipant(participant)
     setPassersDialogOpen(true)
+  }
+
+  const handleExportScheduleData = async (participant: Participant) => {
+    const toastId = toast.loading("Building schedule export…", {
+      description: "Attendance photos, directory, program, and exam summary.",
+    })
+    try {
+      const { exportSchedulePack } = await import("@/lib/exports/export-schedule-pack")
+      const notes = await exportSchedulePack({
+        scheduleId: participant.id,
+        courseName: participant.course,
+        scheduleRange: participant.schedule,
+      })
+      toast.success("Schedule data exported", {
+        id: toastId,
+        description: notes.length ? notes.join(" ") : `${participant.course}.zip is downloading.`,
+      })
+    } catch (error) {
+      toast.error("Could not export schedule data", {
+        id: toastId,
+        description: error instanceof Error ? error.message : "Try again in a moment.",
+      })
+    }
   }
 
   const handleDeleteClick = (participant: Participant) => {
@@ -1165,6 +1188,11 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDownloadPassers(participant); }} className="cursor-pointer">
                 <Download className="mr-2 h-4 w-4 text-emerald-600" />
                 Download Passers
+              </DropdownMenuItem>
+
+              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); void handleExportScheduleData(participant); }} className="cursor-pointer">
+                <FolderArchive className="mr-2 h-4 w-4 text-[#1A1D66]" />
+                Export data
               </DropdownMenuItem>
 
               <DropdownMenuItem
