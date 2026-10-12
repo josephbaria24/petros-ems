@@ -393,6 +393,11 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const [reschedulePromptOpen, setReschedulePromptOpen] = React.useState(false)
   const [selectedParticipant, setSelectedParticipant] = React.useState<Participant | null>(null)
   const [isDeleting, setIsDeleting] = React.useState(false)
+  const [exportProgress, setExportProgress] = React.useState<{
+    course: string
+    percent: number
+    label: string
+  } | null>(null)
   const [isCancelling, setIsCancelling] = React.useState(false)
 
   const [directoryOpen, setDirectoryOpen] = React.useState(false)
@@ -582,25 +587,29 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   }
 
   const handleExportScheduleData = async (participant: Participant) => {
-    const toastId = toast.loading("Building schedule export…", {
-      description: "Attendance photos, directory, program, and exam summary.",
-    })
+    if (exportProgress) return
+    setExportProgress({ course: participant.course, percent: 0, label: "Starting export" })
     try {
       const { exportSchedulePack } = await import("@/lib/exports/export-schedule-pack")
       const notes = await exportSchedulePack({
         scheduleId: participant.id,
         courseName: participant.course,
         scheduleRange: participant.schedule,
+        onProgress: (percent, label) => {
+          setExportProgress({ course: participant.course, percent, label })
+        },
       })
+      setExportProgress({ course: participant.course, percent: 100, label: "Download ready" })
       toast.success("Schedule data exported", {
-        id: toastId,
         description: notes.length ? notes.join(" ") : `${participant.course}.zip is downloading.`,
       })
+      await new Promise((resolve) => setTimeout(resolve, 700))
     } catch (error) {
       toast.error("Could not export schedule data", {
-        id: toastId,
         description: error instanceof Error ? error.message : "Try again in a moment.",
       })
+    } finally {
+      setExportProgress(null)
     }
   }
 
@@ -1190,8 +1199,12 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                 Download Passers
               </DropdownMenuItem>
 
-              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); void handleExportScheduleData(participant); }} className="cursor-pointer">
-                <FolderArchive className="mr-2 h-4 w-4 text-[#1A1D66]" />
+              <DropdownMenuItem
+                disabled={!!exportProgress}
+                onClick={(e) => { e.stopPropagation(); void handleExportScheduleData(participant); }}
+                className="cursor-pointer"
+              >
+                <FolderArchive className="mr-2 h-4 w-4 text-[#1A1D66] dark:text-[#FFCC00]" />
                 Export data
               </DropdownMenuItem>
 
@@ -1401,6 +1414,25 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   return (
     <>
       <Card className="p-3 border-0 shadow-md bg- ">
+        {exportProgress ? (
+          <div className="mb-3 rounded-lg border border-border bg-muted/50 px-3 py-2">
+            <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+              <span className="min-w-0 truncate font-medium text-foreground">
+                Exporting {exportProgress.course}
+                <span className="font-normal text-muted-foreground"> · {exportProgress.label}</span>
+              </span>
+              <span className="shrink-0 tabular-nums font-semibold text-[#1A1D66] dark:text-[#FFCC00]">
+                {exportProgress.percent}%
+              </span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-[#1A1D66] transition-[width] duration-300 ease-out dark:bg-[#FFCC00]"
+                style={{ width: `${exportProgress.percent}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
         <div className="flex items-center justify-between mb-1">
           <div className="flex gap-2">
             <Input

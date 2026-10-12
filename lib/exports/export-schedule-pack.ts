@@ -17,6 +17,11 @@ type SchedulePackInput = {
   scheduleId: string
   courseName: string
   scheduleRange: string
+  onProgress?: (percent: number, label: string) => void
+}
+
+function reportProgress(onProgress: SchedulePackInput["onProgress"], percent: number, label: string) {
+  onProgress?.(Math.max(0, Math.min(100, Math.round(percent))), label)
 }
 
 function safeFileName(value: string) {
@@ -109,11 +114,13 @@ export async function exportSchedulePack({
   scheduleId,
   courseName,
   scheduleRange,
+  onProgress,
 }: SchedulePackInput) {
   const notes: string[] = []
   const zip = new JSZip()
   const attendances = zip.folder("Attendances")
   zip.folder("Recordings")
+  reportProgress(onProgress, 4, "Gathering schedule")
 
   const { data: schedule, error } = await tmsDb
     .from("schedules")
@@ -150,27 +157,45 @@ export async function exportSchedulePack({
     .sort()
   const orderedDays = [...days, ...extraDays.filter((day, index, all) => all.indexOf(day) === index)]
   const dayPlan = orderedDays.length ? orderedDays : snapshots.length ? ["all"] : []
+  const photoGroups = dayPlan.map((dayKey, index) => {
+    const fallback = index === 0 ? dayKey : undefined
+    const photos = dayKey === "all" ? snapshots : snapshotsForDay(snapshots, dayKey, fallback)
+    return { index, photos }
+  })
+  const photoTotal = photoGroups.reduce((sum, group) => sum + group.photos.length, 0)
+  let photosDone = 0
+  reportProgress(onProgress, 8, photoTotal ? "Attendance photos" : "Attendance photos")
 
   if (attendances) {
-    for (let index = 0; index < dayPlan.length; index++) {
-      const dayKey = dayPlan[index]
-      const fallback = index === 0 ? dayKey : undefined
-      const photos = dayKey === "all" ? snapshots : snapshotsForDay(snapshots, dayKey, fallback)
-      for (let photoIndex = 0; photoIndex < photos.length; photoIndex++) {
-        const photo = photos[photoIndex]
+    for (const group of photoGroups) {
+      for (let photoIndex = 0; photoIndex < group.photos.length; photoIndex++) {
+        const photo = group.photos[photoIndex]
+        const dayLabel = `Day ${group.index + 1}`
         try {
           const blob = await fetchImage(photo.url)
           const ext = extensionFor(blob, photo.url)
-          const label = photoIndex === 0 ? `Day ${index + 1}` : `Day ${index + 1} (${photoIndex + 1})`
+          const label = photoIndex === 0 ? dayLabel : `${dayLabel} (${photoIndex + 1})`
           attendances.file(`${label}.${ext}`, blob)
         } catch (photoError) {
           console.error(photoError)
-          notes.push(`Attendance photo for Day ${index + 1} could not be added.`)
+          notes.push(`Attendance photo for ${dayLabel} could not be added.`)
         }
+        photosDone += 1
+        reportProgress(
+          onProgress,
+          8 + (photosDone / Math.max(photoTotal, 1)) * 32,
+          `Attendance photos ${photosDone}/${photoTotal}`
+        )
       }
     }
   }
+  reportProgress(onProgress, 42, "Participant directory")
 
+  let directoryPercent = 42
+  const directoryTimer = setInterval(() => {
+    directoryPercent = Math.min(68, directoryPercent + 1)
+    reportProgress(onProgress, directoryPercent, "Participant directory")
+  }, 700)
   try {
     const excel = await exportTraineeExcel(scheduleId, scheduleRange, { download: false })
     if (excel) zip.file("Directory of Participants.xlsx", excel)
@@ -178,7 +203,10 @@ export async function exportSchedulePack({
   } catch (excelError) {
     console.error(excelError)
     notes.push(excelError instanceof Error ? excelError.message : "Participant directory was not included.")
+  } finally {
+    clearInterval(directoryTimer)
   }
+  reportProgress(onProgress, 72, "Training program")
 
   try {
     const saved = parseOshProgram(schedule.osh_program)
@@ -195,7 +223,13 @@ export async function exportSchedulePack({
     console.error(programError)
     notes.push("Training program PDF was not included.")
   }
+  reportProgress(onProgress, 78, "Exam results summary")
 
+  let summaryPercent = 78
+  const summaryTimer = setInterval(() => {
+    summaryPercent = Math.min(90, summaryPercent + 1)
+    reportProgress(onProgress, summaryPercent, "Exam results summary")
+  }, 600)
   try {
     const exams = await resolveExamSlots(scheduleId, schedule.course_id || null)
     const summary = await buildExamSummaryPdfBlob({
@@ -207,9 +241,15 @@ export async function exportSchedulePack({
   } catch (summaryError) {
     console.error(summaryError)
     notes.push("Exam results summary was not included.")
+  } finally {
+    clearInterval(summaryTimer)
   }
+  reportProgress(onProgress, 92, "Packing zip")
 
-  const packed = await zip.generateAsync({ type: "blob" })
+  const packed = await zip.generateAsync({ type: "blob" }, (meta) => {
+    reportProgress(onProgress, 92 + meta.percent * 0.08, "Packing zip")
+  })
+  reportProgress(onProgress, 100, "Download ready")
   const url = URL.createObjectURL(packed)
   const link = document.createElement("a")
   link.href = url

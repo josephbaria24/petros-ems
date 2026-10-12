@@ -35,6 +35,7 @@ import {
   parseOshProgram,
   type OshProgram,
 } from "@/lib/osh-program"
+import { oshSheetDownloadName } from "@/lib/osh-sheet-pdf"
 
 function courseOf(schedule: { courses?: unknown }) {
   const course = Array.isArray(schedule.courses) ? schedule.courses[0] : schedule.courses
@@ -418,7 +419,7 @@ function ProgramPageInner() {
             </p>
           )}
 
-          <OshProgramForm value={program} onChange={setProgram} />
+          <OshProgramForm value={program} onChange={setProgram} downloadName={oshSheetDownloadName(courseName)} />
           <OshProgramPreview
             program={program}
             filename={`${(courseName || "osh-program").replace(/[^\w]+/g, "-").toLowerCase()}-program.pdf`}

@@ -270,3 +270,9 @@ nextjs-portal {
   background-color: #f4f6fb;
   color: #6b7194;
 }
+
+@media print {
+  [data-export-hide="true"] {
+    display: none !important;
+  }
+}

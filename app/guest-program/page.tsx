@@ -8,6 +8,7 @@ import { OshProgramForm } from "@/components/osh-program-form"
 import { OshProgramPreview } from "@/components/osh-program-preview"
 import { Button } from "@/components/ui/button"
 import { emptyOshProgram, parseOshProgram, type OshProgram } from "@/lib/osh-program"
+import { oshSheetDownloadName } from "@/lib/osh-sheet-pdf"
 
 function GuestProgramForm() {
   const searchParams = useSearchParams()
@@ -147,7 +148,7 @@ function GuestProgramForm() {
                 Save program
               </Button>
             </div>
-            <OshProgramForm value={program} onChange={setProgram} />
+            <OshProgramForm value={program} onChange={setProgram} downloadName={oshSheetDownloadName(courseName)} />
             <OshProgramPreview
               program={program}
               filename={`${(courseName || "osh-program").replace(/[^\w]+/g, "-").toLowerCase()}-program.pdf`}

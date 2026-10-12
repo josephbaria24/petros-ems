@@ -119,7 +119,7 @@ const BOSH_LAYOUT: TemplateLayout = {
   dates: { x: 153, y: 475, w: 390, h: 12 },
   platform: { x: 198, y: 500, w: 140, h: 12 },
   venue: { x: 382, y: 500, w: 175, h: 12 },
-  otherSpecify: { x: 296, y: 568, w: 270, h: 28 },
+  otherSpecify: { x: 299, y: 589, w: 278, h: 14 },
   totalDuration: { x: 176, y: 570, w: 70, h: 12 },
   remarks: { x: 318, y: 570, w: 230, h: 14 },
   checks: {
@@ -385,7 +385,12 @@ export async function fillOshProgramPdf(program: OshProgram): Promise<Uint8Array
   writeField(headerPage, font, program.dates, layout.dates, 9, 1)
   writeField(headerPage, font, program.platform, layout.platform, 8, 1)
   writeField(headerPage, font, program.venue, layout.venue, 8, 1)
-  writeField(headerPage, font, program.otherSpecify, layout.otherSpecify, 7, kind === "bosh_so2" ? 2 : 1)
+  if (kind === "bosh_so2") {
+    // The blank form already prints this title in blue, wrapped onto the webinar row.
+    cover(headerPage, { x: 294, y: 586, w: 290, h: 18 })
+    cover(headerPage, { x: 206, y: 572, w: 92, h: 16 })
+  }
+  writeField(headerPage, font, program.otherSpecify, layout.otherSpecify, 7, 1)
 
   const c = layout.checks
   drawCheck(headerPage, c.boshPrivate, program.trainingTypes.boshPrivate)

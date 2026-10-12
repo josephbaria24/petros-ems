@@ -45,7 +45,7 @@ function PageStack({ pages }: { pages: string[] }) {
           key={`${i}-${src.slice(-24)}`}
           src={src}
           alt={`Program page ${i + 1}`}
-          className="mx-auto block w-full max-w-[820px] bg-white shadow-md"
+          className="mx-auto block h-auto w-full max-w-[820px] bg-white shadow-md"
         />
       ))}
     </div>
@@ -127,7 +127,7 @@ export function OshProgramPreview({ program, filename = "osh-training-program.pd
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-lg border">
+      <div className="relative rounded-lg border">
         {busy ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center gap-2 bg-background/60 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -137,9 +137,7 @@ export function OshProgramPreview({ program, filename = "osh-training-program.pd
         {error ? (
           <p className="p-6 text-sm text-destructive">{error}</p>
         ) : pages.length ? (
-          <div className="max-h-[640px] overflow-y-auto">
-            <PageStack pages={pages} />
-          </div>
+          <PageStack pages={pages} />
         ) : (
           <div className="flex h-[420px] items-center justify-center text-sm text-muted-foreground">
             Building preview…
