@@ -135,7 +135,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {showChrome && <PendingCertPrompt />}
           <PullToRefresh
             className={cn(
-              "relative min-h-0 flex-1 overscroll-contain",
+              "relative min-h-0 min-w-0 flex-1 overscroll-contain overflow-x-hidden",
               pathname.startsWith("/trainer-repository") ? "overflow-hidden" : "overflow-y-auto"
             )}
           >

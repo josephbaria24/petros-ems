@@ -60,21 +60,22 @@ function NewsCarousel({
   }, [news.length])
 
   return (
-    <div className="relative">
-      <div className="p-2 bg-secondary text-primary-foreground flex justify-between items-center">
-        <h3 className="font-bold text-sm text-accent-foreground">Latest News</h3>
+    <div className="relative min-w-0 overflow-hidden">
+      <div className="flex items-center justify-between gap-2 bg-secondary p-2 text-primary-foreground">
+        <h3 className="min-w-0 truncate text-sm font-bold text-accent-foreground">Latest News</h3>
         <Button
           variant="ghost"
           size="sm"
           onClick={onEdit}
-          className="h-8 gap-2 hover:bg-primary-foreground/20 text-accent-foreground"
+          className="h-8 shrink-0 gap-1.5 px-2 text-accent-foreground hover:bg-primary-foreground/20"
         >
-          <Edit2 className="w-4 h-4 text-accent-foreground" />
-          Edit News
+          <Edit2 className="h-4 w-4 text-accent-foreground" />
+          <span className="hidden sm:inline">Edit News</span>
+          <span className="sm:hidden">Edit</span>
         </Button>
       </div>
 
-      <div className="relative h-62 overflow-hidden">
+      <div className="relative h-52 min-w-0 overflow-hidden sm:h-62">
         {news.map((item, idx) => (
           <div
             key={idx}
@@ -92,9 +93,9 @@ function NewsCarousel({
                 }}
               />
             </div>
-            <div className="p-4">
-              <p className="text-xs text-muted-foreground mb-1">{item.date}</p>
-              <h4 className="text-sm font-semibold line-clamp-2">{item.title}</h4>
+            <div className="min-w-0 p-3 sm:p-4">
+              <p className="mb-1 text-xs text-muted-foreground">{item.date}</p>
+              <h4 className="line-clamp-2 text-sm font-semibold break-words">{item.title}</h4>
             </div>
           </div>
         ))}
@@ -612,8 +613,8 @@ export default function TrainingCalendar() {
 
     for (let i = firstDay - 1; i >= 0; i--) {
       cells.push(
-        <div key={`prev-${i}`} className="min-h-20 bg-muted/30 text-muted-foreground text-sm border-r border-b">
-          <div className="p-2">{prevMonthDays - i}</div>
+        <div key={`prev-${i}`} className="min-h-16 min-w-0 overflow-hidden border-b border-r bg-muted/30 text-sm text-muted-foreground sm:min-h-20">
+          <div className="p-1.5 sm:p-2">{prevMonthDays - i}</div>
         </div>
       )
     }
@@ -636,18 +637,21 @@ export default function TrainingCalendar() {
         : -1
 
       cells.push(
-        <div key={day} className={`border-r border-b ${isToday ? 'bg-blue-50 dark:bg-cyan-900' : ''} relative ${dayEvents.length === 0 ? 'min-h-20' : ''}`}>
-          <div className={`text-sm font-semibold p-2 ${isToday ? 'text-blue-600' : isWeekend ? 'text-red-500' : ''}`}>
+        <div
+          key={day}
+          className={`relative min-w-0 overflow-hidden border-b border-r ${isToday ? "bg-blue-50 dark:bg-cyan-900" : ""} ${dayEvents.length === 0 ? "min-h-16 sm:min-h-20" : ""}`}
+        >
+          <div className={`p-1 text-[11px] font-semibold sm:p-2 sm:text-sm ${isToday ? "text-blue-600" : isWeekend ? "text-red-500" : ""}`}>
             {day}
           </div>
-          <div className="px-1 pb-1 relative">
+          <div className="relative min-w-0 overflow-hidden px-0.5 pb-1 sm:px-1">
             {maxTrack >= 0 && Array.from({ length: maxTrack + 1 }).map((_, trackIdx) => {
               const trackEvent = dayEventsWithTracks.find(e => e.track === trackIdx)
 
               if (!trackEvent) {
                 // Placeholder for empty track to maintain alignment
                 return (
-                  <div key={`placeholder-${day}-${trackIdx}`} style={{ height: '28px', marginBottom: '4px' }} />
+                  <div key={`placeholder-${day}-${trackIdx}`} className="mb-0.5 h-5 sm:mb-1 sm:h-7" />
                 )
               }
 
@@ -672,25 +676,19 @@ export default function TrainingCalendar() {
               return (
                 <div
                   key={`${event.id}-${trackIdx}`}
-                  className={`text-xs px-2 py-1.5 text-white cursor-pointer 
-                    transition-all duration-200 ease-in-out 
-                    ${isStart ? 'rounded-l ml-1' : '-ml-1'} 
-                    ${isEnd ? 'rounded-r mr-1' : '-mr-1'} 
-                    ${hoveredEventId === event.id ? 'ring-3 ring-black dark:ring-white ring-offset-0 scale-[1.02] z-10' : 'scale-100'}
+                  className={`mb-0.5 h-5 cursor-pointer px-1 py-0.5 text-[9px] leading-4 text-white transition-colors sm:mb-1 sm:h-7 sm:px-2 sm:py-1.5 sm:text-xs sm:leading-4
+                    ${isStart ? "ml-0.5 rounded-l sm:ml-1" : ""}
+                    ${isEnd ? "mr-0.5 rounded-r sm:mr-1" : ""}
+                    ${hoveredEventId === event.id ? "z-10 ring-2 ring-black dark:ring-white" : ""}
                   `}
-                  style={{
-                    backgroundColor: color,
-                    height: '28px',
-                    lineHeight: '16px',
-                    marginBottom: '4px'
-                  }}
+                  style={{ backgroundColor: color }}
                   onClick={() => openModal(event)}
                   onMouseEnter={() => setHoveredEventId(event.id)}
                   onMouseLeave={() => setHoveredEventId(null)}
                   title={`${event.courseTitle} - ${event.branch}`}
                 >
                   <div className="truncate">
-                    {isStart && `${event.branch} ${event.courseTitle} - ${event.status}`}
+                    {isStart && `${event.branch} ${event.courseTitle}`}
                   </div>
                 </div>
               )
@@ -705,8 +703,8 @@ export default function TrainingCalendar() {
     const remainingCells = Math.ceil(totalCells / 7) * 7 - totalCells
     for (let i = 1; i <= remainingCells; i++) {
       cells.push(
-        <div key={`next-${i}`} className="min-h-20 bg-muted/30 text-muted-foreground text-sm border-r border-b">
-          <div className="p-2">{i}</div>
+        <div key={`next-${i}`} className="min-h-16 min-w-0 overflow-hidden border-b border-r bg-muted/30 text-sm text-muted-foreground sm:min-h-20">
+          <div className="p-1.5 sm:p-2">{i}</div>
         </div>
       )
     }
@@ -767,13 +765,15 @@ export default function TrainingCalendar() {
     const sortedCourses = Object.keys(eventsByCourse).sort()
 
     return (
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
+      <div className="table-scroll min-w-0 overflow-x-auto">
+        <table className="w-full min-w-[720px] border-collapse text-sm">
           <thead>
             <tr className="bg-primary text-primary-foreground">
-              <th className="p-3 text-left font-semibold border border-border">TRAINING PROGRAM</th>
+              <th className="sticky left-0 z-10 border border-border bg-primary p-2 text-left text-xs font-semibold sm:p-3 sm:text-sm">
+                TRAINING PROGRAM
+              </th>
               {monthNamesShort.map(month => (
-                <th key={month} className="p-3 text-center font-semibold border border-border min-w-20">
+                <th key={month} className="min-w-14 border border-border p-2 text-center text-xs font-semibold sm:min-w-20 sm:p-3 sm:text-sm">
                   {month}
                 </th>
               ))}
@@ -782,7 +782,9 @@ export default function TrainingCalendar() {
           <tbody>
             {sortedCourses.map(courseName => (
               <tr key={courseName} className="border-b border-border hover:bg-muted/50">
-                <td className="p-3 font-medium border border-border">{courseName}</td>
+                <td className="sticky left-0 z-10 max-w-[140px] truncate border border-border bg-card p-2 text-xs font-medium sm:max-w-none sm:p-3 sm:text-sm">
+                  {courseName}
+                </td>
                 {[...Array(12)].map((_, monthIdx) => {
                   const monthEvents = eventsByCourse[courseName].filter(event =>
                     new Date(event.startDate).getMonth() === monthIdx
@@ -833,13 +835,13 @@ export default function TrainingCalendar() {
   }
 
   return (
-    <div className="w-full bg-background">
-      <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+    <div className="page-shell min-w-0 max-w-full overflow-x-hidden bg-background">
+      <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:gap-6">
         {/* Main Calendar Section */}
-        <div className="min-w-0 flex-1">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 sm:mb-6 sm:gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center bg-white">
+        <div className="min-w-0 flex-1 overflow-x-hidden">
+          <div className="mb-3 flex min-w-0 flex-col gap-3 sm:mb-6 sm:gap-4">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white sm:h-12 sm:w-12">
                 <Image
                   src="/logo.png"
                   alt="Logo"
@@ -848,42 +850,42 @@ export default function TrainingCalendar() {
                   className="object-contain"
                 />
               </div>
-              <h1 className="text-3xl font-bold">Training Calendar</h1>
+              <h1 className="page-title min-w-0 truncate text-xl font-bold sm:text-3xl">Training Calendar</h1>
             </div>
 
-            <div className="flex items-center gap-4">
-              <div className="flex gap-2 bg-muted rounded-lg p-1">
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
+              <div className="flex w-full gap-1 rounded-lg bg-muted p-1 sm:w-auto sm:gap-2">
                 <Button
                   variant={viewType === 'calendar' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setViewType('calendar')}
-                  className="gap-2"
+                  className="h-8 flex-1 gap-1.5 px-2 sm:flex-none sm:gap-2"
                 >
-                  <Calendar className="w-4 h-4" />
+                  <Calendar className="h-4 w-4" />
                   Calendar
                 </Button>
                 <Button
                   variant={viewType === 'list' ? 'default' : 'ghost'}
                   size="sm"
                   onClick={() => setViewType('list')}
-                  className="gap-2"
+                  className="h-8 flex-1 gap-1.5 px-2 sm:flex-none sm:gap-2"
                 >
-                  <List className="w-4 h-4" />
+                  <List className="h-4 w-4" />
                   List
                 </Button>
               </div>
 
-              <div className="flex gap-2">
-                <Badge variant="outline" className="bg-emerald-500 text-white border-emerald-500 gap-2">
-                  <span className="w-2 h-2 rounded-full bg-white"></span>
+              <div className="flex min-w-0 flex-wrap gap-1.5">
+                <Badge variant="outline" className="gap-1.5 border-emerald-500 bg-emerald-500 px-1.5 text-[10px] text-white sm:gap-2 sm:px-2.5 sm:text-xs">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white sm:h-2 sm:w-2"></span>
                   Upcoming
                 </Badge>
-                <Badge variant="outline" className="bg-orange-500 text-white border-orange-500 gap-2">
-                  <span className="w-2 h-2 rounded-full bg-white"></span>
+                <Badge variant="outline" className="gap-1.5 border-orange-500 bg-orange-500 px-1.5 text-[10px] text-white sm:gap-2 sm:px-2.5 sm:text-xs">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white sm:h-2 sm:w-2"></span>
                   Ongoing
                 </Badge>
-                <Badge variant="outline" className="bg-slate-400 text-white border-slate-400 gap-2">
-                  <span className="w-2 h-2 rounded-full bg-white"></span>
+                <Badge variant="outline" className="gap-1.5 border-slate-400 bg-slate-400 px-1.5 text-[10px] text-white sm:gap-2 sm:px-2.5 sm:text-xs">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white sm:h-2 sm:w-2"></span>
                   Finished
                 </Badge>
               </div>
@@ -892,35 +894,39 @@ export default function TrainingCalendar() {
 
           {viewType === 'calendar' && (
             <>
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" onClick={previousMonth}>
-                    <ChevronLeft className="w-4 h-4" />
+              <div className="mb-3 flex min-w-0 items-center justify-between gap-2 sm:mb-6">
+                <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={previousMonth}>
+                    <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <Button variant="outline" size="icon" onClick={nextMonth}>
-                    <ChevronRight className="w-4 h-4" />
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={nextMonth}>
+                    <ChevronRight className="h-4 w-4" />
                   </Button>
-                  <Button variant="outline" onClick={goToToday}>
-                    today
+                  <Button variant="outline" size="sm" className="h-8 px-2 text-xs sm:px-3" onClick={goToToday}>
+                    Today
                   </Button>
                 </div>
 
-                <h2 className="text-2xl font-bold">
+                <h2 className="min-w-0 truncate text-center text-base font-bold sm:text-2xl">
                   {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
                 </h2>
 
-                <div className="w-32"></div>
+                <div className="hidden w-32 sm:block" aria-hidden />
               </div>
 
-              <Card className="overflow-hidden">
-                <div className="grid grid-cols-7 border-b bg-muted/50">
-                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, idx) => (
-                    <div key={day} className={`p-3 text-center font-semibold text-sm border-r last:border-r-0 ${idx === 0 || idx === 6 ? 'text-red-500' : ''}`}>
-                      {day}
+              <Card className="min-w-0 overflow-hidden">
+                <div className="grid min-w-0 grid-cols-7 border-b bg-muted/50">
+                  {(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const).map((day, idx) => (
+                    <div
+                      key={day}
+                      className={`min-w-0 border-r p-1.5 text-center text-[10px] font-semibold last:border-r-0 sm:p-3 sm:text-sm ${idx === 0 || idx === 6 ? "text-red-500" : ""}`}
+                    >
+                      <span className="sm:hidden">{day.charAt(0)}</span>
+                      <span className="hidden sm:inline">{day}</span>
                     </div>
                   ))}
                 </div>
-                <div className="grid grid-cols-7">
+                <div className="grid min-w-0 grid-cols-7">
                   {renderCalendar()}
                 </div>
               </Card>
@@ -928,15 +934,15 @@ export default function TrainingCalendar() {
           )}
 
           {viewType === 'list' && (
-            <Card className="p-6">
+            <Card className="min-w-0 overflow-hidden p-3 sm:p-6">
               {renderListView()}
             </Card>
           )}
         </div>
 
         {/* Right Sidebar */}
-        <div className="w-full shrink-0 space-y-2 lg:w-80">
-          <Card className="overflow-y-auto">
+        <div className="w-full min-w-0 shrink-0 space-y-2 overflow-x-hidden lg:w-80">
+          <Card className="min-w-0 overflow-hidden">
             {isEditingNews ? (
               <NewsEditor
                 news={newsItems}
@@ -951,17 +957,17 @@ export default function TrainingCalendar() {
             )}
           </Card>
 
-          <Card className="p-4 space-y-3">
-            <h3 className="text-lg font-bold">Admin Tools</h3>
+          <Card className="min-w-0 space-y-3 overflow-hidden p-3 sm:p-4">
+            <h3 className="text-base font-bold sm:text-lg">Admin Tools</h3>
 
             <div className="space-y-2 text-sm">
               <p className="text-muted-foreground">
                 Manage training schedules, courses, and calendar settings.
               </p>
 
-              <div className="pt-2 border-t space-y-2">
+              <div className="space-y-2 border-t pt-2">
                 <p className="font-medium">Quick Actions:</p>
-                <ul className="list-disc list-inside text-muted-foreground space-y-1">
+                <ul className="list-inside list-disc space-y-1 text-muted-foreground">
                   <li>Edit news carousel above</li>
                   <li>Click events to view details</li>
                   <li>Switch between calendar/list views</li>

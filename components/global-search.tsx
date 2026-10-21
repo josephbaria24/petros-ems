@@ -33,6 +33,7 @@ export function GlobalSearch() {
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [query, setQuery] = React.useState("")
   const [open, setOpen] = React.useState(false)
+  const [mobileOpen, setMobileOpen] = React.useState(false)
   const [activeIndex, setActiveIndex] = React.useState(0)
   const [liveItems, setLiveItems] = React.useState<GlobalSearchItem[]>([])
   const [searchingLive, setSearchingLive] = React.useState(false)
@@ -160,8 +161,13 @@ export function GlobalSearch() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault()
+        setMobileOpen(false)
         inputRef.current?.focus()
         setOpen(true)
+      }
+      if (e.key === "Escape" && mobileOpen) {
+        setMobileOpen(false)
+        setOpen(false)
       }
     }
     document.addEventListener("mousedown", onPointerDown)
@@ -170,10 +176,17 @@ export function GlobalSearch() {
       document.removeEventListener("mousedown", onPointerDown)
       document.removeEventListener("keydown", onKey)
     }
-  }, [])
+  }, [mobileOpen])
+
+  React.useEffect(() => {
+    if (!mobileOpen) return
+    const t = window.setTimeout(() => inputRef.current?.focus(), 50)
+    return () => window.clearTimeout(t)
+  }, [mobileOpen])
 
   const goTo = (item: GlobalSearchItem) => {
     setOpen(false)
+    setMobileOpen(false)
     setQuery("")
     router.push(item.href)
   }
@@ -201,108 +214,171 @@ export function GlobalSearch() {
     }
   }
 
-  const showPanel = open && query.trim().length > 0
+  const showPanel = (open || mobileOpen) && query.trim().length > 0
+
+  const resultsPanel = showPanel ? (
+    <div
+      id="global-search-results"
+      className={cn(
+        "z-[90] overflow-hidden border border-[#FFCC00]/50 bg-white shadow-xl shadow-black/20 dark:border-[#FFCC00]/40 dark:bg-card dark:shadow-black/50",
+        mobileOpen
+          ? "mt-2 rounded-xl"
+          : "absolute left-0 right-0 top-[calc(100%+0.4rem)] rounded-xl"
+      )}
+    >
+      <div className="max-h-[min(24rem,70vh)] overflow-y-auto py-1">
+        {searchingLive ? (
+          <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Searching records…
+          </div>
+        ) : null}
+
+        {!flat.length && !searchingLive ? (
+          <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+            No matches for “{query.trim()}”
+          </div>
+        ) : null}
+
+        {groups.map((group) => (
+          <div key={group.category} className="py-1">
+            <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#1A1D66]/55 dark:text-muted-foreground">
+              {group.category}
+            </div>
+            {group.items.map((item) => {
+              const index = flat.findIndex((f) => f.id === item.id)
+              const active = index === activeIndex
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={cn(
+                    "flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors",
+                    active ? "bg-[#FFCC00]/25 dark:bg-[#FFCC00]/20" : "hover:bg-[#1A1D66]/5 dark:hover:bg-white/5"
+                  )}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => goTo(item)}
+                >
+                  <CategoryIcon category={item.category} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-[#1A1D66] dark:text-foreground">
+                      {item.title}
+                    </span>
+                    {item.description ? (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {item.description}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-muted-foreground">{item.category}</span>
+                </button>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  ) : null
+
+  const renderSearchField = (opts?: { showShortcut?: boolean }) => (
+    <div className="relative min-w-0 flex-1">
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#1A1D66]/55 sm:left-3 sm:h-4 sm:w-4 dark:text-zinc-400" />
+      <Input
+        ref={inputRef}
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value)
+          setOpen(true)
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={onKeyDown}
+        placeholder="Search pages, courses…"
+        className="h-9 w-full min-w-0 border-0 bg-white/95 pl-8 pr-8 text-xs text-[#1A1D66] shadow-sm placeholder:text-[#1A1D66]/45 focus-visible:ring-2 focus-visible:ring-[#FFCC00] sm:h-10 sm:pl-9 sm:pr-16 sm:text-sm dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-400 dark:shadow-none dark:ring-1 dark:ring-white/15 dark:focus-visible:ring-[#FFCC00]"
+        aria-label="Global search"
+        aria-expanded={showPanel}
+        aria-controls="global-search-results"
+        autoComplete="off"
+      />
+      <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1 sm:right-2">
+        {query ? (
+          <button
+            type="button"
+            className="rounded p-1 text-[#1A1D66]/60 hover:bg-[#1A1D66]/10 hover:text-[#1A1D66] dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-100"
+            onClick={() => {
+              setQuery("")
+              setLiveItems([])
+              inputRef.current?.focus()
+            }}
+            aria-label="Clear search"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : opts?.showShortcut ? (
+          <kbd className="hidden rounded border border-[#1A1D66]/20 bg-[#1A1D66]/5 px-1.5 py-0.5 text-[10px] font-medium text-[#1A1D66]/70 sm:inline dark:border-white/20 dark:bg-white/10 dark:text-zinc-300">
+            Ctrl K
+          </kbd>
+        ) : null}
+      </div>
+    </div>
+  )
 
   return (
-    <div ref={rootRef} className="relative w-full min-w-0 max-w-xl overflow-hidden">
-      <div className="relative min-w-0">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#1A1D66]/55 sm:left-3 sm:h-4 sm:w-4 dark:text-zinc-400" />
-        <Input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value)
+    <>
+      {/* Mobile: icon only — keeps header from overflowing in PWA */}
+      {!mobileOpen ? (
+        <button
+          type="button"
+          className="inline-flex size-9 shrink-0 touch-manipulation items-center justify-center rounded-md text-[#FFCC00] outline-none transition-none hover:bg-white/10 active:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFCC00]/50 sm:hidden"
+          aria-label="Open search"
+          onClick={() => {
+            setMobileOpen(true)
             setOpen(true)
           }}
-          onFocus={() => setOpen(true)}
-          onKeyDown={onKeyDown}
-          placeholder="Search pages, courses…"
-          className="h-9 w-full min-w-0 border-0 bg-white/95 pl-8 pr-8 text-xs text-[#1A1D66] shadow-sm placeholder:text-[#1A1D66]/45 focus-visible:ring-2 focus-visible:ring-[#FFCC00] sm:h-10 sm:pl-9 sm:pr-16 sm:text-sm dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-400 dark:shadow-none dark:ring-1 dark:ring-white/15 dark:focus-visible:ring-[#FFCC00]"
-          aria-label="Global search"
-          aria-expanded={showPanel}
-          aria-controls="global-search-results"
-          autoComplete="off"
-        />
-        <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1 sm:right-2">
-          {query ? (
-            <button
-              type="button"
-              className="rounded p-1 text-[#1A1D66]/60 hover:bg-[#1A1D66]/10 hover:text-[#1A1D66] dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-zinc-100"
-              onClick={() => {
-                setQuery("")
-                setLiveItems([])
-                inputRef.current?.focus()
-              }}
-              aria-label="Clear search"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          ) : (
-            <kbd className="hidden rounded border border-[#1A1D66]/20 bg-[#1A1D66]/5 px-1.5 py-0.5 text-[10px] font-medium text-[#1A1D66]/70 sm:inline dark:border-white/20 dark:bg-white/10 dark:text-zinc-300">
-              Ctrl K
-            </kbd>
-          )}
-        </div>
+        >
+          <Search className="h-5 w-5" />
+        </button>
+      ) : null}
+
+      {/* Desktop / tablet inline search */}
+      <div ref={rootRef} className="relative hidden min-w-0 w-full max-w-xl overflow-visible sm:block">
+        {renderSearchField({ showShortcut: true })}
+        {!mobileOpen ? resultsPanel : null}
       </div>
 
-      {showPanel ? (
-        <div
-          id="global-search-results"
-          className="absolute left-0 right-0 top-[calc(100%+0.4rem)] z-[90] overflow-hidden rounded-xl border border-[#FFCC00]/50 bg-white shadow-xl shadow-black/20 dark:border-[#FFCC00]/40 dark:bg-card dark:shadow-black/50"
-        >
-          <div className="max-h-[min(24rem,70vh)] overflow-y-auto py-1">
-            {searchingLive ? (
-              <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Searching records…
-              </div>
-            ) : null}
-
-            {!flat.length && !searchingLive ? (
-              <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                No matches for “{query.trim()}”
-              </div>
-            ) : null}
-
-            {groups.map((group) => (
-              <div key={group.category} className="py-1">
-                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#1A1D66]/55 dark:text-muted-foreground">
-                  {group.category}
-                </div>
-                {group.items.map((item) => {
-                  const index = flat.findIndex((f) => f.id === item.id)
-                  const active = index === activeIndex
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={cn(
-                        "flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors",
-                        active ? "bg-[#FFCC00]/25 dark:bg-[#FFCC00]/20" : "hover:bg-[#1A1D66]/5 dark:hover:bg-white/5"
-                      )}
-                      onMouseEnter={() => setActiveIndex(index)}
-                      onClick={() => goTo(item)}
-                    >
-                      <CategoryIcon category={item.category} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-[#1A1D66] dark:text-foreground">
-                          {item.title}
-                        </span>
-                        {item.description ? (
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {item.description}
-                          </span>
-                        ) : null}
-                      </span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">{item.category}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
+      {/* Mobile full-screen search sheet */}
+      {mobileOpen ? (
+        <div className="fixed inset-0 z-[120] flex flex-col bg-[#1A1D66]/95 backdrop-blur-sm sm:hidden">
+          <div
+            className="border-b border-[#FFCC00] bg-[#1A1D66] px-3 pb-3"
+            style={{ paddingTop: "max(0.75rem, env(safe-area-inset-top, 0px))" }}
+          >
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-md text-[#FFCC00] hover:bg-white/10"
+                aria-label="Close search"
+                onClick={() => {
+                  setMobileOpen(false)
+                  setOpen(false)
+                }}
+              >
+                <X className="h-5 w-5" />
+              </button>
+              {renderSearchField()}
+            </div>
+            {resultsPanel}
           </div>
+          <button
+            type="button"
+            className="min-h-0 flex-1"
+            aria-label="Dismiss search"
+            onClick={() => {
+              setMobileOpen(false)
+              setOpen(false)
+            }}
+          />
         </div>
       ) : null}
-    </div>
+    </>
   )
 }

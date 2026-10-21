@@ -370,8 +370,8 @@ export function AppHeader() {
 
     
   return (
-    <header className="sticky top-0 z-40 flex h-14 items-center gap-2 border-0 border-b-4 border-[#FFCC00] bg-[#1A1D66] px-3 pt-[env(safe-area-inset-top,0px)] shadow-md sm:h-16 sm:gap-3 sm:px-4 md:px-6">
-      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden sm:gap-3 md:gap-4">
+    <header className="sticky top-0 z-40 border-0 border-b-4 border-[#FFCC00] bg-[#1A1D66] pt-[env(safe-area-inset-top,0px)] pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)] shadow-md">
+      <div className="flex h-14 items-center gap-1.5 px-3 sm:h-16 sm:gap-3 sm:px-4 md:px-6">
         <Button
           type="button"
           variant="ghost"
@@ -379,7 +379,6 @@ export function AppHeader() {
           className="shrink-0 touch-manipulation text-[#FFCC00] transition-none hover:bg-white/10 active:bg-white/15 lg:hidden"
           aria-label="Open menu"
           onPointerDown={(e) => {
-            // Fire on pointer down so the drawer starts before click latency.
             if (e.button !== 0) return
             openMobileNav()
           }}
@@ -399,30 +398,34 @@ export function AppHeader() {
           alt="Petrosphere Logo"
           className="hidden h-10 w-auto shrink-0 object-contain sm:block md:h-12"
         />
-        <div className="min-w-0 flex-1 overflow-hidden">
+
+        <div className="flex min-w-0 flex-1 items-center justify-end gap-0.5 sm:justify-start sm:gap-3">
           <GlobalSearch />
         </div>
-      </div>
 
-      <div className="relative z-10 flex shrink-0 items-center gap-0.5 sm:gap-3">
-        <ThemeToggleButton />
-        <NotificationsMenu
-          notifications={notifications}
-          onMarkRead={markAsRead}
-          onMarkAllRead={markAllAsRead}
-        />
+        <div className="relative z-10 flex shrink-0 items-center gap-0.5 sm:gap-2">
+          <ThemeToggleButton />
+          <NotificationsMenu
+            notifications={notifications}
+            onMarkRead={markAsRead}
+            onMarkAllRead={markAllAsRead}
+          />
 
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-              <Avatar>
-                <AvatarImage src={userPhoto ?? undefined} alt={userName} />
-                <AvatarFallback className="bg-primary text-primary-foreground">
-                  {fallbackInitials}
-                </AvatarFallback>
-              </Avatar>
-            </Button>
-          </DropdownMenuTrigger>
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative size-9 shrink-0 rounded-full touch-manipulation transition-none hover:bg-white/10"
+              >
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={userPhoto ?? undefined} alt={userName} />
+                  <AvatarFallback className="bg-primary text-xs text-primary-foreground">
+                    {fallbackInitials}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
               <div className="flex flex-col space-y-1">
@@ -443,6 +446,7 @@ export function AppHeader() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        </div>
       </div>
     </header>
   )

@@ -97,6 +97,27 @@ function makePieData(items: { name: string; value: number }[]) {
   return { data, config }
 }
 
+function formatCompactPeso(value: number) {
+  if (value >= 1_000_000) {
+    const millions = value / 1_000_000
+    return `₱${millions.toFixed(millions >= 10 ? 1 : 2)}M`
+  }
+  if (value >= 10_000) return `₱${Math.round(value / 1000)}k`
+  return `₱${value.toLocaleString()}`
+}
+
+function useIsCompact() {
+  const [compact, setCompact] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)")
+    const sync = () => setCompact(mq.matches)
+    sync()
+    mq.addEventListener("change", sync)
+    return () => mq.removeEventListener("change", sync)
+  }, [])
+  return compact
+}
+
 const fade = (i: number): React.CSSProperties => ({
   animation: `dash-fade-in 0.4s ease-out ${i * 0.05}s both`,
 })
@@ -140,6 +161,7 @@ const CHART_OPTIONS: { value: ChartType; label: string }[] = [
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const isCompact = useIsCompact()
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<DashboardData | null>(null)
   const [filterPreset, setFilterPreset] = useState<FilterPreset>("thisYear")
@@ -155,6 +177,11 @@ export default function DashboardPage() {
 
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null)
   const [showCourseModal, setShowCourseModal] = useState(false)
+
+  const chartMargin = isCompact
+    ? { left: -8, right: 4, top: 8, bottom: 0 }
+    : { left: -20, right: 12, top: 22, bottom: 0 }
+  const tickFont = isCompact ? 9 : 11
 
   // Swappable chart slots (bottom row)
   const [slot1, setSlot1] = useState<ChartType>("revenuePerCourse")
@@ -268,11 +295,11 @@ export default function DashboardPage() {
     switch (type) {
       case "enrollment":
         return (
-          <ChartContainer config={enrollmentCfg} className="h-[200px] w-full">
-            <ComposedChart data={data.enrollmentTrend} margin={{ left: -20, right: 8, top: 22 }}>
+          <ChartContainer config={enrollmentCfg} className="h-[180px] w-full sm:h-[200px]">
+            <ComposedChart data={data.enrollmentTrend} margin={chartMargin}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
-              <YAxis tickLine={false} axisLine={false} fontSize={11} />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={tickFont} interval={isCompact ? "preserveStartEnd" : 0} />
+              <YAxis tickLine={false} axisLine={false} fontSize={tickFont} width={isCompact ? 28 : 40} />
               <ChartTooltip content={<ChartTooltipContent />} />
               <defs>
                 <linearGradient id="gEnroll" x1="0" y1="0" x2="0" y2="1">
@@ -286,43 +313,57 @@ export default function DashboardPage() {
                 dataKey="enrollments"
                 stroke="var(--color-enrollments)"
                 strokeWidth={2}
-                dot={{ r: 3, fill: "var(--color-enrollments)", strokeWidth: 0 }}
+                dot={{ r: isCompact ? 2 : 3, fill: "var(--color-enrollments)", strokeWidth: 0 }}
                 fill="none"
                 animationDuration={700}
               >
-                <LabelList dataKey="enrollments" position="top" offset={6} content={enrollmentLineLabelContent} />
+                {!isCompact ? (
+                  <LabelList dataKey="enrollments" position="top" offset={6} content={enrollmentLineLabelContent} />
+                ) : null}
               </Line>
             </ComposedChart>
           </ChartContainer>
         )
       case "revenue":
         return (
-          <ChartContainer config={revenueCfg} className="h-[200px] w-full">
-            <BarChart data={data.revenueData} margin={{ left: -20, right: 8, top: 18 }}>
+          <ChartContainer config={revenueCfg} className="h-[180px] w-full sm:h-[200px]">
+            <BarChart data={data.revenueData} margin={{ ...chartMargin, top: isCompact ? 8 : 18, bottom: isCompact ? 8 : 0 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
-              <YAxis tickLine={false} axisLine={false} fontSize={11} tickFormatter={v => `₱${(v / 1000).toFixed(0)}k`} />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={tickFont} interval={isCompact ? "preserveStartEnd" : 0} />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                fontSize={tickFont}
+                width={isCompact ? 32 : 48}
+                tickFormatter={(v) => (isCompact ? `${(v / 1000).toFixed(0)}k` : `₱${(v / 1000).toFixed(0)}k`)}
+              />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <ChartLegend content={<ChartLegendContent />} />
+              <ChartLegend content={<ChartLegendContent className="flex-wrap gap-x-2 text-[10px] sm:text-xs" />} />
               <Bar dataKey="revenue" fill="var(--color-revenue)" radius={[4, 4, 0, 0]} animationDuration={600}>
-                <LabelList dataKey="revenue" position="top" offset={4} content={revenueBarLabelContent} />
+                {!isCompact ? (
+                  <LabelList dataKey="revenue" position="top" offset={4} content={revenueBarLabelContent} />
+                ) : null}
               </Bar>
               <Bar dataKey="target" fill="var(--color-target)" radius={[4, 4, 0, 0]} animationDuration={600}>
-                <LabelList dataKey="target" position="top" offset={4} content={targetBarLabelContent} />
+                {!isCompact ? (
+                  <LabelList dataKey="target" position="top" offset={4} content={targetBarLabelContent} />
+                ) : null}
               </Bar>
             </BarChart>
           </ChartContainer>
         )
       case "coursePopularity":
         return (
-          <ChartContainer config={courseCfg} className="h-[200px] w-full">
-            <BarChart data={data.coursePopularity.map((d, i) => ({ ...d, fill: COLORS[i % COLORS.length] }))} layout="vertical" margin={{ left: 0, right: 28 }}>
+          <ChartContainer config={courseCfg} className="h-[180px] w-full sm:h-[200px]">
+            <BarChart data={data.coursePopularity.map((d, i) => ({ ...d, fill: COLORS[i % COLORS.length] }))} layout="vertical" margin={{ left: 0, right: isCompact ? 12 : 28 }}>
               <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-              <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
-              <YAxis type="category" dataKey="name" width={100} tickLine={false} axisLine={false} fontSize={10} />
+              <XAxis type="number" tickLine={false} axisLine={false} fontSize={tickFont} />
+              <YAxis type="category" dataKey="name" width={isCompact ? 64 : 100} tickLine={false} axisLine={false} fontSize={isCompact ? 9 : 10} />
               <ChartTooltip content={<ChartTooltipContent hideLabel />} />
               <Bar dataKey="value" radius={[0, 4, 4, 0]} animationDuration={600} style={{ cursor: "pointer" }}>
-                <LabelList dataKey="value" position="right" offset={4} content={horizontalBarLabelContent} />
+                {!isCompact ? (
+                  <LabelList dataKey="value" position="right" offset={4} content={horizontalBarLabelContent} />
+                ) : null}
                 {data.coursePopularity.map((entry, i) => (
                   <Cell
                     key={i}
@@ -337,7 +378,7 @@ export default function DashboardPage() {
         )
       case "paymentStatus":
         return paymentPie && (
-          <ChartContainer config={paymentPie.config} className="h-[200px] w-full">
+          <ChartContainer config={paymentPie.config} className="h-[180px] w-full sm:h-[200px]">
             <PieChart>
               <Pie
                 data={paymentPie.data}
@@ -345,21 +386,21 @@ export default function DashboardPage() {
                 nameKey="key"
                 cx="50%"
                 cy="50%"
-                innerRadius={45}
-                outerRadius={72}
+                innerRadius={isCompact ? 32 : 45}
+                outerRadius={isCompact ? 56 : 72}
                 strokeWidth={2}
                 animationDuration={600}
-                label={PieOutlinedLabel}
+                label={isCompact ? false : PieOutlinedLabel}
                 labelLine={false}
               />
               <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
-              <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-1 text-xs" />} />
+              <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-1 text-[10px] sm:text-xs" />} />
             </PieChart>
           </ChartContainer>
         )
       case "gender":
         return genderPie && (
-          <ChartContainer config={genderPie.config} className="h-[200px] w-full">
+          <ChartContainer config={genderPie.config} className="h-[180px] w-full sm:h-[200px]">
             <PieChart>
               <Pie
                 data={genderPie.data}
@@ -367,51 +408,57 @@ export default function DashboardPage() {
                 nameKey="key"
                 cx="50%"
                 cy="50%"
-                outerRadius={72}
+                outerRadius={isCompact ? 56 : 72}
                 animationDuration={600}
-                label={PieOutlinedLabel}
+                label={isCompact ? false : PieOutlinedLabel}
                 labelLine={false}
               />
               <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
-              <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-1 text-xs" />} />
+              <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-1 text-[10px] sm:text-xs" />} />
             </PieChart>
           </ChartContainer>
         )
       case "age":
         return (
-          <ChartContainer config={ageCfg} className="h-[200px] w-full">
-            <BarChart data={data.ageDistribution} margin={{ left: -20, right: 8, top: 14 }}>
+          <ChartContainer config={ageCfg} className="h-[180px] w-full sm:h-[200px]">
+            <BarChart data={data.ageDistribution} margin={chartMargin}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="range" tickLine={false} axisLine={false} fontSize={11} />
-              <YAxis tickLine={false} axisLine={false} fontSize={11} />
+              <XAxis dataKey="range" tickLine={false} axisLine={false} fontSize={tickFont} />
+              <YAxis tickLine={false} axisLine={false} fontSize={tickFont} width={isCompact ? 28 : 40} />
               <ChartTooltip content={<ChartTooltipContent />} />
               <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} animationDuration={600}>
-                <LabelList dataKey="count" position="top" offset={4} content={columnBarLabelContent} />
+                {!isCompact ? (
+                  <LabelList dataKey="count" position="top" offset={4} content={columnBarLabelContent} />
+                ) : null}
               </Bar>
             </BarChart>
           </ChartContainer>
         )
       case "yearComparison":
         return (
-          <ChartContainer config={yearCfg} className="h-[200px] w-full">
-            <LineChart data={data.yearComparison} margin={{ left: -20, right: 8, top: 12, bottom: 4 }}>
+          <ChartContainer config={yearCfg} className="h-[180px] w-full sm:h-[200px]">
+            <LineChart data={data.yearComparison} margin={{ ...chartMargin, top: 12, bottom: 4 }}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
-              <YAxis tickLine={false} axisLine={false} fontSize={11} />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={tickFont} interval={isCompact ? "preserveStartEnd" : 0} />
+              <YAxis tickLine={false} axisLine={false} fontSize={tickFont} width={isCompact ? 28 : 40} />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <ChartLegend content={<ChartLegendContent />} />
-              <Line type="monotone" dataKey="currentYear" stroke="var(--color-currentYear)" strokeWidth={2} dot={{ r: 3 }} animationDuration={700}>
-                <LabelList dataKey="currentYear" position="top" offset={6} content={yearCurrentLabelContent} />
+              <ChartLegend content={<ChartLegendContent className="flex-wrap text-[10px] sm:text-xs" />} />
+              <Line type="monotone" dataKey="currentYear" stroke="var(--color-currentYear)" strokeWidth={2} dot={{ r: isCompact ? 2 : 3 }} animationDuration={700}>
+                {!isCompact ? (
+                  <LabelList dataKey="currentYear" position="top" offset={6} content={yearCurrentLabelContent} />
+                ) : null}
               </Line>
-              <Line type="monotone" dataKey="previousYear" stroke="var(--color-previousYear)" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" animationDuration={700}>
-                <LabelList dataKey="previousYear" position="bottom" offset={6} content={yearPreviousLabelContent} />
+              <Line type="monotone" dataKey="previousYear" stroke="var(--color-previousYear)" strokeWidth={2} dot={{ r: isCompact ? 2 : 3 }} strokeDasharray="4 4" animationDuration={700}>
+                {!isCompact ? (
+                  <LabelList dataKey="previousYear" position="bottom" offset={6} content={yearPreviousLabelContent} />
+                ) : null}
               </Line>
             </LineChart>
           </ChartContainer>
         )
       case "employment":
         return employmentPie && (
-          <ChartContainer config={employmentPie.config} className="h-[200px] w-full">
+          <ChartContainer config={employmentPie.config} className="h-[180px] w-full sm:h-[200px]">
             <PieChart>
               <Pie
                 data={employmentPie.data}
@@ -419,30 +466,30 @@ export default function DashboardPage() {
                 nameKey="key"
                 cx="50%"
                 cy="50%"
-                innerRadius={45}
-                outerRadius={72}
+                innerRadius={isCompact ? 32 : 45}
+                outerRadius={isCompact ? 56 : 72}
                 animationDuration={600}
-                label={PieOutlinedLabel}
+                label={isCompact ? false : PieOutlinedLabel}
                 labelLine={false}
               />
               <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
-              <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-1 text-xs" />} />
+              <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-1 text-[10px] sm:text-xs" />} />
             </PieChart>
           </ChartContainer>
         )
       case "revenuePerCourse":
         return (
-          <ChartContainer config={revenuePerCourseCfg} className="h-[200px] w-full">
-            <BarChart data={data.revenuePerCourse} layout="vertical" margin={{ left: 0, right: 36 }}>
+          <ChartContainer config={revenuePerCourseCfg} className="h-[180px] w-full sm:h-[200px]">
+            <BarChart data={data.revenuePerCourse} layout="vertical" margin={{ left: 0, right: isCompact ? 12 : 36 }}>
               <CartesianGrid horizontal={false} strokeDasharray="3 3" />
               <XAxis
                 type="number"
                 tickLine={false}
                 axisLine={false}
-                fontSize={11}
-                tickFormatter={(v) => `₱${(v / 1000).toFixed(0)}k`}
+                fontSize={tickFont}
+                tickFormatter={(v) => (isCompact ? `${(v / 1000).toFixed(0)}k` : `₱${(v / 1000).toFixed(0)}k`)}
               />
-              <YAxis type="category" dataKey="name" width={100} tickLine={false} axisLine={false} fontSize={9} />
+              <YAxis type="category" dataKey="name" width={isCompact ? 64 : 100} tickLine={false} axisLine={false} fontSize={isCompact ? 8 : 9} />
               <ChartTooltip
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null
@@ -456,7 +503,9 @@ export default function DashboardPage() {
                 }}
               />
               <Bar dataKey="value" radius={[0, 4, 4, 0]} animationDuration={600}>
-                <LabelList dataKey="value" position="right" offset={4} content={horizontalRevenueBarLabelContent} />
+                {!isCompact ? (
+                  <LabelList dataKey="value" position="right" offset={4} content={horizontalRevenueBarLabelContent} />
+                ) : null}
                 {data.revenuePerCourse.map((_, i) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
                 ))}
@@ -466,18 +515,20 @@ export default function DashboardPage() {
         )
       case "participantsPerCourse":
         return (
-          <ChartContainer config={participantsPerCourseCfg} className="h-[200px] w-full">
+          <ChartContainer config={participantsPerCourseCfg} className="h-[180px] w-full sm:h-[200px]">
             <BarChart
               data={data.participantsPerCourse.map((d, i) => ({ ...d, fill: COLORS[i % COLORS.length] }))}
               layout="vertical"
-              margin={{ left: 0, right: 28 }}
+              margin={{ left: 0, right: isCompact ? 12 : 28 }}
             >
               <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-              <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
-              <YAxis type="category" dataKey="name" width={100} tickLine={false} axisLine={false} fontSize={10} />
+              <XAxis type="number" tickLine={false} axisLine={false} fontSize={tickFont} />
+              <YAxis type="category" dataKey="name" width={isCompact ? 64 : 100} tickLine={false} axisLine={false} fontSize={isCompact ? 9 : 10} />
               <ChartTooltip content={<ChartTooltipContent hideLabel />} />
               <Bar dataKey="value" radius={[0, 4, 4, 0]} animationDuration={600} style={{ cursor: "pointer" }}>
-                <LabelList dataKey="value" position="right" offset={4} content={horizontalBarLabelContent} />
+                {!isCompact ? (
+                  <LabelList dataKey="value" position="right" offset={4} content={horizontalBarLabelContent} />
+                ) : null}
                 {data.participantsPerCourse.map((entry, i) => (
                   <Cell
                     key={i}
@@ -546,33 +597,48 @@ export default function DashboardPage() {
     { title: "Participants", value: data.stats.participants.toLocaleString(), icon: Users, color: "text-primary bg-primary/10" },
     { title: "Active Courses", value: data.stats.activeCourses.toLocaleString(), icon: BookOpen, color: "text-chart-2 bg-chart-2/10" },
     { title: "Scheduled Events", value: data.stats.scheduledEvents.toLocaleString(), icon: Calendar, color: "text-chart-3 bg-chart-3/10" },
-    { title: "Total Revenue", value: `₱${data.stats.totalRevenue.toLocaleString()}`, icon: TrendingUp, color: "text-chart-4 bg-chart-4/10" },
+    {
+      title: "Total Revenue",
+      value: isCompact
+        ? formatCompactPeso(data.stats.totalRevenue)
+        : `₱${data.stats.totalRevenue.toLocaleString()}`,
+      fullValue: `₱${data.stats.totalRevenue.toLocaleString()}`,
+      icon: TrendingUp,
+      color: "text-chart-4 bg-chart-4/10",
+    },
   ]
 
   return (
-    <div className="space-y-3">
+    <div className="page-shell space-y-3">
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between flex-wrap gap-2" style={fade(0)}>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between" style={fade(0)}>
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Dashboard</h1>
           <p className="text-xs text-muted-foreground">Training programs overview</p>
         </div>
-        <DateFilter value={filterPreset} dateRange={dateRange} onChange={handleDateChange} />
+        <div className="w-full min-w-0 sm:w-auto">
+          <DateFilter value={filterPreset} dateRange={dateRange} onChange={handleDateChange} />
+        </div>
       </div>
 
       {/* ── Stats ───────────────────────────────────────────────────────── */}
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
         {statCards.map((s, i) => {
           const Icon = s.icon
           return (
-            <Card key={s.title} className="py-3" style={fade(i + 1)}>
-              <CardContent className="flex items-center gap-3 px-4 py-0">
-                <div className={`rounded-lg p-2 ${s.color}`}>
-                  <Icon className="h-4 w-4" />
+            <Card key={s.title} className="py-2.5 sm:py-3" style={fade(i + 1)}>
+              <CardContent className="flex items-center gap-2 px-3 py-0 sm:gap-3 sm:px-4">
+                <div className={`shrink-0 rounded-lg p-1.5 sm:p-2 ${s.color}`}>
+                  <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-[11px] text-muted-foreground truncate">{s.title}</p>
-                  <p className="text-lg font-bold leading-none mt-0.5 truncate">{s.value}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[10px] text-muted-foreground sm:text-[11px]">{s.title}</p>
+                  <p
+                    className="mt-0.5 text-sm font-bold leading-tight sm:text-lg sm:leading-none"
+                    title={"fullValue" in s ? s.fullValue : s.value}
+                  >
+                    {s.value}
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -582,16 +648,16 @@ export default function DashboardPage() {
 
       {/* ── Row 1: Enrollment Trend (full width) ────────────────────────── */}
       <Card style={fade(5)}>
-        <CardHeader className="pb-1 px-4 pt-3">
+        <CardHeader className="px-3 pb-1 pt-3 sm:px-4">
           <CardTitle className="text-sm font-medium">Enrollment Trend</CardTitle>
           <CardDescription className="text-xs">Monthly registration volume</CardDescription>
         </CardHeader>
-        <CardContent className="px-4 pb-3">
-          <ChartContainer config={enrollmentCfg} className="h-[220px] w-full">
-            <ComposedChart data={data.enrollmentTrend} margin={{ left: -20, right: 12, top: 22 }}>
+        <CardContent className="px-2 pb-3 sm:px-4">
+          <ChartContainer config={enrollmentCfg} className="h-[180px] w-full sm:h-[220px]">
+            <ComposedChart data={data.enrollmentTrend} margin={chartMargin}>
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
-              <YAxis tickLine={false} axisLine={false} fontSize={11} />
+              <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={tickFont} interval={isCompact ? "preserveStartEnd" : 0} />
+              <YAxis tickLine={false} axisLine={false} fontSize={tickFont} width={isCompact ? 28 : 40} />
               <ChartTooltip content={<ChartTooltipContent />} />
               <defs>
                 <linearGradient id="gEnrollMain" x1="0" y1="0" x2="0" y2="1">
@@ -605,11 +671,13 @@ export default function DashboardPage() {
                 dataKey="enrollments"
                 stroke="var(--color-enrollments)"
                 strokeWidth={2}
-                dot={{ r: 3, fill: "var(--color-enrollments)", strokeWidth: 0 }}
+                dot={{ r: isCompact ? 2 : 3, fill: "var(--color-enrollments)", strokeWidth: 0 }}
                 fill="none"
                 animationDuration={800}
               >
-                <LabelList dataKey="enrollments" position="top" offset={6} content={enrollmentLineLabelContent} />
+                {!isCompact ? (
+                  <LabelList dataKey="enrollments" position="top" offset={6} content={enrollmentLineLabelContent} />
+                ) : null}
               </Line>
             </ComposedChart>
           </ChartContainer>
@@ -619,25 +687,25 @@ export default function DashboardPage() {
       {/* ── Row 2: Revenue + Course Popularity ──────────────────────────── */}
       <div className="grid gap-3 md:grid-cols-2">
         <Card style={fade(6)}>
-          <CardHeader className="pb-1 px-4 pt-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
+          <CardHeader className="px-3 pb-1 pt-3 sm:px-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
                 <CardTitle className="text-sm font-medium">Revenue vs Target</CardTitle>
                 <CardDescription className="text-xs">Monthly revenue performance</CardDescription>
               </div>
               {editingTarget ? (
-                <div className="flex items-center gap-1">
+                <div className="flex flex-wrap items-center gap-1">
                   <Input
                     type="number"
                     value={tempTarget}
                     onChange={e => setTempTarget(e.target.value)}
-                    className="w-24 h-7 text-xs"
+                    className="h-7 w-24 text-xs"
                     onKeyDown={e => e.key === "Enter" && saveTarget()}
                   />
-                  <Button size="sm" variant="outline" className="h-7 text-xs px-2" onClick={saveTarget} disabled={isSavingTarget}>
+                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={saveTarget} disabled={isSavingTarget}>
                     {isSavingTarget ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 text-xs px-2" onClick={() => setEditingTarget(false)}>
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setEditingTarget(false)}>
                     Cancel
                   </Button>
                 </div>
@@ -645,27 +713,38 @@ export default function DashboardPage() {
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 text-xs gap-1 text-muted-foreground"
+                  className="h-7 gap-1 self-start text-xs text-muted-foreground"
                   onClick={() => { setTempTarget(String(monthlyTarget)); setEditingTarget(true) }}
                 >
-                  Target: ₱{monthlyTarget.toLocaleString()} <Pencil className="h-3 w-3" />
+                  Target: {isCompact ? formatCompactPeso(monthlyTarget) : `₱${monthlyTarget.toLocaleString()}`}{" "}
+                  <Pencil className="h-3 w-3" />
                 </Button>
               )}
             </div>
           </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <ChartContainer config={revenueCfg} className="h-[220px] w-full">
-              <BarChart data={data.revenueData} margin={{ left: -20, right: 8, top: 18 }}>
+          <CardContent className="px-2 pb-3 sm:px-4">
+            <ChartContainer config={revenueCfg} className="h-[180px] w-full sm:h-[220px]">
+              <BarChart data={data.revenueData} margin={{ ...chartMargin, top: isCompact ? 8 : 18 }}>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
-                <YAxis tickLine={false} axisLine={false} fontSize={11} tickFormatter={v => `₱${(v / 1000).toFixed(0)}k`} />
+                <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={tickFont} interval={isCompact ? "preserveStartEnd" : 0} />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={tickFont}
+                  width={isCompact ? 32 : 48}
+                  tickFormatter={(v) => (isCompact ? `${(v / 1000).toFixed(0)}k` : `₱${(v / 1000).toFixed(0)}k`)}
+                />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <ChartLegend content={<ChartLegendContent />} />
+                <ChartLegend content={<ChartLegendContent className="flex-wrap gap-x-2 text-[10px] sm:text-xs" />} />
                 <Bar dataKey="revenue" fill="var(--color-revenue)" radius={[4, 4, 0, 0]} animationDuration={600}>
-                  <LabelList dataKey="revenue" position="top" offset={4} content={revenueBarLabelContent} />
+                  {!isCompact ? (
+                    <LabelList dataKey="revenue" position="top" offset={4} content={revenueBarLabelContent} />
+                  ) : null}
                 </Bar>
                 <Bar dataKey="target" fill="var(--color-target)" radius={[4, 4, 0, 0]} animationDuration={600}>
-                  <LabelList dataKey="target" position="top" offset={4} content={targetBarLabelContent} />
+                  {!isCompact ? (
+                    <LabelList dataKey="target" position="top" offset={4} content={targetBarLabelContent} />
+                  ) : null}
                 </Bar>
               </BarChart>
             </ChartContainer>
@@ -673,23 +752,25 @@ export default function DashboardPage() {
         </Card>
 
         <Card style={fade(7)}>
-          <CardHeader className="pb-1 px-4 pt-3">
+          <CardHeader className="px-3 pb-1 pt-3 sm:px-4">
             <CardTitle className="text-sm font-medium">Course Popularity</CardTitle>
-            <CardDescription className="text-xs">Top courses by registrations (click to view details)</CardDescription>
+            <CardDescription className="text-xs">Top courses by registrations</CardDescription>
           </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <ChartContainer config={courseCfg} className="h-[220px] w-full">
+          <CardContent className="px-2 pb-3 sm:px-4">
+            <ChartContainer config={courseCfg} className="h-[180px] w-full sm:h-[220px]">
               <BarChart
                 data={data.coursePopularity.map((d, i) => ({ ...d, fill: COLORS[i % COLORS.length] }))}
                 layout="vertical"
-                margin={{ left: 0, right: 28 }}
+                margin={{ left: 0, right: isCompact ? 12 : 28 }}
               >
                 <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-                <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
-                <YAxis type="category" dataKey="name" width={100} tickLine={false} axisLine={false} fontSize={10} />
+                <XAxis type="number" tickLine={false} axisLine={false} fontSize={tickFont} />
+                <YAxis type="category" dataKey="name" width={isCompact ? 64 : 100} tickLine={false} axisLine={false} fontSize={isCompact ? 9 : 10} />
                 <ChartTooltip content={<ChartTooltipContent hideLabel />} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]} animationDuration={600} style={{ cursor: "pointer" }}>
-                  <LabelList dataKey="value" position="right" offset={4} content={horizontalBarLabelContent} />
+                  {!isCompact ? (
+                    <LabelList dataKey="value" position="right" offset={4} content={horizontalBarLabelContent} />
+                  ) : null}
                   {data.coursePopularity.map((entry, i) => (
                     <Cell
                       key={i}
@@ -708,13 +789,13 @@ export default function DashboardPage() {
       {/* ── Row 3: Payment + Gender + Employment (3 columns) ────────────── */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Card style={fade(8)}>
-          <CardHeader className="pb-1 px-4 pt-3">
+          <CardHeader className="px-3 pb-1 pt-3 sm:px-4">
             <CardTitle className="text-sm font-medium">Payment Status</CardTitle>
             <CardDescription className="text-xs">Registration status breakdown</CardDescription>
           </CardHeader>
-          <CardContent className="px-4 pb-3">
+          <CardContent className="px-2 pb-3 sm:px-4">
             {paymentPie && (
-              <ChartContainer config={paymentPie.config} className="h-[200px] w-full">
+              <ChartContainer config={paymentPie.config} className="h-[180px] w-full sm:h-[200px]">
                 <PieChart>
                   <Pie
                     data={paymentPie.data}
@@ -722,15 +803,15 @@ export default function DashboardPage() {
                     nameKey="key"
                     cx="50%"
                     cy="50%"
-                    innerRadius={40}
-                    outerRadius={68}
+                    innerRadius={isCompact ? 32 : 40}
+                    outerRadius={isCompact ? 56 : 68}
                     strokeWidth={2}
                     animationDuration={600}
-                    label={PieOutlinedLabel}
+                    label={isCompact ? false : PieOutlinedLabel}
                     labelLine={false}
                   />
                   <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
-                  <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-x-3 gap-y-0.5 text-[11px]" />} />
+                  <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-x-3 gap-y-0.5 text-[10px] sm:text-[11px]" />} />
                 </PieChart>
               </ChartContainer>
             )}
@@ -738,13 +819,13 @@ export default function DashboardPage() {
         </Card>
 
         <Card style={fade(9)}>
-          <CardHeader className="pb-1 px-4 pt-3">
+          <CardHeader className="px-3 pb-1 pt-3 sm:px-4">
             <CardTitle className="text-sm font-medium">Gender Distribution</CardTitle>
             <CardDescription className="text-xs">Participant demographics</CardDescription>
           </CardHeader>
-          <CardContent className="px-4 pb-3">
+          <CardContent className="px-2 pb-3 sm:px-4">
             {genderPie && (
-              <ChartContainer config={genderPie.config} className="h-[200px] w-full">
+              <ChartContainer config={genderPie.config} className="h-[180px] w-full sm:h-[200px]">
                 <PieChart>
                   <Pie
                     data={genderPie.data}
@@ -752,13 +833,13 @@ export default function DashboardPage() {
                     nameKey="key"
                     cx="50%"
                     cy="50%"
-                    outerRadius={68}
+                    outerRadius={isCompact ? 56 : 68}
                     animationDuration={600}
-                    label={PieOutlinedLabel}
+                    label={isCompact ? false : PieOutlinedLabel}
                     labelLine={false}
                   />
                   <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
-                  <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-x-3 gap-y-0.5 text-[11px]" />} />
+                  <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-x-3 gap-y-0.5 text-[10px] sm:text-[11px]" />} />
                 </PieChart>
               </ChartContainer>
             )}
@@ -766,13 +847,13 @@ export default function DashboardPage() {
         </Card>
 
         <Card style={fade(10)}>
-          <CardHeader className="pb-1 px-4 pt-3">
+          <CardHeader className="px-3 pb-1 pt-3 sm:px-4">
             <CardTitle className="text-sm font-medium">Employment Status</CardTitle>
             <CardDescription className="text-xs">Workforce breakdown</CardDescription>
           </CardHeader>
-          <CardContent className="px-4 pb-3">
+          <CardContent className="px-2 pb-3 sm:px-4">
             {employmentPie && (
-              <ChartContainer config={employmentPie.config} className="h-[200px] w-full">
+              <ChartContainer config={employmentPie.config} className="h-[180px] w-full sm:h-[200px]">
                 <PieChart>
                   <Pie
                     data={employmentPie.data}
@@ -780,14 +861,14 @@ export default function DashboardPage() {
                     nameKey="key"
                     cx="50%"
                     cy="50%"
-                    innerRadius={40}
-                    outerRadius={68}
+                    innerRadius={isCompact ? 32 : 40}
+                    outerRadius={isCompact ? 56 : 68}
                     animationDuration={600}
-                    label={PieOutlinedLabel}
+                    label={isCompact ? false : PieOutlinedLabel}
                     labelLine={false}
                   />
                   <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
-                  <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-x-3 gap-y-0.5 text-[11px]" />} />
+                  <ChartLegend content={<ChartLegendContent nameKey="key" className="flex-wrap gap-x-3 gap-y-0.5 text-[10px] sm:text-[11px]" />} />
                 </PieChart>
               </ChartContainer>
             )}
@@ -798,19 +879,21 @@ export default function DashboardPage() {
       {/* ── Row 4: Age + Year Comparison ─────────────────────────────────── */}
       <div className="grid gap-3 md:grid-cols-2">
         <Card style={fade(11)}>
-          <CardHeader className="pb-1 px-4 pt-3">
+          <CardHeader className="px-3 pb-1 pt-3 sm:px-4">
             <CardTitle className="text-sm font-medium">Age Distribution</CardTitle>
             <CardDescription className="text-xs">Participant age ranges</CardDescription>
           </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <ChartContainer config={ageCfg} className="h-[200px] w-full">
-              <BarChart data={data.ageDistribution} margin={{ left: -20, right: 8, top: 14 }}>
+          <CardContent className="px-2 pb-3 sm:px-4">
+            <ChartContainer config={ageCfg} className="h-[180px] w-full sm:h-[200px]">
+              <BarChart data={data.ageDistribution} margin={chartMargin}>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="range" tickLine={false} axisLine={false} fontSize={11} />
-                <YAxis tickLine={false} axisLine={false} fontSize={11} />
+                <XAxis dataKey="range" tickLine={false} axisLine={false} fontSize={tickFont} />
+                <YAxis tickLine={false} axisLine={false} fontSize={tickFont} width={isCompact ? 28 : 40} />
                 <ChartTooltip content={<ChartTooltipContent />} />
                 <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} animationDuration={600}>
-                  <LabelList dataKey="count" position="top" offset={4} content={columnBarLabelContent} />
+                  {!isCompact ? (
+                    <LabelList dataKey="count" position="top" offset={4} content={columnBarLabelContent} />
+                  ) : null}
                 </Bar>
               </BarChart>
             </ChartContainer>
@@ -818,23 +901,27 @@ export default function DashboardPage() {
         </Card>
 
         <Card style={fade(12)}>
-          <CardHeader className="pb-1 px-4 pt-3">
+          <CardHeader className="px-3 pb-1 pt-3 sm:px-4">
             <CardTitle className="text-sm font-medium">Year-over-Year Comparison</CardTitle>
             <CardDescription className="text-xs">Enrollment: {data.currentYear} vs {data.currentYear - 1}</CardDescription>
           </CardHeader>
-          <CardContent className="px-4 pb-3">
-            <ChartContainer config={yearCfg} className="h-[200px] w-full">
-              <LineChart data={data.yearComparison} margin={{ left: -20, right: 8, top: 12, bottom: 4 }}>
+          <CardContent className="px-2 pb-3 sm:px-4">
+            <ChartContainer config={yearCfg} className="h-[180px] w-full sm:h-[200px]">
+              <LineChart data={data.yearComparison} margin={{ ...chartMargin, top: 12, bottom: 4 }}>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={11} />
-                <YAxis tickLine={false} axisLine={false} fontSize={11} />
+                <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={tickFont} interval={isCompact ? "preserveStartEnd" : 0} />
+                <YAxis tickLine={false} axisLine={false} fontSize={tickFont} width={isCompact ? 28 : 40} />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <ChartLegend content={<ChartLegendContent />} />
-                <Line type="monotone" dataKey="currentYear" stroke="var(--color-currentYear)" strokeWidth={2} dot={{ r: 3 }} animationDuration={700}>
-                  <LabelList dataKey="currentYear" position="top" offset={6} content={yearCurrentLabelContent} />
+                <ChartLegend content={<ChartLegendContent className="flex-wrap text-[10px] sm:text-xs" />} />
+                <Line type="monotone" dataKey="currentYear" stroke="var(--color-currentYear)" strokeWidth={2} dot={{ r: isCompact ? 2 : 3 }} animationDuration={700}>
+                  {!isCompact ? (
+                    <LabelList dataKey="currentYear" position="top" offset={6} content={yearCurrentLabelContent} />
+                  ) : null}
                 </Line>
-                <Line type="monotone" dataKey="previousYear" stroke="var(--color-previousYear)" strokeWidth={2} dot={{ r: 3 }} strokeDasharray="4 4" animationDuration={700}>
-                  <LabelList dataKey="previousYear" position="bottom" offset={6} content={yearPreviousLabelContent} />
+                <Line type="monotone" dataKey="previousYear" stroke="var(--color-previousYear)" strokeWidth={2} dot={{ r: isCompact ? 2 : 3 }} strokeDasharray="4 4" animationDuration={700}>
+                  {!isCompact ? (
+                    <LabelList dataKey="previousYear" position="bottom" offset={6} content={yearPreviousLabelContent} />
+                  ) : null}
                 </Line>
               </LineChart>
             </ChartContainer>
@@ -845,13 +932,13 @@ export default function DashboardPage() {
       {/* ── Row 5: Swappable chart slots ─────────────────────────────────── */}
       <div className="grid gap-3 md:grid-cols-2">
         <Card style={fade(13)}>
-          <CardHeader className="pb-1 px-4 pt-3">
-            <div className="flex items-center justify-between gap-2">
-              <CardTitle className="text-sm font-medium">
+          <CardHeader className="px-3 pb-1 pt-3 sm:px-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="min-w-0 truncate text-sm font-medium">
                 {CHART_OPTIONS.find(o => o.value === slot1)?.label}
               </CardTitle>
               <Select value={slot1} onValueChange={v => setSlot1(v as ChartType)}>
-                <SelectTrigger className="w-[160px] h-7 text-xs">
+                <SelectTrigger className="h-7 w-full text-xs sm:w-[160px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -862,19 +949,19 @@ export default function DashboardPage() {
               </Select>
             </div>
           </CardHeader>
-          <CardContent className="px-4 pb-3">
+          <CardContent className="px-2 pb-3 sm:px-4">
             {renderChart(slot1)}
           </CardContent>
         </Card>
 
         <Card style={fade(14)}>
-          <CardHeader className="pb-1 px-4 pt-3">
-            <div className="flex items-center justify-between gap-2">
-              <CardTitle className="text-sm font-medium">
+          <CardHeader className="px-3 pb-1 pt-3 sm:px-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="min-w-0 truncate text-sm font-medium">
                 {CHART_OPTIONS.find(o => o.value === slot2)?.label}
               </CardTitle>
               <Select value={slot2} onValueChange={v => setSlot2(v as ChartType)}>
-                <SelectTrigger className="w-[160px] h-7 text-xs">
+                <SelectTrigger className="h-7 w-full text-xs sm:w-[160px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -885,7 +972,7 @@ export default function DashboardPage() {
               </Select>
             </div>
           </CardHeader>
-          <CardContent className="px-4 pb-3">
+          <CardContent className="px-2 pb-3 sm:px-4">
             {renderChart(slot2)}
           </CardContent>
         </Card>
