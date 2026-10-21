@@ -833,11 +833,11 @@ export default function TrainingCalendar() {
   }
 
   return (
-    <div className="w-full bg-background p-6">
-      <div className="flex gap-6">
+    <div className="w-full bg-background">
+      <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
         {/* Main Calendar Section */}
-        <div className="flex-1">
-          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 sm:mb-6 sm:gap-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-lg overflow-hidden flex items-center justify-center bg-white">
                 <Image
@@ -935,7 +935,7 @@ export default function TrainingCalendar() {
         </div>
 
         {/* Right Sidebar */}
-        <div className="w-100 space-y-2 ">
+        <div className="w-full shrink-0 space-y-2 lg:w-80">
           <Card className="overflow-y-auto">
             {isEditingNews ? (
               <NewsEditor

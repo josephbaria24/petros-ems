@@ -11,6 +11,6 @@ export const config = {
      * Skip static assets, API routes, and the OAuth PKCE callback
      * (callback must keep the code-verifier cookie untouched).
      */
-    "/((?!_next/static|_next/image|favicon.ico|api/|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sw\\.js|offline\\.html|manifest\\.webmanifest|api/|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 }

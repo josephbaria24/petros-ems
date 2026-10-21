@@ -324,11 +324,11 @@ export function OshProgramForm({ value, onChange, readOnly, downloadName }: OshP
 
   return (
     <div id="osh-program-sheet" className="overflow-x-auto rounded-lg bg-[#5f6368] p-3">
-      <div className="mx-auto mb-2 flex w-[980px] max-w-none justify-end print:hidden" data-export-hide="true">
+      <div className="mx-auto mb-2 flex w-full max-w-[980px] justify-end print:hidden" data-export-hide="true">
         <Button
           type="button"
           size="sm"
-          className="gap-1.5 bg-[#1A1D66] hover:bg-[#141654]"
+          className="w-full gap-1.5 bg-[#1A1D66] hover:bg-[#141654] sm:w-auto"
           disabled={downloading}
           onClick={() => void downloadSheet()}
         >

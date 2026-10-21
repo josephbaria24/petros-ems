@@ -204,9 +204,9 @@ export function GlobalSearch() {
   const showPanel = open && query.trim().length > 0
 
   return (
-    <div ref={rootRef} className="relative mx-2 min-w-0 flex-1 max-w-xl">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#1A1D66]/55 dark:text-zinc-400" />
+    <div ref={rootRef} className="relative w-full min-w-0 max-w-xl overflow-hidden">
+      <div className="relative min-w-0">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#1A1D66]/55 sm:left-3 sm:h-4 sm:w-4 dark:text-zinc-400" />
         <Input
           ref={inputRef}
           value={query}
@@ -216,14 +216,14 @@ export function GlobalSearch() {
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder="Search pages, courses, schedules, trainees…"
-          className="h-10 border-0 bg-white/95 pl-9 pr-16 text-sm text-[#1A1D66] shadow-sm placeholder:text-[#1A1D66]/45 focus-visible:ring-2 focus-visible:ring-[#FFCC00] dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-400 dark:shadow-none dark:ring-1 dark:ring-white/15 dark:focus-visible:ring-[#FFCC00]"
+          placeholder="Search pages, courses…"
+          className="h-9 w-full min-w-0 border-0 bg-white/95 pl-8 pr-8 text-xs text-[#1A1D66] shadow-sm placeholder:text-[#1A1D66]/45 focus-visible:ring-2 focus-visible:ring-[#FFCC00] sm:h-10 sm:pl-9 sm:pr-16 sm:text-sm dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-400 dark:shadow-none dark:ring-1 dark:ring-white/15 dark:focus-visible:ring-[#FFCC00]"
           aria-label="Global search"
           aria-expanded={showPanel}
           aria-controls="global-search-results"
           autoComplete="off"
         />
-        <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+        <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-1 sm:right-2">
           {query ? (
             <button
               type="button"

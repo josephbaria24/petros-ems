@@ -250,6 +250,7 @@ export function PendingCertPrompt() {
   const [completed, setCompleted] = useState<CompletedReminder[]>([])
   const [activeTab, setActiveTab] = useState<"pending" | "completed">("pending")
   const [collapsed, setCollapsed] = useState(true)
+  const [dialogEntered, setDialogEntered] = useState(false)
   const [loading, setLoading] = useState(true)
   const [pickedId, setPickedId] = useState<string | null>(null)
   const [chipCorner, setChipCorner] = useState<ChipCorner>("bottom-right")
@@ -259,6 +260,7 @@ export function PendingCertPrompt() {
   const chipEnteredRef = useRef(false)
   const draggingChipRef = useRef(false)
   const chipCornerRef = useRef<ChipCorner>("bottom-right")
+  const closeAnimRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const chipDragRef = useRef<{
     pointerId: number
     startX: number
@@ -267,6 +269,40 @@ export function PendingCertPrompt() {
     originTop: number
     moved: boolean
   } | null>(null)
+
+  const openDialog = () => {
+    if (closeAnimRef.current) {
+      clearTimeout(closeAnimRef.current)
+      closeAnimRef.current = null
+    }
+    setCollapsed(false)
+  }
+
+  const closeDialog = () => {
+    setDialogEntered(false)
+    if (closeAnimRef.current) clearTimeout(closeAnimRef.current)
+    closeAnimRef.current = setTimeout(() => {
+      setCollapsed(true)
+      closeAnimRef.current = null
+    }, 220)
+  }
+
+  useEffect(() => {
+    if (collapsed) {
+      setDialogEntered(false)
+      return
+    }
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setDialogEntered(true))
+    })
+    return () => cancelAnimationFrame(id)
+  }, [collapsed])
+
+  useEffect(() => {
+    return () => {
+      if (closeAnimRef.current) clearTimeout(closeAnimRef.current)
+    }
+  }, [])
 
   useLayoutEffect(() => {
     if (!collapsed || items.length === 0) return
@@ -406,9 +442,10 @@ export function PendingCertPrompt() {
           setItems(pending)
           // Center dialog auto-opens at most twice per calendar day.
           if (pending.length > 0 && consumePendingCertCenterShow()) {
-            setCollapsed(false)
+            openDialog()
           } else {
             setCollapsed(true)
+            setDialogEntered(false)
           }
         }
       } catch (err) {
@@ -456,13 +493,13 @@ export function PendingCertPrompt() {
       traineeIds: item.trainees.map((t) => t.id),
       viewCerts,
     })
-    setCollapsed(true)
+    closeDialog()
     setPickedId(null)
     router.push(`/training-schedules?tab=finished&openDirectory=${encodeURIComponent(item.scheduleId)}`)
   }
 
   const openSubmissions = (item: PendingCertSchedule) => {
-    setCollapsed(true)
+    closeDialog()
     setPickedId(null)
     router.push(`/submissions?scheduleId=${encodeURIComponent(item.scheduleId)}&from=finished`)
   }
@@ -543,7 +580,7 @@ export function PendingCertPrompt() {
         setChipPos(getCornerPositions(width, height)[corner])
         return
       }
-      setCollapsed(false)
+      openDialog()
     }
 
     return (
@@ -559,8 +596,8 @@ export function PendingCertPrompt() {
           // Open is handled on pointer up when not dragged; block default click.
           e.preventDefault()
         }}
-        aria-label="Pending certificate reminders. Drag to a corner, click to open."
-        className={`fixed bottom-5 right-5 z-[80] flex max-w-[12rem] touch-none select-none items-center gap-1.5 rounded-full border border-amber-500 bg-amber-400 px-2 py-1 text-left text-amber-950 shadow-md shadow-amber-500/30 ring-1 ring-amber-300/70 hover:bg-amber-300 ${
+        aria-label={`Pending certificate reminders: ${totalPeople} still need cert & ID. Drag to a corner, click to open.`}
+        className={`fixed bottom-5 right-5 z-[80] flex touch-none select-none items-center justify-center rounded-full border border-amber-500 bg-amber-400 text-amber-950 shadow-md shadow-amber-500/30 ring-1 ring-amber-300/70 hover:bg-amber-300 h-12 w-12 p-0 sm:h-auto sm:w-auto sm:max-w-[12rem] sm:justify-start sm:gap-1.5 sm:px-2 sm:py-1 sm:text-left ${
           chipPos ? "" : "invisible"
         } ${
           draggingChip
@@ -568,33 +605,39 @@ export function PendingCertPrompt() {
             : `cursor-grab animate-pulse ${chipPos ? "transition-[left,top] duration-500 ease-out" : ""}`
         }`}
       >
-        <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-950 text-amber-100">
-          <CertificateIcon className="h-3 w-3" />
-          <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-red-600 px-0.5 text-[8px] font-bold leading-none text-white">
+        <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-950 text-amber-100 sm:h-6 sm:w-6">
+          <CertificateIcon className="h-3.5 w-3.5 sm:h-3 sm:w-3" />
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-0.5 text-[9px] font-bold leading-none text-white sm:h-3.5 sm:min-w-3.5 sm:text-[8px]">
             {totalPeople > 99 ? "99+" : totalPeople}
           </span>
         </span>
-        <span className="min-w-0">
+        <span className="hidden min-w-0 sm:block">
           <span className="block text-[10px] font-bold uppercase leading-none tracking-wide">Action required</span>
           <span className="mt-0.5 block text-[9px] font-medium leading-tight text-amber-950/80">
             {totalPeople} still need cert & ID
           </span>
         </span>
-        <ChevronUp className="h-3 w-3 shrink-0" />
+        <ChevronUp className="hidden h-3 w-3 shrink-0 sm:block" />
       </button>
     )
   }
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4"
-      onClick={() => setCollapsed(true)}
+      className={`fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4 transition-opacity duration-200 ease-out ${
+        dialogEntered ? "opacity-100" : "opacity-0"
+      }`}
+      onClick={closeDialog}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="pending-cert-title"
-        className="w-full max-w-xl overflow-hidden rounded-xl border-2 border-amber-500 bg-amber-50 shadow-2xl shadow-amber-500/30 ring-4 ring-amber-300/60"
+        className={`w-full max-w-xl overflow-hidden rounded-xl border-2 border-amber-500 bg-amber-50 shadow-2xl shadow-amber-500/30 ring-4 ring-amber-300/60 transition-all duration-300 ease-out ${
+          dialogEntered
+            ? "translate-y-0 scale-100 opacity-100"
+            : "translate-y-6 scale-95 opacity-0"
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="border-b border-amber-300 bg-amber-400 px-5 py-4 text-amber-950">
@@ -773,7 +816,7 @@ export function PendingCertPrompt() {
             type="button"
             size="sm"
             className="bg-amber-950 text-amber-50 hover:bg-amber-900"
-            onClick={() => setCollapsed(true)}
+            onClick={closeDialog}
           >
             <ChevronDown className="mr-1 h-4 w-4" />
             Collapse

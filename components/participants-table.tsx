@@ -18,8 +18,9 @@ import {
   type ColumnDef,
   type SortingState,
   type ColumnFiltersState,
+  type VisibilityState,
 } from "@tanstack/react-table"
-import { ArrowUpDown, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode, Download, CalendarClock, FolderArchive } from "lucide-react"
+import { ArrowUpDown, MoreVertical, Eye, Edit, Trash2, Link2, RefreshCcw, X, QrCode, Download, CalendarClock, FolderArchive, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -193,9 +194,58 @@ type CostCalcSetting = {
 export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableProps) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
+  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [data, setData] = React.useState<Participant[]>([])
   const [loading, setLoading] = React.useState(true)
   const [globalFilter, setGlobalFilter] = React.useState("")
+  const [showSwipeHint, setShowSwipeHint] = React.useState(false)
+  const tableScrollRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)")
+    const sync = () => {
+      const desktop = mq.matches
+      setColumnVisibility(
+        desktop
+          ? {}
+          : {
+              branch: false,
+              schedule: false,
+              type: false,
+              amounts: false,
+              costCalculator: false,
+              proceedTag: false,
+            }
+      )
+      if (desktop) setShowSwipeHint(false)
+    }
+    sync()
+    mq.addEventListener("change", sync)
+    return () => mq.removeEventListener("change", sync)
+  }, [])
+
+  React.useEffect(() => {
+    const el = tableScrollRef.current
+    if (!el || typeof window === "undefined") return
+
+    const updateHint = () => {
+      const canScroll = el.scrollWidth > el.clientWidth + 8
+      const atStart = el.scrollLeft < 12
+      const isMobile = window.matchMedia("(max-width: 767px)").matches
+      setShowSwipeHint(isMobile && canScroll && atStart)
+    }
+
+    updateHint()
+    el.addEventListener("scroll", updateHint, { passive: true })
+    window.addEventListener("resize", updateHint)
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateHint) : null
+    ro?.observe(el)
+    return () => {
+      el.removeEventListener("scroll", updateHint)
+      window.removeEventListener("resize", updateHint)
+      ro?.disconnect()
+    }
+  }, [data, columnVisibility, loading])
   const [trainerFeePerDay, setTrainerFeePerDay] = React.useState<number>(0)
   const [idCostPerParticipant, setIdCostPerParticipant] = React.useState<number>(0)
   const [certificateCostPerParticipant, setCertificateCostPerParticipant] = React.useState<number>(0)
@@ -884,29 +934,32 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
   const columns: ColumnDef<Participant>[] = [
     {
       accessorKey: "course",
-      header: () => <div className="w-[260px]">Course</div>,
+      header: () => <div className="min-w-[120px] md:w-[260px]">Course</div>,
       cell: ({ row }) => {
         const submissionCount = row.original.submissionCount
         const isCancelled = row.original.status === 'cancelled'
+        const actionClass =
+          "inline-flex h-7 items-center justify-center gap-0.5 rounded-md px-1.5 text-[10px] text-foreground hover:bg-muted cursor-pointer md:h-6 md:gap-1 md:px-1.5"
 
         return (
-          <div className="w-[260px] space-y-1.5">
+          <div className="min-w-[120px] space-y-1 md:w-[260px] md:space-y-1.5">
             <div
-              className={`font-medium text-card-foreground truncate ${isCancelled ? 'line-through text-muted-foreground' : ''}`}
+              className={`truncate text-sm font-medium text-card-foreground md:text-base ${isCancelled ? "text-muted-foreground line-through" : ""}`}
               title={String(row.getValue("course"))}
             >
               {row.getValue("course")}
             </div>
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-nowrap items-center gap-0.5 md:flex-wrap md:gap-1">
               <Link
                 href={`/submissions?scheduleId=${row.original.id}&from=${status}`}
-                className="flex items-center gap-1 text-[10px] hover:bg-muted rounded-md px-1.5 py-1 cursor-pointer"
+                className={actionClass}
+                title="Submission"
                 onClick={(e) => e.stopPropagation()}
               >
-                <SubmissionIcon className="h-3 w-3" />
-                Submission
+                <SubmissionIcon className="h-3.5 w-3.5 shrink-0 md:h-3 md:w-3" />
+                <span className="hidden md:inline">Submission</span>
                 {submissionCount > 0 && (
-                  <Badge variant="destructive" className="ml-1 h-4 px-1 text-xs">
+                  <Badge variant="destructive" className="h-4 min-w-4 px-1 text-[9px] leading-none md:ml-0.5 md:text-xs">
                     {submissionCount}
                   </Badge>
                 )}
@@ -915,7 +968,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 gap-1 px-1.5 text-[10px] hover:bg-muted cursor-pointer"
+                className={`${actionClass} hover:bg-muted`}
+                title="Directory"
                 onClick={(e) => {
                   e.stopPropagation()
                   setDirectoryScheduleId(row.original.id)
@@ -926,36 +980,39 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                   setDirectoryOpen(true)
                 }}
               >
-                <DirectoryIcon className="h-3 w-3" />
-                Directory
+                <DirectoryIcon className="h-3.5 w-3.5 shrink-0 md:h-3 md:w-3" />
+                <span className="hidden md:inline">Directory</span>
               </Button>
 
               <Link
                 href={`/training-schedules/attendance?scheduleId=${row.original.id}&from=${status}`}
-                className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-foreground hover:bg-muted cursor-pointer"
+                className={actionClass}
+                title="Attendance"
                 onClick={(e) => e.stopPropagation()}
               >
-                <AttendanceIcon className="h-3.5 w-3.5" />
-                Attendance
+                <AttendanceIcon className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden md:inline">Attendance</span>
               </Link>
 
               <Link
                 href={`/training-schedules/exam?scheduleId=${row.original.id}&from=${status}`}
-                className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-foreground hover:bg-muted cursor-pointer"
+                className={actionClass}
+                title="Exam"
                 onClick={(e) => e.stopPropagation()}
               >
-                <ExamIcon className="h-3.5 w-3.5" />
-                Exam
+                <ExamIcon className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden md:inline">Exam</span>
               </Link>
 
               {isOshCourse(String(row.original.course || "")) ? (
                 <Link
                   href={`/training-schedules/program?scheduleId=${row.original.id}&from=${status}`}
-                  className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-foreground hover:bg-muted cursor-pointer"
+                  className={actionClass}
+                  title="Program"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <ProgramIcon className="h-3.5 w-3.5" />
-                  Program
+                  <ProgramIcon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden md:inline">Program</span>
                 </Link>
               ) : null}
             </div>
@@ -970,7 +1027,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         const trainerName = row.getValue("trainerName") as string || "—"
         return (
           <div
-            className="text-card-foreground max-w-[150px] overflow-hidden text-ellipsis whitespace-nowrap"
+            className="max-w-[88px] overflow-hidden text-ellipsis whitespace-nowrap text-xs text-card-foreground md:max-w-[150px] md:text-sm"
             title={trainerName}
           >
             {trainerName}
@@ -1025,8 +1082,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
         const style = statusStyles[statusValue as keyof typeof statusStyles] || "bg-gray-100 text-gray-800 border-gray-300"
 
         return (
-          <div className="flex flex-col items-start gap-1.5">
-            <Badge className={`${style} border`}>
+          <div className="flex flex-col items-start gap-1">
+            <Badge className={`${style} border px-1.5 py-0 text-[10px] md:px-2.5 md:py-0.5 md:text-xs`}>
               {statusValue.charAt(0).toUpperCase() + statusValue.slice(1)}
             </Badge>
             {showReschedule && (
@@ -1034,7 +1091,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-6 gap-1 px-2 text-[10px] border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 hover:text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                className="h-6 gap-1 border-amber-300 bg-amber-50 px-1.5 text-[10px] text-amber-900 hover:bg-amber-100 hover:text-amber-950 md:px-2 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
                 onClick={(e) => {
                   e.stopPropagation()
                   handleReschedulePrompt(participant)
@@ -1042,7 +1099,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
                 title="No participants yet — consider rescheduling"
               >
                 <CalendarClock className="h-3 w-3" />
-                Reschedule?
+                <span className="hidden sm:inline">Reschedule?</span>
               </Button>
             )}
           </div>
@@ -1239,6 +1296,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     getFilteredRowModel: getFilteredRowModel(),
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onColumnVisibilityChange: setColumnVisibility,
     onGlobalFilterChange: setGlobalFilter,
     globalFilterFn: (row, columnId, filterValue) => {
       const search = filterValue.toLowerCase()
@@ -1261,6 +1319,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
     state: {
       sorting,
       columnFilters,
+      columnVisibility,
       globalFilter,
     },
   })
@@ -1413,7 +1472,7 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
 
   return (
     <>
-      <Card className="p-3 border-0 shadow-md bg- ">
+      <Card className="min-w-0 gap-3 overflow-hidden border-0 p-3 shadow-md sm:gap-6">
         {exportProgress ? (
           <div className="mb-3 rounded-lg border border-border bg-muted/50 px-3 py-2">
             <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
@@ -1433,23 +1492,25 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
             </div>
           </div>
         ) : null}
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex gap-2">
+        <div className="mb-2 flex min-w-0 flex-col gap-1.5 sm:mb-3 sm:gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
             <Input
-              placeholder="Search courses, branches, schedules, status, or types..."
+              placeholder="Search schedules…"
               value={globalFilter ?? ""}
               onChange={(event) => setGlobalFilter(event.target.value)}
-              className="max-w-md"
+              className="h-8 min-w-0 flex-1 border-0 bg-[#1A1D66]/[0.06] text-xs shadow-none focus-visible:ring-[#1A1D66]/30 sm:h-9 sm:max-w-md sm:bg-transparent sm:text-sm sm:shadow-xs dark:bg-[#FFCC00]/10 dark:focus-visible:ring-[#FFCC00]/40"
             />
-            <TraineeSearchDialog />
+            <div className="shrink-0">
+              <TraineeSearchDialog />
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2">
             <Select
               value={(table.getColumn("course")?.getFilterValue() as string) ?? "all"}
               onValueChange={(value) => table.getColumn("course")?.setFilterValue(value === "all" ? "" : value)}
             >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Filter by course" />
+              <SelectTrigger className="h-8 w-full min-w-0 border-0 bg-sky-500/15 text-xs font-medium text-sky-900 shadow-none focus:ring-sky-500/30 dark:bg-sky-400/15 dark:text-sky-100">
+                <SelectValue placeholder="Course" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Courses</SelectItem>
@@ -1466,8 +1527,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               value={(table.getColumn("branch")?.getFilterValue() as string) ?? "all"}
               onValueChange={(value) => table.getColumn("branch")?.setFilterValue(value === "all" ? "" : value)}
             >
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Filter by branch" />
+              <SelectTrigger className="h-8 w-full min-w-0 border-0 bg-emerald-500/15 text-xs font-medium text-emerald-900 shadow-none focus:ring-emerald-500/30 dark:bg-emerald-400/15 dark:text-emerald-100">
+                <SelectValue placeholder="Branch" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Branches</SelectItem>
@@ -1484,8 +1545,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               value={(table.getColumn("status")?.getFilterValue() as string) ?? "all"}
               onValueChange={(value) => table.getColumn("status")?.setFilterValue(value === "all" ? "" : value)}
             >
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Filter by status" />
+              <SelectTrigger className="h-8 w-full min-w-0 border-0 bg-amber-500/15 text-xs font-medium text-amber-950 shadow-none focus:ring-amber-500/30 dark:bg-amber-400/15 dark:text-amber-100">
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
@@ -1501,8 +1562,8 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
               value={(table.getColumn("type")?.getFilterValue() as string) ?? "all"}
               onValueChange={(value) => table.getColumn("type")?.setFilterValue(value === "all" ? "" : value)}
             >
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Filter by type" />
+              <SelectTrigger className="h-8 w-full min-w-0 border-0 bg-violet-500/15 text-xs font-medium text-violet-900 shadow-none focus:ring-violet-500/30 dark:bg-violet-400/15 dark:text-violet-100">
+                <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
@@ -1514,85 +1575,140 @@ export function ParticipantsTable({ status, refreshTrigger }: ParticipantsTableP
           </div>
         </div>
 
-        <div className="mb-3 rounded-md border border-border bg-muted/30 p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Default Cost Inputs (for trainings without custom values)
+        <div className="mb-2 rounded-lg border border-[#FFCC00]/35 bg-gradient-to-r from-[#1A1D66]/[0.06] to-[#FFCC00]/10 p-2 sm:mb-3 sm:p-3 dark:from-[#1A1D66]/40 dark:to-[#FFCC00]/10">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-[#1A1D66] dark:text-[#FFCC00]">
+              Default costs
+            </span>
+            <span className="hidden text-[10px] text-muted-foreground sm:inline">
+              Used when a training has no custom values
+            </span>
           </div>
-          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-            <Input
-              type="number"
-              min={0}
-              value={trainerFeePerDay || ""}
-              onChange={(e) => setTrainerFeePerDay(Number(e.target.value || 0))}
-              placeholder="Trainer fee / day"
-            />
-            <Input
-              type="number"
-              min={0}
-              value={idCostPerParticipant || ""}
-              onChange={(e) => setIdCostPerParticipant(Number(e.target.value || 0))}
-              placeholder="ID cost / participant"
-            />
-            <Input
-              type="number"
-              min={0}
-              value={certificateCostPerParticipant || ""}
-              onChange={(e) => setCertificateCostPerParticipant(Number(e.target.value || 0))}
-              placeholder="Certificate cost / participant"
-            />
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+            <label className="min-w-0 space-y-0.5">
+              <span className="block truncate text-[9px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                Trainer / day
+              </span>
+              <Input
+                type="number"
+                min={0}
+                value={trainerFeePerDay || ""}
+                onChange={(e) => setTrainerFeePerDay(Number(e.target.value || 0))}
+                placeholder="0"
+                className="h-8 border-0 bg-sky-500/10 px-2 text-xs shadow-none focus-visible:ring-sky-500/30"
+              />
+            </label>
+            <label className="min-w-0 space-y-0.5">
+              <span className="block truncate text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                ID / person
+              </span>
+              <Input
+                type="number"
+                min={0}
+                value={idCostPerParticipant || ""}
+                onChange={(e) => setIdCostPerParticipant(Number(e.target.value || 0))}
+                placeholder="0"
+                className="h-8 border-0 bg-emerald-500/10 px-2 text-xs shadow-none focus-visible:ring-emerald-500/30"
+              />
+            </label>
+            <label className="min-w-0 space-y-0.5">
+              <span className="block truncate text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                Cert / person
+              </span>
+              <Input
+                type="number"
+                min={0}
+                value={certificateCostPerParticipant || ""}
+                onChange={(e) => setCertificateCostPerParticipant(Number(e.target.value || 0))}
+                placeholder="0"
+                className="h-8 border-0 bg-amber-500/10 px-2 text-xs shadow-none focus-visible:ring-amber-500/30"
+              />
+            </label>
           </div>
         </div>
 
-        <div className="rounded-md border border-border">
-          <Table>
-            <TableHeader className="font-bold bg-muted">
-              {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
-                      {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              ))}
-            </TableHeader>
-            <TableBody>
-              {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-state={row.getIsSelected() && "selected"}
-                    className="cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => handleView(row.original)}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+        <div className="relative min-w-0">
+          <div
+            ref={tableScrollRef}
+            className="min-w-0 overflow-x-auto rounded-md border border-border"
+          >
+            <Table className="min-w-[420px] md:min-w-full">
+              <TableHeader className="bg-muted font-bold">
+                {table.getHeaderGroups().map((headerGroup) => (
+                  <TableRow key={headerGroup.id}>
+                    {headerGroup.headers.map((header) => (
+                      <TableHead key={header.id} className="h-9 whitespace-nowrap px-2 text-xs md:h-10 md:px-2 md:text-sm">
+                        {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                      </TableHead>
                     ))}
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={columns.length} className="h-24 text-center">
-                    No results.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                ))}
+              </TableHeader>
+              <TableBody>
+                {table.getRowModel().rows?.length ? (
+                  table.getRowModel().rows.map((row) => (
+                    <TableRow
+                      key={row.id}
+                      data-state={row.getIsSelected() && "selected"}
+                      className="cursor-pointer transition-colors hover:bg-muted/50"
+                      onClick={() => handleView(row.original)}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id} className="px-2 py-1.5 align-middle md:py-2 md:align-top">
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={table.getVisibleLeafColumns().length || columns.length} className="h-24 text-center">
+                      No results.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {showSwipeHint ? (
+            <div
+              className="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-16 items-center justify-end rounded-r-md bg-gradient-to-l from-card via-card/90 to-transparent pr-1.5 md:hidden"
+              aria-hidden
+            >
+              <div className="flex flex-col items-center gap-0.5 rounded-full border border-[#FFCC00]/40 bg-[#1A1D66]/90 px-1.5 py-2 shadow-md dark:bg-[#1A1D66]/95">
+                <div className="animate-swipe-hint flex items-center -space-x-1.5 text-[#FFCC00]">
+                  <ChevronRight className="h-3.5 w-3.5 opacity-40" />
+                  <ChevronRight className="h-3.5 w-3.5 opacity-70" />
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </div>
+                <span className="animate-swipe-hint-fade text-[9px] font-semibold uppercase tracking-wide text-[#FFCC00]">
+                  Swipe
+                </span>
+              </div>
+            </div>
+          ) : null}
         </div>
 
-        <div className="flex items-center justify-between space-x-2 py-4">
+        <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-muted-foreground">{table.getFilteredRowModel().rows.length} event(s) total</div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
+              className="flex-1 sm:flex-none"
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
             >
               Previous
             </Button>
-            <Button variant="outline" size="sm" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 sm:flex-none"
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+            >
               Next
             </Button>
           </div>

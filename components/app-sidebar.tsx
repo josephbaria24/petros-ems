@@ -9,6 +9,8 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useTheme } from "next-themes"
+import { applyThemeInstant } from "@/lib/apply-theme"
+import { startNavLoading } from "@/lib/nav-loading-store"
 
 function OutlineIcon({ className, children, ...props }: React.SVGProps<SVGSVGElement>) {
   return (
@@ -236,7 +238,13 @@ const menuItems = [
   },
 ]
 
-export function AppSidebar() {
+type AppSidebarProps = {
+  variant?: "desktop" | "mobile"
+  onNavigate?: () => void
+}
+
+export function AppSidebar({ variant = "desktop", onNavigate }: AppSidebarProps) {
+  const isMobile = variant === "mobile"
   const [collapsed, setCollapsed] = React.useState(false)
   const [openDropdown, setOpenDropdown] = React.useState<string | null>("Trainings")
   const [flyout, setFlyout] = React.useState<string | null>(null)
@@ -245,9 +253,11 @@ export function AppSidebar() {
 
   const pathname = usePathname()
   const isDark = mounted && resolvedTheme === "dark"
+  const compact = isMobile ? false : collapsed
 
   React.useEffect(() => {
     setMounted(true)
+    if (isMobile) return
     const saved = window.localStorage.getItem("tms-sidebar-collapsed")
     if (saved === "1") setCollapsed(true)
 
@@ -258,7 +268,7 @@ export function AppSidebar() {
     }
     window.addEventListener("tms-sidebar-collapsed", onChange)
     return () => window.removeEventListener("tms-sidebar-collapsed", onChange)
-  }, [])
+  }, [isMobile])
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -274,28 +284,44 @@ export function AppSidebar() {
     setOpenDropdown((prev) => (prev === title ? null : title))
   }
 
+  const go = () => onNavigate?.()
+
+  const navigateTo = (href: string, options?: { external?: boolean }) => {
+    if (options?.external) {
+      go()
+      return
+    }
+    if (href !== pathname) startNavLoading()
+    go()
+  }
+
   return (
     <div
       className={cn(
-        "relative z-50 flex h-screen shrink-0 flex-col border-r transition-all duration-300 ease-in-out",
+        "relative z-50 flex h-full shrink-0 flex-col border-r",
         "bg-[#f4f5f8] text-[#3c3e4a] border-[#e6e7ee]",
         "dark:bg-[#1b1d26] dark:text-[#d7d8e0] dark:border-[#2a2c36]",
-        collapsed ? "w-[4.5rem]" : "w-64"
+        isMobile
+          ? "h-full w-full border-0"
+          : cn("transition-[width] duration-200 ease-out", compact ? "w-[4.5rem]" : "w-64"),
+        !isMobile && "hidden lg:flex"
       )}
     >
-      <button
-        type="button"
-        onClick={toggleCollapsed}
-        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        className="absolute -right-3.5 top-4 z-[60] flex h-7 w-7 items-center justify-center rounded-full border border-[#e6e7ee] bg-white text-[#5c5e6c] shadow-md hover:bg-[#f3f4f8]"
-      >
-        {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-      </button>
-      <div className={cn("relative flex items-center px-3 pt-4 pb-3", collapsed ? "justify-center" : "gap-3")}>
+      {!isMobile ? (
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={compact ? "Expand sidebar" : "Collapse sidebar"}
+          className="absolute -right-3.5 top-4 z-[60] flex h-7 w-7 items-center justify-center rounded-full border border-[#e6e7ee] bg-white text-[#5c5e6c] shadow-md transition-transform hover:bg-[#f3f4f8]"
+        >
+          {compact ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+        </button>
+      ) : null}
+      <div className={cn("relative flex items-center px-3 pt-4 pb-3", compact ? "justify-center" : "gap-3")}>
         <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm ring-1 ring-black/5 dark:bg-white">
           <img src="/logo.png" alt="Petrosphere" className="h-7 w-7 object-contain" />
         </div>
-        {!collapsed && (
+        {!compact && (
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-[#1c1e28] dark:text-white">Training</p>
             <p className="truncate text-[11px] text-[#7b7d8c] dark:text-[#9b9dad]">Management System</p>
@@ -309,7 +335,7 @@ export function AppSidebar() {
 
           // 🌟 Render separator
           if (item.type === "separator") {
-            if (collapsed) return null
+            if (compact) return null
             return (
               <div
                 key={item.title}
@@ -330,7 +356,7 @@ export function AppSidebar() {
             isActive
               ? "bg-[#e7e9f0] text-[#1c1e28] dark:bg-[#2c2f3a] dark:text-white"
               : "text-[#4a4d5c] hover:bg-[#e7e9f0] hover:text-[#1c1e28] dark:text-[#c8c9d4] dark:hover:bg-[#2c2f3a] dark:hover:text-white",
-            collapsed && "justify-center px-0"
+            compact && "justify-center px-0"
           )
 
           if (item.children) {
@@ -338,20 +364,20 @@ export function AppSidebar() {
               <div
                 key={item.title}
                 className="relative"
-                onMouseEnter={() => collapsed && setFlyout(item.title)}
-                onMouseLeave={() => collapsed && setFlyout(null)}
+                onMouseEnter={() => compact && setFlyout(item.title)}
+                onMouseLeave={() => compact && setFlyout(null)}
               >
                 <button
                   type="button"
                   onClick={() => {
-                    if (collapsed) setFlyout((prev) => (prev === item.title ? null : item.title))
+                    if (compact) setFlyout((prev) => (prev === item.title ? null : item.title))
                     else handleDropdownToggle(item.title)
                   }}
                   className={itemClass}
                 >
                   {Icon && <Icon className="h-[18px] w-[18px] shrink-0" />}
-                  {!collapsed && <span className="flex-1 truncate text-left">{item.title}</span>}
-                  {!collapsed && (
+                  {!compact && <span className="flex-1 truncate text-left">{item.title}</span>}
+                  {!compact && (
                     <ChevronRight
                       className={cn(
                         "h-4 w-4 shrink-0 text-[#8a8c9a] transition-transform",
@@ -361,7 +387,7 @@ export function AppSidebar() {
                   )}
                 </button>
 
-                {!collapsed && (
+                {!compact && (
                   <div
                     className={cn(
                       "grid transition-[grid-template-rows] duration-200 ease-out",
@@ -376,6 +402,7 @@ export function AppSidebar() {
                             <Link
                               key={sub.href}
                               href={sub.href}
+                              onClick={() => navigateTo(sub.href)}
                               className={cn(
                                 "flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors",
                                 isSubActive
@@ -393,7 +420,7 @@ export function AppSidebar() {
                   </div>
                 )}
 
-                {collapsed && flyout === item.title && (
+                {compact && flyout === item.title && (
                   <div className="absolute left-full top-0 z-30 ml-3 w-52 rounded-xl border border-[#e6e7ee] bg-white p-1.5 shadow-xl dark:border-[#3a3d4a] dark:bg-[#242733]">
                     <p className="px-2 py-1.5 text-xs font-medium text-[#8a8c9a] dark:text-[#9b9dad]">{item.title}</p>
                     {item.children.map((sub) => {
@@ -402,6 +429,7 @@ export function AppSidebar() {
                         <Link
                           key={sub.href}
                           href={sub.href}
+                          onClick={() => navigateTo(sub.href)}
                           className={cn(
                             "flex items-center justify-between rounded-lg px-2.5 py-2 text-sm",
                             isSubActive
@@ -426,20 +454,25 @@ export function AppSidebar() {
             <div
               key={item.href}
               className="relative"
-              onMouseEnter={() => collapsed && setFlyout(item.title)}
-              onMouseLeave={() => collapsed && setFlyout(null)}
+              onMouseEnter={() => compact && setFlyout(item.title)}
+              onMouseLeave={() => compact && setFlyout(null)}
             >
               <Link
                 href={item.href}
+                onClick={() =>
+                  navigateTo(item.href!, {
+                    external: item.title === "Event Management",
+                  })
+                }
                 {...(item.title === "Event Management"
                   ? { target: "_blank", rel: "noopener noreferrer" }
                   : {})}
                 className={itemClass}
               >
                 {Icon && <Icon className="h-[18px] w-[18px] shrink-0" />}
-                {!collapsed && <span className="truncate">{item.title}</span>}
+                {!compact && <span className="truncate">{item.title}</span>}
               </Link>
-              {collapsed && flyout === item.title && (
+              {compact && flyout === item.title && (
                 <div className="pointer-events-none absolute left-full top-1/2 z-30 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg border border-[#e6e7ee] bg-white px-2.5 py-1.5 text-xs font-medium text-[#1c1e28] shadow-lg dark:border-[#3a3d4a] dark:bg-[#242733] dark:text-white">
                   {item.title}
                 </div>
@@ -453,34 +486,40 @@ export function AppSidebar() {
         <div
           className={cn(
             "flex items-center rounded-full bg-[#e7e9f0] p-1 dark:bg-[#121318]",
-            collapsed ? "flex-col gap-1" : "gap-1"
+            compact ? "flex-col gap-1" : "gap-1"
           )}
         >
           <button
             type="button"
-            onClick={() => setTheme("light")}
+            onClick={() => {
+              applyThemeInstant("light")
+              setTheme("light")
+            }}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-xs font-medium transition-colors",
+              "flex flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-xs font-medium transition-none",
               !isDark
                 ? "bg-white text-[#1c1e28] shadow-sm"
                 : "text-[#8a8c9a] hover:text-white"
             )}
           >
             <SunIcon className="h-3.5 w-3.5" />
-            {!collapsed && "Light"}
+            {!compact && "Light"}
           </button>
           <button
             type="button"
-            onClick={() => setTheme("dark")}
+            onClick={() => {
+              applyThemeInstant("dark")
+              setTheme("dark")
+            }}
             className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-xs font-medium transition-colors",
+              "flex flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-1.5 text-xs font-medium transition-none",
               isDark
                 ? "bg-[#2c2f3a] text-white"
                 : "text-[#6b6e7c] hover:text-[#1c1e28]"
             )}
           >
             <MoonIcon className="h-3.5 w-3.5" />
-            {!collapsed && "Dark"}
+            {!compact && "Dark"}
           </button>
         </div>
       </div>

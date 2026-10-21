@@ -106,25 +106,25 @@ export default function TrainingSchedulesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Training Schedules</h1>
-          <p className="text-muted-foreground mt-2">Manage and organize all training events and participants</p>
+    <div className="page-shell space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="page-title text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Training Schedules</h1>
+          <p className="page-subtitle text-muted-foreground sm:mt-2">Manage and organize all training events and participants</p>
         </div>
-        <Button onClick={() => setDialogOpen(true)} className="gap-2">
+        <Button onClick={() => setDialogOpen(true)} className="w-full gap-2 sm:w-auto">
           <Plus className="h-4 w-4" />
           New Schedule
         </Button>
       </div>
 
       <Tabs value={currentTab} onValueChange={handleTabChange} className="space-y-4">
-        <TabsList className="bg-transparent">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-transparent p-0">
           {["all", "planned", "ongoing", "cancelled", "finished"].map(key => (
             <TabsTrigger
               key={key}
               value={key}
-              className="data-[state=active]:bg-card data-[state=active]:shadow-sm"
+              className="flex-none rounded-lg px-3 py-1.5 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm sm:text-sm"
             >
               {key.charAt(0).toUpperCase() + key.slice(1)}
             </TabsTrigger>

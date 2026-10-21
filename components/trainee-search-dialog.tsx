@@ -141,10 +141,10 @@ const handleSearch = async () => {
         variant="outline"
         size="sm"
         onClick={() => setOpen(true)}
-        className="gap-2"
+        className="h-8 gap-1.5 border-[#1A1D66]/25 bg-[#1A1D66]/10 px-2.5 text-[#1A1D66] hover:bg-[#1A1D66]/15 dark:border-[#FFCC00]/35 dark:bg-[#FFCC00]/10 dark:text-[#FFCC00] dark:hover:bg-[#FFCC00]/15"
       >
-        <Search className="h-4 w-4" />
-        Search Trainee
+        <Search className="h-3.5 w-3.5" />
+        <span className="text-xs font-medium sm:text-sm">Trainee</span>
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>

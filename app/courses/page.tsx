@@ -616,29 +616,29 @@ export default function CoursesPage() {
   })
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Courses</h1>
-          <p className="text-muted-foreground">
+    <div className="page-shell space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
+        <div className="min-w-0">
+          <h1 className="page-title text-2xl font-bold tracking-tight sm:text-3xl">Courses</h1>
+          <p className="page-subtitle text-muted-foreground">
             List of available training courses
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:gap-3 md:w-auto">
           <Input
             placeholder="Search courses..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-64"
+            className="w-full sm:w-56 md:w-64"
           />
-          <Button className="cursor-pointer" onClick={handleAddCourse}>
+          <Button className="w-full cursor-pointer sm:w-auto" onClick={handleAddCourse}>
             <Plus className="mr-2 h-4 w-4" />
             New Course
           </Button>
         </div>
       </div>
 
-      <Card className="overflow-auto">
+      <Card className="table-scroll overflow-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

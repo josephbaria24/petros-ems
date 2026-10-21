@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { tmsDb } from "@/lib/supabase-client"
-import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Eye, ListOrdered, Crop, Eraser, Minus, Plus, RotateCcw, FileStack, Files, Paintbrush } from "lucide-react"
+import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Eye, ListOrdered, Crop, Eraser, Minus, Plus, RotateCcw, RotateCw, Maximize2, Minimize2, FileStack, Files, Paintbrush } from "lucide-react"
 import { Slider } from "@/components/ui/slider"
 import { ImageCropDialog } from "@/components/image-crop-dialog"
 import { ImagePaintDialog } from "@/components/image-paint-dialog"
@@ -479,6 +479,8 @@ export default function ParticipantDirectoryDialog({
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null)
   const [isSavingLayout, setIsSavingLayout] = useState(false)
   const [previewZoom, setPreviewZoom] = useState(1)
+  const [previewRotation, setPreviewRotation] = useState<0 | 90 | 180 | 270>(0)
+  const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false)
   const [certificatePageSize, setCertificatePageSize] = useState<CertificatePageSizeKey>(
     DEFAULT_CERTIFICATE_PAGE_SIZE
   )
@@ -608,29 +610,110 @@ export default function ParticipantDirectoryDialog({
   const handleFitToScreen = useCallback(() => {
     if (!previewContainerRef.current) return
 
-    const canvasW = canvasSize.w
-    const canvasH = canvasSize.h
+    const rotated = previewRotation === 90 || previewRotation === 270
+    const canvasW = rotated ? canvasSize.h : canvasSize.w
+    const canvasH = rotated ? canvasSize.w : canvasSize.h
 
-    const containerW = Math.max(previewContainerRef.current.clientWidth, 400)
-    const containerH = Math.max(previewContainerRef.current.clientHeight, 400)
+    const containerW = Math.max(previewContainerRef.current.clientWidth, 80)
+    const containerH = Math.max(previewContainerRef.current.clientHeight, 80)
+    const pad = containerW < 480 ? 16 : 40
 
-    const scaleW = (containerW - 40) / canvasW
-    const scaleH = (containerH - 40) / canvasH
+    const scaleW = (containerW - pad) / canvasW
+    const scaleH = (containerH - pad) / canvasH
     const fitScale = Math.min(scaleW, scaleH, 1.0)
 
-    setPreviewZoom(Number(fitScale.toFixed(2)))
-  }, [canvasSize.w, canvasSize.h])
+    setPreviewZoom(Number(Math.max(fitScale, 0.15).toFixed(2)))
+  }, [canvasSize.w, canvasSize.h, previewRotation])
+
+  const exitPreviewFullscreen = useCallback(() => {
+    setIsPreviewFullscreen(false)
+    try {
+      const orientation = screen.orientation as ScreenOrientation & { unlock?: () => void }
+      orientation?.unlock?.()
+    } catch {
+      /* unsupported */
+    }
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {})
+    }
+  }, [])
+
+  const enterPreviewFullscreen = useCallback(async () => {
+    setIsPreviewFullscreen(true)
+    try {
+      const root = document.documentElement
+      if (root.requestFullscreen && !document.fullscreenElement) {
+        await root.requestFullscreen()
+      }
+    } catch {
+      /* browser may block without gesture / unsupported */
+    }
+    try {
+      const orientation = screen.orientation as ScreenOrientation & {
+        lock?: (orientation: OrientationLockType) => Promise<void>
+      }
+      await orientation?.lock?.("landscape")
+    } catch {
+      /* iOS / desktop often unsupported — visual rotate still works */
+    }
+  }, [])
+
+  const togglePreviewFullscreen = useCallback(() => {
+    if (isPreviewFullscreen) {
+      exitPreviewFullscreen()
+    } else {
+      void enterPreviewFullscreen()
+    }
+  }, [enterPreviewFullscreen, exitPreviewFullscreen, isPreviewFullscreen])
+
+  const rotatePreview = useCallback(() => {
+    setPreviewRotation((prev) => ((prev + 90) % 360) as 0 | 90 | 180 | 270)
+  }, [])
 
   // Close inline editor when switching participants or closing viewer
   useEffect(() => {
     setInlineFieldEdit(null)
   }, [activePreviewIndex, isCertificateViewerOpen, selectedTemplateType, idCardSide])
 
+  // Reset viewer chrome when certificate dialog closes
+  useEffect(() => {
+    if (!isCertificateViewerOpen) {
+      setIsPreviewFullscreen(false)
+      setPreviewRotation(0)
+      try {
+        const orientation = screen.orientation as ScreenOrientation & { unlock?: () => void }
+        orientation?.unlock?.()
+      } catch {
+        /* unsupported */
+      }
+      if (document.fullscreenElement) {
+        void document.exitFullscreen().catch(() => {})
+      }
+    }
+  }, [isCertificateViewerOpen])
 
-  // Auto-fit on open, template change, or page size change
+  // Escape / browser fullscreen exit
+  useEffect(() => {
+    if (!isPreviewFullscreen) return
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") exitPreviewFullscreen()
+    }
+    const onFsChange = () => {
+      if (!document.fullscreenElement) setIsPreviewFullscreen(false)
+    }
+    window.addEventListener("keydown", onKey)
+    document.addEventListener("fullscreenchange", onFsChange)
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      document.removeEventListener("fullscreenchange", onFsChange)
+    }
+  }, [exitPreviewFullscreen, isPreviewFullscreen])
+
+  // Auto-fit on open, template change, page size, rotation, or fullscreen
   useEffect(() => {
     if (isCertificateViewerOpen) {
-      const timer = setTimeout(handleFitToScreen, 100)
+      const timer = setTimeout(handleFitToScreen, isPreviewFullscreen ? 180 : 100)
       return () => clearTimeout(timer)
     }
   }, [
@@ -639,6 +722,8 @@ export default function ParticipantDirectoryDialog({
     certificatePageSize,
     canvasSize.w,
     canvasSize.h,
+    previewRotation,
+    isPreviewFullscreen,
     handleFitToScreen,
   ])
 
@@ -3319,15 +3404,15 @@ export default function ParticipantDirectoryDialog({
         onOpenChange(next)
       }}
     >
-      <DialogContent className="lg:w-[60vw] sm:w-[90vw] max-h-[90vh] overflow-y-auto pt-10 bg-card">
+      <DialogContent className="max-h-[92dvh] w-[calc(100%-1rem)] overflow-x-hidden overflow-y-auto bg-card p-3 pt-10 sm:w-[90vw] sm:max-w-[90vw] sm:p-6 lg:w-[60vw] lg:max-w-[60vw]">
 
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold bg-muted/50 border p-2 rounded-md flex justify-between items-center">
-            Directory of Participants
+        <DialogHeader className="min-w-0 space-y-0">
+          <DialogTitle className="flex flex-col gap-2 rounded-md border bg-muted/50 p-2 text-base font-semibold sm:text-lg">
+            <span className="min-w-0 pr-6 leading-snug">Directory of Participants</span>
 
             {/* Action Button Group */}
             <TooltipProvider>
-              <div className="flex items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
 
                 {/* Refresh Serial Numbers */}
                 <Tooltip>
@@ -3337,17 +3422,17 @@ export default function ParticipantDirectoryDialog({
                       size="sm"
                       onClick={handleRefreshSerialNumbers}
                       disabled={isRefreshingSerials}
-                      className="cursor-pointer"
+                      className="h-8 cursor-pointer px-2 sm:px-3"
                     >
                       {isRefreshingSerials ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Syncing...
+                          <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+                          <span className="hidden sm:inline">Syncing...</span>
                         </>
                       ) : (
                         <>
-                          <ListOrdered className="mr-2 h-4 w-4" />
-                          Refresh Serial No.
+                          <ListOrdered className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Refresh Serial No.</span>
                         </>
                       )}
                     </Button>
@@ -3365,17 +3450,17 @@ export default function ParticipantDirectoryDialog({
                       size="sm"
                       onClick={handleDownloadExcel}
                       disabled={isDownloadingDirectory}
-                      className="cursor-pointer"
+                      className="h-8 cursor-pointer px-2 sm:px-3"
                     >
                       {isDownloadingDirectory ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Preparing...
+                          <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+                          <span className="hidden sm:inline">Preparing...</span>
                         </>
                       ) : (
                         <>
-                          <Download className="mr-2 h-4 w-4" />
-                          Excel
+                          <Download className="h-4 w-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Excel</span>
                         </>
                       )}
                     </Button>
@@ -3393,10 +3478,10 @@ export default function ParticipantDirectoryDialog({
                       size="sm"
                       onClick={fetchDatabaseStats}
                       disabled={isLoadingStats}
-                      className="cursor-pointer"
+                      className="h-8 cursor-pointer px-2 sm:px-3"
                     >
-                      <Database className="mr-2 h-4 w-4" />
-                      Stats
+                      <Database className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">Stats</span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
@@ -3411,10 +3496,10 @@ export default function ParticipantDirectoryDialog({
                       variant="outline"
                       size="sm"
                       onClick={handleBackupDatabase}
-                      className="cursor-pointer"
+                      className="h-8 cursor-pointer px-2 sm:px-3"
                     >
-                      <Download className="mr-2 h-4 w-4" />
-                      Backup
+                      <Download className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">Backup</span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
@@ -3428,11 +3513,11 @@ export default function ParticipantDirectoryDialog({
                     <Button
                       variant="outline"
                       size="sm"
-                      className="text-orange-600 border-orange-600 hover:bg-orange-600 hover:text-white cursor-pointer"
+                      className="h-8 cursor-pointer px-2 text-orange-600 border-orange-600 hover:bg-orange-600 hover:text-white sm:px-3"
                       onClick={handleResetDatabase}
                     >
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      Reset
+                      <RefreshCw className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">Reset</span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
@@ -3447,10 +3532,10 @@ export default function ParticipantDirectoryDialog({
                       variant="destructive"
                       size="sm"
                       onClick={handleDeleteAllRecords}
-                      className="cursor-pointer"
+                      className="h-8 cursor-pointer px-2 sm:px-3"
                     >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete All
+                      <Trash2 className="h-4 w-4 sm:mr-2" />
+                      <span className="hidden sm:inline">Delete All</span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
@@ -3478,18 +3563,18 @@ export default function ParticipantDirectoryDialog({
           </div>
         )}
 
-        <div className="overflow-hidden rounded-xl border border-border/75 bg-card shadow-none">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 bg-muted/5 px-4 py-3">
-            <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className="min-w-0 overflow-hidden rounded-xl border border-border/75 bg-card shadow-none">
+          <div className="flex flex-col gap-3 border-b border-border/40 bg-muted/5 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4">
+            <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
               <div className="shrink-0 rounded-xl border border-emerald-500/20 bg-emerald-500/15 p-2.5 text-emerald-700 shadow-none dark:text-emerald-300">
                 <CalendarCheck className="h-5 w-5" aria-hidden />
               </div>
               <div className="min-w-0 leading-tight">
-                <p className="truncate text-base font-semibold tracking-tight text-foreground">
+                <p className="text-base font-semibold tracking-tight text-foreground break-words">
                   {courseName}
                 </p>
                 {scheduleRange ? (
-                  <p className="mt-0.5 truncate text-xs leading-snug text-muted-foreground">
+                  <p className="mt-0.5 text-xs leading-snug text-muted-foreground break-words">
                     {scheduleRange}
                   </p>
                 ) : null}
@@ -3510,7 +3595,7 @@ export default function ParticipantDirectoryDialog({
           </div>
         </div>
 
-        <div className="space-y-2 border rounded-lg p-4 bg-muted/50">
+        <div className="min-w-0 space-y-2 rounded-lg border bg-muted/50 p-3 sm:p-4">
           <Label className="font-semibold">Certificate Template Type</Label>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {TEMPLATE_OPTIONS.map((option) => {
@@ -3526,13 +3611,13 @@ export default function ParticipantDirectoryDialog({
                   }}
                   disabled={!isAvailable}
                   className={`
-                    inline-flex items-center justify-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all border
+                    inline-flex items-center justify-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-medium transition-all sm:gap-2 sm:px-3 sm:text-sm
                     ${isSelected ? "bg-primary text-primary-foreground border-primary shadow-sm ring-2 ring-primary/20" : "bg-background hover:bg-muted text-foreground border-border"}
                     ${!isAvailable && "opacity-50 cursor-not-allowed bg-muted/50 text-muted-foreground border-dashed grayscale"}
                   `}
                   title={!isAvailable ? "Template not added for this course yet" : ""}
                 >
-                  <Icon className="h-4 w-4" />
+                  <Icon className="h-4 w-4 shrink-0" />
                   {option.label}
                 </button>
               )
@@ -3540,13 +3625,13 @@ export default function ParticipantDirectoryDialog({
           </div>
         </div>
 
-        <div className="border rounded-md text-sm font-semibold px-4 py-2 bg-secondary flex justify-between items-center gap-3">
-          <span>Attendee Details ({filteredTrainees.length}/{trainees.length} participants)</span>
+        <div className="flex min-w-0 flex-col gap-2 rounded-md border bg-secondary px-3 py-2 text-sm font-semibold sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4">
+          <span className="shrink-0">Attendee Details ({filteredTrainees.length}/{trainees.length} participants)</span>
           <Input
             value={attendeeSearch}
             onChange={(e) => setAttendeeSearch(e.target.value)}
-            placeholder="Search name, email, status, certificate #..."
-            className="w-full max-w-sm bg-background"
+            placeholder="Search name, email, status..."
+            className="min-w-0 w-full bg-background sm:max-w-sm"
           />
         </div>
 
@@ -3573,20 +3658,20 @@ export default function ParticipantDirectoryDialog({
             <p className="text-sm">No trainees are enrolled in this schedule yet.</p>
           </div>
         ) : (
-          <div className="max-h-[350px] overflow-y-auto border border-border rounded-md">
+          <div className="max-h-[min(350px,45dvh)] min-w-0 overflow-auto rounded-md border border-border">
             <TooltipProvider>
-            <Table>
-              <TableHeader className="sticky top-0 bg-card z-10">
+            <Table className="min-w-[640px]">
+              <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
                   <TableHead className="w-12">
                     <Checkbox checked={selectAll} onCheckedChange={handleSelectAll} aria-label="Select all" />
                   </TableHead>
-                  <TableHead className="text-sm font-medium">Last Name</TableHead>
-                  <TableHead className="text-sm font-medium">First Name</TableHead>
-                  <TableHead className="text-sm font-medium">Middle Initial</TableHead>
-                  <TableHead className="text-sm font-medium">Status</TableHead>
-                  <TableHead className="text-sm font-medium">Email Send</TableHead>
-                  <TableHead className="text-sm font-medium">ID Picture</TableHead>
+                  <TableHead className="whitespace-nowrap text-sm font-medium">Last Name</TableHead>
+                  <TableHead className="whitespace-nowrap text-sm font-medium">First Name</TableHead>
+                  <TableHead className="whitespace-nowrap text-sm font-medium">M.I.</TableHead>
+                  <TableHead className="whitespace-nowrap text-sm font-medium">Status</TableHead>
+                  <TableHead className="whitespace-nowrap text-sm font-medium">Email Send</TableHead>
+                  <TableHead className="whitespace-nowrap text-sm font-medium">ID Picture</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -3599,13 +3684,13 @@ export default function ParticipantDirectoryDialog({
                         aria-label={`Select ${trainee.first_name} ${trainee.last_name}`}
                       />
                     </TableCell>
-                    <TableCell className="dark:text-white capitalize cursor-pointer" onClick={() => openEditTraineeDialog(trainee)}>
+                    <TableCell className="cursor-pointer capitalize dark:text-white" onClick={() => openEditTraineeDialog(trainee)}>
                       {trainee.last_name}
                     </TableCell>
-                    <TableCell className="dark:text-white capitalize cursor-pointer" onClick={() => openEditTraineeDialog(trainee)}>
+                    <TableCell className="cursor-pointer capitalize dark:text-white" onClick={() => openEditTraineeDialog(trainee)}>
                       {trainee.first_name}
                     </TableCell>
-                    <TableCell className="dark:text-white capitalize cursor-pointer" onClick={() => openEditTraineeDialog(trainee)}>
+                    <TableCell className="cursor-pointer capitalize dark:text-white" onClick={() => openEditTraineeDialog(trainee)}>
                       {trainee.middle_initial ?? "-"}
                     </TableCell>
                     <TableCell onClick={() => openEditTraineeDialog(trainee)}>
@@ -3646,7 +3731,7 @@ export default function ParticipantDirectoryDialog({
                 ))}
                 {filteredTrainees.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
+                    <TableCell colSpan={7} className="py-6 text-center text-muted-foreground">
                       No attendee matches your search.
                     </TableCell>
                   </TableRow>
@@ -3657,8 +3742,8 @@ export default function ParticipantDirectoryDialog({
           </div>
         )}
 
-        <DialogFooter className="justify-between pt-4 gap-2 flex-wrap">
-          <div className="w-full md:w-auto text-sm text-muted-foreground mb-2">
+        <DialogFooter className="flex flex-col gap-3 pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="w-full text-sm text-muted-foreground md:w-auto">
             {selectedTraineeIds.size > 0 ? (
               <span className="font-medium text-primary">
                 {selectedTraineeIds.size} of {trainees.length} selected
@@ -3669,12 +3754,12 @@ export default function ParticipantDirectoryDialog({
               </span>
             )}
           </div>
-          <div className="flex gap-2 flex-wrap justify-end w-full md:w-auto">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
             <Button
               variant="outline"
               onClick={() => void handleBatchRemoveBackground()}
               disabled={isRemovingBg || selectedTraineeIds.size === 0}
-              className="border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
+              className="w-full border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100 sm:w-auto dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
             >
               {isRemovingBg ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -3688,6 +3773,7 @@ export default function ParticipantDirectoryDialog({
               variant="default"
               onClick={handleOpenCertificateViewer}
               disabled={isLoadingPreviews || trainees.length === 0 || selectedTraineeIds.size === 0}
+              className="w-full sm:w-auto"
             >
               {isLoadingPreviews ? (
                 <>
@@ -4198,14 +4284,31 @@ export default function ParticipantDirectoryDialog({
         </Dialog>
 
       {/* ✅ NEW: Certificate Preview Viewer */}
-      <Dialog open={isCertificateViewerOpen} onOpenChange={setIsCertificateViewerOpen}>
-        <DialogContent className="w-[98vw] max-w-7xl h-[94vh] flex flex-col p-4">
-          <DialogHeader className="shrink-0">
-            <DialogTitle className="flex items-center gap-2">
-              <Eye className="h-5 w-5 text-primary" />
+      <Dialog
+        open={isCertificateViewerOpen}
+        onOpenChange={(next) => {
+          if (!next && isPreviewFullscreen) {
+            exitPreviewFullscreen()
+            return
+          }
+          setIsCertificateViewerOpen(next)
+        }}
+      >
+        <DialogContent
+          className="flex h-[96dvh] max-h-[96dvh] w-[calc(100%-0.5rem)] max-w-7xl flex-col gap-2 overflow-hidden p-2 sm:w-[98vw] sm:gap-4 sm:p-4"
+          onEscapeKeyDown={(e) => {
+            if (isPreviewFullscreen) {
+              e.preventDefault()
+              exitPreviewFullscreen()
+            }
+          }}
+        >
+          <DialogHeader className="shrink-0 pr-8">
+            <DialogTitle className="flex flex-wrap items-center gap-2 text-base sm:text-lg">
+              <Eye className="h-5 w-5 shrink-0 text-primary" />
               <span>Certificate Preview</span>
               {certificatePreviews.length > 0 && (
-                <Badge variant="outline" className="ml-2 font-normal">
+                <Badge variant="outline" className="font-normal">
                   {activePreviewIndex + 1} of {certificatePreviews.length}
                 </Badge>
               )}
@@ -4213,8 +4316,8 @@ export default function ParticipantDirectoryDialog({
           </DialogHeader>
 
           {preFetchTotal > 0 && preFetchProgress < preFetchTotal && (
-            <div className="px-3 py-2 bg-primary/5 border border-primary/20 rounded-lg space-y-1 mt-2">
-              <div className="flex justify-between items-center text-[10px] font-bold text-primary uppercase tracking-wider">
+            <div className="shrink-0 space-y-1 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-primary">
                 <span>Background Generation Status</span>
                 <span>{preFetchProgress} / {preFetchTotal}</span>
               </div>
@@ -4222,14 +4325,20 @@ export default function ParticipantDirectoryDialog({
             </div>
           )}
 
-          <div className="flex-1 flex gap-4 overflow-hidden mt-4 min-h-0">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto lg:mt-0 lg:flex-row lg:overflow-hidden">
             {/* Left Panel: Preview Container */}
-            <div className="flex-[3] flex flex-col border rounded-lg overflow-hidden bg-background relative shadow-inner min-w-0">
+            <div
+              className={
+                isPreviewFullscreen
+                  ? "fixed inset-0 z-[100] flex h-dvh w-screen flex-col overflow-hidden rounded-none border-0 bg-background shadow-none"
+                  : "relative flex min-h-[46dvh] w-full shrink-0 flex-col overflow-hidden rounded-lg border bg-background shadow-inner sm:min-h-[50dvh] lg:min-h-0 lg:h-auto lg:min-w-0 lg:flex-[3] lg:shrink"
+              }
+            >
               {/* Top Control Bar for Preview */}
-              <div className="border-b bg-muted/30 p-2 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-1.5 px-2">
-                  <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                  <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-1 border-b bg-muted/30 p-1.5 sm:p-2">
+                <div className="flex items-center gap-1.5 px-1 sm:px-2">
+                  <div className="h-2 w-2 shrink-0 rounded-full bg-green-500 animate-pulse" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                     Live Viewer
                   </span>
 
@@ -4266,21 +4375,23 @@ export default function ParticipantDirectoryDialog({
                   )}
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5 sm:gap-1">
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7"
                     onClick={() => setPreviewZoom((z) => Math.max(0.2, Number((z - 0.1).toFixed(2))))}
+                    title="Zoom out"
                   >
                     -
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
-                    className="h-7 px-2 text-xs font-medium"
+                    className="h-7 px-1.5 text-xs font-medium sm:px-2"
                     onClick={() => setPreviewZoom(1)}
+                    title="Reset zoom"
                   >
                     {Math.round(previewZoom * 100)}%
                   </Button>
@@ -4290,32 +4401,62 @@ export default function ParticipantDirectoryDialog({
                     size="icon"
                     className="h-7 w-7"
                     onClick={() => setPreviewZoom((z) => Math.min(3.0, Number((z + 0.1).toFixed(2))))}
+                    title="Zoom in"
                   >
                     +
                   </Button>
-                  <div className="w-px h-4 bg-border mx-1" />
+                  <div className="mx-0.5 h-4 w-px bg-border sm:mx-1" />
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={handleFitToScreen}
-                    className="h-7 text-[10px] px-2"
+                    className="h-7 px-2 text-[10px]"
                   >
-                    Fit to Screen
+                    Fit
+                    <span className="hidden sm:inline"> to Screen</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={previewRotation !== 0 ? "default" : "outline"}
+                    size="sm"
+                    onClick={rotatePreview}
+                    className="h-7 gap-1 px-2 text-[10px]"
+                    title="Rotate view 90°"
+                  >
+                    <RotateCw className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">{previewRotation}°</span>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={isPreviewFullscreen ? "default" : "outline"}
+                    size="sm"
+                    onClick={togglePreviewFullscreen}
+                    className="h-7 gap-1 px-2 text-[10px]"
+                    title={isPreviewFullscreen ? "Exit fullscreen" : "Fullscreen"}
+                  >
+                    {isPreviewFullscreen ? (
+                      <Minimize2 className="h-3.5 w-3.5" />
+                    ) : (
+                      <Maximize2 className="h-3.5 w-3.5" />
+                    )}
+                    <span className="hidden sm:inline">
+                      {isPreviewFullscreen ? "Exit" : "Full"}
+                    </span>
                   </Button>
                 </div>
               </div>
 
               {/* Main Preview Work Area */}
-              <div className="flex-1 relative flex items-center justify-center bg-muted/10 overflow-hidden group min-h-0">
+              <div className="group relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/10">
                 {/* PDF Loading Overlay */}
                 {!certificatePreviews[activePreviewIndex]?.url && (
-                  <div className="absolute inset-0 z-30 bg-background/80 backdrop-blur-[2px] flex flex-col items-center justify-center p-6 text-center">
+                  <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-background/80 p-4 text-center backdrop-blur-[2px] sm:p-6">
                     <div className="relative mb-4">
-                      <div className="h-16 w-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+                      <div className="h-12 w-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin sm:h-16 sm:w-16" />
                     </div>
-                    <h3 className="text-lg font-bold text-foreground">Generating Certificate...</h3>
-                    <p className="text-sm text-muted-foreground max-w-xs mt-2">
+                    <h3 className="text-base font-bold text-foreground sm:text-lg">Generating Certificate...</h3>
+                    <p className="mt-2 max-w-xs text-xs text-muted-foreground sm:text-sm">
                        This certificate is being rendered in the background. It will appear automatically in a few seconds.
                     </p>
                   </div>
@@ -4326,20 +4467,20 @@ export default function ParticipantDirectoryDialog({
                   variant="ghost"
                   size="icon"
                   disabled={certificatePreviews.length <= 1}
-                  className="absolute left-2 z-20 h-10 w-10 rounded-full bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity shadow-sm border border-border/50"
+                  className="absolute left-1 z-20 h-9 w-9 rounded-full border border-border/50 bg-background/80 opacity-100 shadow-sm backdrop-blur-sm transition-opacity sm:left-2 sm:h-10 sm:w-10 lg:opacity-0 lg:group-hover:opacity-100"
                   onClick={() =>
                     setActivePreviewIndex((prev) =>
                       prev === 0 ? certificatePreviews.length - 1 : prev - 1
                     )
                   }
                 >
-                  <ChevronLeft className="h-6 w-6 text-primary" />
+                  <ChevronLeft className="h-5 w-5 text-primary sm:h-6 sm:w-6" />
                 </Button>
 
                 {/* Viewport content */}
                 <div
                   ref={previewContainerRef}
-                  className="w-full h-full overflow-auto flex items-center justify-center p-8 scrollbar-thin"
+                  className="flex h-full w-full items-center justify-center overflow-auto p-2 scrollbar-thin sm:p-6 lg:p-8"
                 >
                   {certificatePreviews.length === 0 ? (
                     <div className="flex flex-col items-center gap-2 text-muted-foreground animate-in fade-in transition-all">
@@ -4348,12 +4489,25 @@ export default function ParticipantDirectoryDialog({
                     </div>
                   ) : (
                     <div
-                      className="relative shadow-2xl transition-[width,height] duration-200"
-                      style={{
-                        width: canvasSize.w * previewZoom,
-                        height: canvasSize.h * previewZoom,
-                      }}
+                      className="relative flex items-center justify-center transition-[width,height] duration-200"
+                      style={(() => {
+                        const w = canvasSize.w * previewZoom
+                        const h = canvasSize.h * previewZoom
+                        const swapped = previewRotation === 90 || previewRotation === 270
+                        return {
+                          width: swapped ? h : w,
+                          height: swapped ? w : h,
+                        }
+                      })()}
                     >
+                      <div
+                        className="relative shadow-2xl transition-transform duration-200"
+                        style={{
+                          width: canvasSize.w * previewZoom,
+                          height: canvasSize.h * previewZoom,
+                          transform: previewRotation ? `rotate(${previewRotation}deg)` : undefined,
+                        }}
+                      >
                       {/* Direct Editor Layer (Canvas) */}
                       {(() => {
                         const isShowingBack = isIdTemplateSelected && idCardSide === "back"
@@ -4553,6 +4707,7 @@ export default function ParticipantDirectoryDialog({
                           </div>
                         </div>
                       )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -4562,30 +4717,30 @@ export default function ParticipantDirectoryDialog({
                   variant="ghost"
                   size="icon"
                   disabled={certificatePreviews.length <= 1}
-                  className="absolute right-2 z-20 h-10 w-10 rounded-full bg-background/60 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity shadow-sm border border-border/50"
+                  className="absolute right-1 z-20 h-9 w-9 rounded-full border border-border/50 bg-background/80 opacity-100 shadow-sm backdrop-blur-sm transition-opacity sm:right-2 sm:h-10 sm:w-10 lg:opacity-0 lg:group-hover:opacity-100"
                   onClick={() =>
                     setActivePreviewIndex((prev) =>
                       prev === certificatePreviews.length - 1 ? 0 : prev + 1
                     )
                   }
                 >
-                  <ChevronRight className="h-6 w-6 text-primary" />
+                  <ChevronRight className="h-5 w-5 text-primary sm:h-6 sm:w-6" />
                 </Button>
               </div>
 
               {/* Bottom Tip bar */}
-              <div className="border-t bg-muted/20 px-4 py-1.5 flex justify-between items-center bg-background/50 shrink-0">
-                <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tighter">
+              <div className="flex shrink-0 flex-col gap-0.5 border-t bg-background/50 px-2 py-1.5 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+                <span className="text-[9px] font-bold uppercase tracking-tighter text-muted-foreground">
                   Editor Mode Active
                 </span>
-                <span className="text-[10px] text-muted-foreground italic">
-                  Drag to move fields. Double-click text to edit trainee info.
+                <span className="text-[10px] italic text-muted-foreground">
+                  Drag to move fields. Double-click text to edit.
                 </span>
               </div>
             </div>
 
             {/* Right Panel: Compact Controls */}
-            <div className="w-80 flex flex-col gap-4 overflow-y-auto pr-2 py-1 shrink-0 scrollbar-hide">
+            <div className="flex w-full shrink-0 flex-col gap-3 overflow-visible py-1 pr-0 scrollbar-hide lg:w-80 lg:gap-4 lg:overflow-y-auto lg:pr-2">
 
               {/* 1. Participant Summary & Actions */}
               <div className="border rounded-lg bg-card p-3 shadow-sm space-y-3">
@@ -5144,9 +5299,9 @@ export default function ParticipantDirectoryDialog({
 
           {/* Horizontal strip of participants */}
           {certificatePreviews.length > 0 && (
-            <div className="mt-4 border-t pt-3 shrink-0">
-              <div className="flex items-center justify-between mb-2 px-1">
-                <div className="flex items-center gap-2">
+            <div className="mt-1 shrink-0 border-t pt-2 sm:mt-2 sm:pt-3">
+              <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                <div className="flex min-w-0 items-center gap-2">
                   <Checkbox 
                     id="preview-select-all"
                     checked={selectedTraineeIds.size === certificatePreviews.length && certificatePreviews.length > 0}
@@ -5158,20 +5313,20 @@ export default function ParticipantDirectoryDialog({
                       }
                     }}
                   />
-                  <Label htmlFor="preview-select-all" className="text-[10px] uppercase font-bold text-muted-foreground cursor-pointer">
+                  <Label htmlFor="preview-select-all" className="cursor-pointer text-[10px] font-bold uppercase text-muted-foreground">
                     Select All for Email
                   </Label>
                 </div>
-                <div className="text-[10px] font-bold text-primary px-2 py-0.5 bg-primary/10 rounded-full">
+                <div className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
                   {selectedTraineeIds.size} Selected
                 </div>
               </div>
               <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                 {certificatePreviews.map((item, index) => (
-                  <div key={item.trainee.id} className="relative group/card">
+                  <div key={item.trainee.id} className="group/card relative shrink-0">
                     <button
                       type="button"
-                      className={`flex items-center gap-2 px-3 py-2 rounded-md border text-xs whitespace-nowrap transition-all pr-8 ${index === activePreviewIndex
+                      className={`flex items-center gap-2 whitespace-nowrap rounded-md border px-3 py-2 pr-8 text-xs transition-all ${index === activePreviewIndex
                           ? "border-primary bg-primary/10 ring-1 ring-primary/30"
                           : "border-muted hover:bg-muted/60"
                         }`}

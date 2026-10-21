@@ -1,5 +1,5 @@
 // app/layout.tsx
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { GeistSans } from "geist/font/sans"
 import { Dancing_Script } from "next/font/google"
 import "./globals.css"
@@ -18,9 +18,34 @@ const dancingScript = Dancing_Script({
 export const metadata: Metadata = {
   title: "Training Management System",
   description: "PETROSPHERE training scheduler and management platform",
-  icons: {
-    icon: "/favicon.ico",
+  applicationName: "Petrosphere TMS",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Petrosphere TMS",
   },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+}
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#1A1D66" },
+    { media: "(prefers-color-scheme: dark)", color: "#1A1D66" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
 }
 
 export default function RootLayout({

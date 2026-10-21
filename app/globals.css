@@ -128,6 +128,15 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Instant theme flips: suppress color/background transitions while switching */
+  html.theme-switching,
+  html.theme-switching *,
+  html.theme-switching *::before,
+  html.theme-switching *::after {
+    transition: none !important;
+    animation: none !important;
+  }
   
   /* Custom cursive font for welcome heading */
   .font-welcome {
@@ -169,10 +178,40 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes swipe-hint-nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translateX(6px);
+    opacity: 1;
+  }
+}
+
+@keyframes swipe-hint-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
 @layer utilities {
   .animate-wave {
     animation: wave 5s ease infinite;
     background-size: 200% 200%;
+  }
+
+  .animate-swipe-hint {
+    animation: swipe-hint-nudge 1.25s ease-in-out infinite;
+  }
+
+  .animate-swipe-hint-fade {
+    animation: swipe-hint-pulse 1.25s ease-in-out infinite;
   }
 }
 
@@ -274,5 +313,44 @@ nextjs-portal {
 @media print {
   [data-export-hide="true"] {
     display: none !important;
+  }
+}
+
+/* Compact, touch-friendly shell for phones and tablets */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  overscroll-behavior-y: none;
+}
+
+@media (max-width: 1023px) {
+  .page-shell {
+    gap: 0.75rem;
+  }
+
+  .page-title {
+    font-size: 1.35rem;
+    line-height: 1.3;
+  }
+
+  .page-subtitle {
+    font-size: 0.8125rem;
+    margin-top: 0.25rem;
+  }
+
+  /* Keep wide tables scrollable instead of crushing the layout */
+  .table-scroll,
+  [data-slot="table-container"] {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@supports (padding: max(0px)) {
+  .safe-pb {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   }
 }
