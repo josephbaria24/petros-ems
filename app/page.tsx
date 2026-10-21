@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase-client"
 
@@ -29,7 +30,7 @@ export default function HomeRedirectPage() {
   if (checkingAuth) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <Spinner size={28} />
       </div>
     )
   }

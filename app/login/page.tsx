@@ -1,10 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase-client"
 import { LoginForm } from "@/components/login-form"
-import { Loader2 } from "lucide-react"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -31,7 +31,7 @@ export default function LoginPage() {
   if (checkingSession) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-[#0d1040]">
-        <Loader2 className="h-8 w-8 animate-spin text-[#FFCC00]" />
+        <Spinner size={28} />
       </div>
     )
   }

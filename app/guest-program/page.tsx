@@ -1,8 +1,8 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useSearchParams } from "next/navigation"
-import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { OshProgramForm } from "@/components/osh-program-form"
 import { OshProgramPreview } from "@/components/osh-program-preview"
@@ -114,7 +114,7 @@ function GuestProgramForm() {
   if (loading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f4f5fb] text-[#1A1D66] dark:bg-background dark:text-foreground">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <Spinner size={28} />
         Loading program…
       </div>
     )
@@ -144,7 +144,7 @@ function GuestProgramForm() {
                 disabled={saving}
                 onClick={() => void save()}
               >
-                {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {saving ? <Spinner size={18} className="mr-2" /> : null}
                 Save program
               </Button>
             </div>
@@ -165,7 +165,7 @@ export default function GuestProgramPage() {
     <React.Suspense
       fallback={
         <div className="flex min-h-[70vh] items-center justify-center gap-2 text-muted-foreground">
-          <Loader2 className="h-6 w-6 animate-spin" />
+          <Spinner size={24} />
           <span className="text-base">Loading…</span>
         </div>
       }

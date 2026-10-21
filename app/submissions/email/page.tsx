@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { tmsDb } from "@/lib/supabase-client"
@@ -15,39 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import {
-  ArrowLeft,
-  Bold,
-  Italic,
-  Underline,
-  List,
-  ListOrdered,
-  Link as LinkIcon,
-  ImageIcon,
-  Minus,
-  Upload,
-  Send,
-  Loader2,
-  Type,
-  Users,
-  PenSquare,
-  Monitor,
-  Search,
-  Palette,
-  MousePointer,
-  History,
-  CheckCircle2,
-  XCircle,
-  Eye,
-  FileText,
-  Download,
-  Copy,
-  ExternalLink,
-  Plus,
-  Pencil,
-  Trash2,
-  RefreshCw,
-} from "lucide-react"
+import { ArrowLeft, Bold, Italic, Underline, List, ListOrdered, Link as LinkIcon, ImageIcon, Minus, Upload, Send, Type, Users, PenSquare, Monitor, Search, Palette, MousePointer, History, CheckCircle2, XCircle, Eye, FileText, Download, Copy, ExternalLink, Plus, Pencil, Trash2, RefreshCw } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -1141,7 +1110,7 @@ export default function SubmissionsEmailPage() {
           </p>
         </div>
         <Button onClick={handleSendEmails} disabled={sending || loading} className="gap-2">
-          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          {sending ? <Spinner size={18} /> : <Send className="h-4 w-4" />}
           Send Email
         </Button>
       </div>
@@ -1160,7 +1129,7 @@ export default function SubmissionsEmailPage() {
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-primary dark:text-[#daae02]">Templates</p>
                 <Button size="sm" variant="secondary" onClick={handleSaveTemplate} disabled={savingTemplate || updatingTemplate} className="h-7">
-                  {savingTemplate ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save Current"}
+                  {savingTemplate ? <Spinner size={14} /> : "Save Current"}
                 </Button>
               </div>
               {editingTemplateId && (
@@ -1178,7 +1147,7 @@ export default function SubmissionsEmailPage() {
                       onClick={handleUpdateTemplateFromEditor}
                       disabled={updatingTemplate}
                     >
-                      {updatingTemplate ? <Loader2 className="h-3 w-3 animate-spin" /> : "Update Template"}
+                      {updatingTemplate ? <Spinner size={14} /> : "Update Template"}
                     </Button>
                     <Button
                       size="sm"
@@ -1636,7 +1605,7 @@ export default function SubmissionsEmailPage() {
                                         }}
                                       >
                                         {replacingMaterialId === material.id ? (
-                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                          <Spinner size={14} />
                                         ) : (
                                           <RefreshCw className="h-3.5 w-3.5" />
                                         )}
@@ -1666,7 +1635,7 @@ export default function SubmissionsEmailPage() {
                                     disabled={busy}
                                   >
                                     {materialAttachingId === material.id ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                      <Spinner size={14} />
                                     ) : (
                                       "Attach"
                                     )}
@@ -2035,7 +2004,7 @@ export default function SubmissionsEmailPage() {
               Cancel
             </Button>
             <Button type="button" disabled={uploadingMaterial || !pendingMaterialFile} onClick={() => void createCourseMaterial()}>
-              {uploadingMaterial ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+              {uploadingMaterial ? <Spinner size={18} className="mr-2" /> : <Plus className="mr-2 h-4 w-4" />}
               Upload
             </Button>
           </DialogFooter>
@@ -2101,7 +2070,7 @@ export default function SubmissionsEmailPage() {
                     }
                   }}
                 >
-                  {downloadingMaterial ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                  {downloadingMaterial ? <Spinner size={18} /> : <Download className="h-4 w-4" />}
                   Download
                 </Button>
                 <Button

@@ -1,19 +1,8 @@
 "use client"
 
 import * as React from "react"
-import {
-  Check,
-  ChevronDown,
-  ClipboardList,
-  Copy,
-  Link2,
-  Loader2,
-  Plus,
-  QrCode,
-  Save,
-  Trash2,
-  Users,
-} from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
+import { Check, ChevronDown, ClipboardList, Copy, Link2, Plus, QrCode, Save, Trash2, Users } from "lucide-react"
 import QRCode from "qrcode"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -177,27 +166,36 @@ export function WorkshopSection({ scheduleId, courseName }: WorkshopSectionProps
   const promptCount = countActivityPrompts(activities)
 
   return (
-    <Card className="border-border/80 shadow-sm">
-      <CardHeader className="border-b bg-muted/30">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-base">
+    <Card className="w-full min-w-0 max-w-full gap-0 overflow-hidden border-border/80 py-0 shadow-sm">
+      <CardHeader className="border-b bg-muted/30 px-3 py-3 sm:px-6 sm:py-4">
+        <div className="flex flex-col gap-2 sm:gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
               <ClipboardList className="h-4 w-4 text-primary" />
               Workshop
             </CardTitle>
-            <CardDescription>
-              Add activities for {courseName || "this training"}. Trainees open the workshop link and
-              fill in their answers.
+            <CardDescription className="text-xs sm:text-sm">
+              <span className="sm:hidden">Activities for {courseName || "this training"}.</span>
+              <span className="hidden sm:inline">
+                Add activities for {courseName || "this training"}. Trainees open the workshop link and
+                fill in their answers.
+              </span>
             </CardDescription>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">{activities.length} activities</Badge>
-            <Badge variant="outline">{promptCount} prompts</Badge>
-            <Badge variant="secondary">{responses.length} submissions</Badge>
+          <div className="flex flex-wrap gap-1 sm:gap-2">
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px] sm:h-6 sm:text-xs">
+              {activities.length} activities
+            </Badge>
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px] sm:h-6 sm:text-xs">
+              {promptCount} prompts
+            </Badge>
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px] sm:h-6 sm:text-xs">
+              {responses.length} submissions
+            </Badge>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4 pt-4">
+      <CardContent className="space-y-3 px-3 py-3 sm:space-y-4 sm:px-6 sm:py-4">
         {schemaMissing ? (
           <p className="rounded-lg border border-amber-400/60 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
             Run <code className="rounded bg-white/70 px-1 dark:bg-black/30">scripts/add-workshop-tables.sql</code>{" "}
@@ -207,12 +205,12 @@ export function WorkshopSection({ scheduleId, courseName }: WorkshopSectionProps
 
         {loading ? (
           <div className="flex items-center gap-2 py-8 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Spinner size={18} />
             Loading workshop…
           </div>
         ) : (
           <>
-            <div className="flex max-w-3xl flex-col gap-2 rounded-xl border border-[#1A1D66]/15 bg-[#1A1D66]/5 p-3 dark:border-white/10 dark:bg-white/5 sm:flex-row sm:items-center">
+            <div className="flex w-full min-w-0 max-w-3xl flex-col gap-2 overflow-hidden rounded-xl border border-[#1A1D66]/15 bg-[#1A1D66]/5 p-3 dark:border-white/10 dark:bg-white/5 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-start gap-2">
                 <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-[#1A1D66] dark:text-[#FFCC00]" />
                 <div className="min-w-0">
@@ -223,7 +221,7 @@ export function WorkshopSection({ scheduleId, courseName }: WorkshopSectionProps
                     href={workshopUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="block truncate text-sm text-foreground underline-offset-2 hover:underline"
+                    className="block max-w-full truncate text-sm text-foreground underline-offset-2 hover:underline"
                   >
                     {workshopUrl}
                   </a>
@@ -235,7 +233,7 @@ export function WorkshopSection({ scheduleId, courseName }: WorkshopSectionProps
                   {copied ? "Copied" : "Copy"}
                 </Button>
                 <Button type="button" size="sm" variant="outline" onClick={() => void downloadQr()} disabled={qrBusy}>
-                  {qrBusy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <QrCode className="mr-1.5 h-3.5 w-3.5" />}
+                  {qrBusy ? <Spinner size={14} className="mr-1.5" /> : <QrCode className="mr-1.5 h-3.5 w-3.5" />}
                   QR
                 </Button>
                 <Button type="button" size="sm" variant="outline" onClick={() => setResponsesOpen(true)}>
@@ -418,7 +416,7 @@ export function WorkshopSection({ scheduleId, courseName }: WorkshopSectionProps
                 disabled={saving || schemaMissing}
                 onClick={() => void persist()}
               >
-                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                {saving ? <Spinner size={14} /> : <Save className="h-3.5 w-3.5" />}
                 Save workshop
               </Button>
             </div>

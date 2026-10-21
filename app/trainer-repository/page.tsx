@@ -2,9 +2,10 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import * as XLSX from "xlsx"
 import { tmsDb } from "@/lib/supabase-client"
-import { Plus, Settings2, Trash2, Edit2, Check, X, Loader2, GripVertical, PlusCircle, FileUp, File, ExternalLink, Paperclip, FileSpreadsheet, Upload, ClipboardList, BarChart3, Link, Copy, Save, ChevronLeft, ChevronRight } from "lucide-react"
+import { Plus, Settings2, Trash2, Edit2, Check, X, GripVertical, PlusCircle, FileUp, File, ExternalLink, Paperclip, FileSpreadsheet, Upload, ClipboardList, BarChart3, Link, Copy, Save, ChevronLeft, ChevronRight } from "lucide-react"
 import { Reorder, useDragControls, AnimatePresence, motion } from "framer-motion"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Cell } from 'recharts'
 import { Button } from "@/components/ui/button"
@@ -422,7 +423,7 @@ export default function TrainerRepositoryPage() {
                         }}
                         disabled={loading}
                     >
-                        {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <BarChart3 className="h-3.5 w-3.5" />}
+                        {loading ? <Spinner size={14} /> : <BarChart3 className="h-3.5 w-3.5" />}
                         View Feedback
                     </Button>
                 </div>
@@ -584,7 +585,7 @@ export default function TrainerRepositoryPage() {
         if (uploading) {
             return (
                 <div className="flex items-center justify-center p-2 h-full">
-                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    <Spinner size={18} />
                 </div>
             )
         }
@@ -679,7 +680,7 @@ export default function TrainerRepositoryPage() {
 
             {loading ? (
                 <div className="flex-1 flex flex-col items-center justify-center gap-4">
-                    <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                    <Spinner size={36} />
                     <p className="text-muted-foreground font-medium">Initializing repository...</p>
                 </div>
             ) : tabs.length === 0 ? (

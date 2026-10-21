@@ -2,13 +2,14 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useParams } from "next/navigation"
 import { tmsDb } from "@/lib/supabase-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { ClipboardList, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+import { ClipboardList, CheckCircle2, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
 
@@ -75,7 +76,7 @@ export default function PublicEvaluationPage() {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center bg-muted/30 p-6">
                 <div className="h-12 w-12 rounded-2xl flex items-center justify-center bg-primary text-primary-foreground mb-4">
-                    <Loader2 className="h-6 w-6 animate-spin" />
+                    <Spinner size={24} />
                 </div>
                 <p className="text-muted-foreground font-medium">Loading evaluation...</p>
             </div>
@@ -268,7 +269,7 @@ export default function PublicEvaluationPage() {
                             className="w-full h-16 rounded-2xl text-xl font-black shadow-xl transition-all active:scale-[0.98]"
                         >
                             {submitting ? (
-                                <><Loader2 className="h-6 w-6 animate-spin mr-3" /> Submitting...</>
+                                <><Spinner size={24} className="mr-3" /> Submitting...</>
                             ) : (
                                 "Submit Evaluation"
                             )}

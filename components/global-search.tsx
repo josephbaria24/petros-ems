@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useRouter } from "next/navigation"
-import { BookOpen, CalendarDays, FileText, Loader2, Search, User, X } from "lucide-react"
+import { BookOpen, CalendarDays, FileText, Search, User, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { tmsDb } from "@/lib/supabase-client"
 import { cn } from "@/lib/utils"
@@ -229,7 +230,7 @@ export function GlobalSearch() {
       <div className="max-h-[min(24rem,70vh)] overflow-y-auto py-1">
         {searchingLive ? (
           <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <Spinner size={14} />
             Searching records…
           </div>
         ) : null}

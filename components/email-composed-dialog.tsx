@@ -2,6 +2,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
   DialogContent,
@@ -22,26 +23,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import {
-  Loader2,
-  Save,
-  Send,
-  Trash2,
-  Plus,
-  Eye,
-  FileText,
-  PenLine,
-  Mail,
-  Bold,
-  Italic,
-  List,
-  RemoveFormatting,
-  Award,
-  CalendarCheck,
-  IdCard,
-  Users,
-  X,
-} from "lucide-react"
+import { Save, Send, Trash2, Plus, Eye, FileText, PenLine, Mail, Bold, Italic, List, RemoveFormatting, Award, CalendarCheck, IdCard, Users, X } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -770,7 +752,7 @@ export default function EmailComposeDialog({
                 >
                   {isSaving ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Spinner size={18} className="mr-2" />
                       Saving…
                     </>
                   ) : (
@@ -838,7 +820,7 @@ export default function EmailComposeDialog({
           >
             {isLoading ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Spinner size={18} />
                 Sending…
               </>
             ) : (

@@ -1,21 +1,12 @@
 "use client"
 
 import { useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import {
-  Search,
-  ShieldCheck,
-  BadgeCheck,
-  ListChecks,
-  FileSearch,
-  Sparkles,
-  Mail,
-  Lock,
-  Info,
-} from "lucide-react"
+import { Search, ShieldCheck, BadgeCheck, ListChecks, FileSearch, Sparkles, Mail, Lock, Info } from "lucide-react"
 import { VerificationResult } from "@/components/verification-result"
 import { CertificateMatchPicker } from "@/components/certificate-match-picker"
 import { tmsDb } from "@/lib/supabase-client"
@@ -202,7 +193,7 @@ export default function GuestCertificateVerifierPage() {
                   >
                     {isVerifying ? (
                       <div className="flex items-center">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                        <Spinner size={18} className="mr-2" />
                         Verifying...
                       </div>
                     ) : (

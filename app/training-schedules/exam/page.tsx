@@ -1,10 +1,11 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { format, parseISO } from "date-fns"
-import { ArrowLeft, Calendar, ClipboardList, FileSpreadsheet, Inbox, Loader2 } from "lucide-react"
+import { ArrowLeft, Calendar, ClipboardList, FileSpreadsheet, Inbox } from "lucide-react"
 import { toast } from "sonner"
 import { ExamPanel } from "@/components/exam-panel"
 import { ExamResultsPreview } from "@/components/exam-results-preview"
@@ -482,7 +483,7 @@ export default function ScheduleExamPage() {
 
       {loading ? (
         <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
-          <Loader2 className="h-8 w-8 animate-spin" />
+          <Spinner size={28} />
           Loading exams…
         </div>
       ) : (

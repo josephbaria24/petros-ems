@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { Loader2, Users } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
+import { Users } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -170,7 +171,7 @@ export function TeamsMeetingDetailsDialog({
             onClick={() => void saveOnly()}
             disabled={saving || loading || !joinUrl.trim()}
           >
-            {saving && !loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {saving && !loading ? <Spinner size={18} className="mr-2" /> : null}
             Save link
           </Button>
           <Button
@@ -179,7 +180,7 @@ export function TeamsMeetingDetailsDialog({
             onClick={() => void load()}
             disabled={loading || (!joinUrl.trim() && !meetingUrl)}
           >
-            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {loading ? <Spinner size={18} className="mr-2" /> : null}
             {loading ? "Loading…" : "Load details"}
           </Button>
         </div>
@@ -197,7 +198,7 @@ export function TeamsMeetingDetailsDialog({
 
           {loading && !hasReports ? (
             <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" />
+              <Spinner size={20} />
               <span className="text-sm">Loading meeting report…</span>
             </div>
           ) : null}

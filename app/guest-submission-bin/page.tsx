@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useSearchParams } from "next/navigation"
-import { CheckCircle2, Loader2, Upload } from "lucide-react"
+import { CheckCircle2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -151,7 +152,7 @@ function GuestSubmissionBinForm() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center gap-2 text-muted-foreground">
-        <Loader2 className="h-6 w-6 animate-spin" />
+        <Spinner size={24} />
         Loading…
       </div>
     )
@@ -273,7 +274,7 @@ function GuestSubmissionBinForm() {
               disabled={submitting}
               onClick={() => void submit()}
             >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {submitting ? <Spinner size={18} /> : <Upload className="h-4 w-4" />}
               {submitting ? "Submitting…" : "Submit file"}
             </Button>
           </>
@@ -288,7 +289,7 @@ export default function GuestSubmissionBinPage() {
     <React.Suspense
       fallback={
         <div className="flex min-h-[70vh] items-center justify-center gap-2 text-muted-foreground">
-          <Loader2 className="h-6 w-6 animate-spin" />
+          <Spinner size={24} />
           <span className="text-base">Loading…</span>
         </div>
       }

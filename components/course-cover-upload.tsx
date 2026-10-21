@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useRef } from 'react'
-import { X, Upload, Check, Loader2 } from 'lucide-react'
+import { Spinner } from "@/components/ui/spinner"
+import { X, Upload, Check } from "lucide-react"
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import Image from 'next/image'
@@ -227,7 +228,7 @@ export default function CourseCoverUploadDialog({
                 >
                   {uploading ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      <Spinner size={18} className="mr-2" />
                       Uploading...
                     </>
                   ) : (

@@ -1,11 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { createClient } from "@/lib/supabase-client"
 import { clearSupabaseAuthStorage } from "@/lib/clear-supabase-auth"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Loader2 } from "lucide-react"
 
 export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRef<"div">) {
   const [errorMsg, setErrorMsg] = useState("")
@@ -68,7 +68,7 @@ export function LoginForm({ className, ...props }: React.ComponentPropsWithoutRe
         className="group h-12 w-full gap-3 rounded-xl border-0 bg-white text-[15px] font-semibold text-[#1A1D66] shadow-[0_10px_30px_rgba(0,0,0,0.18)] transition hover:bg-[#FFCC00] hover:text-[#1A1D66] disabled:opacity-70"
       >
         {isLoading ? (
-          <Loader2 className="h-5 w-5 animate-spin" />
+          <Spinner size={20} />
         ) : (
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 23 23" width="20" height="20" aria-hidden>
             <path fill="#F25022" d="M1 1h10v10H1z" />

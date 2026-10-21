@@ -3,6 +3,7 @@
 
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState, Suspense } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { createClient } from "@/lib/supabase-client"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
@@ -94,11 +95,37 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => mq.removeEventListener("change", sync)
   }, [])
 
+  // Keep shell height locked to the visible viewport. On iOS PWA / Chrome,
+  // 100dvh can be wrong on first paint (blank band at bottom) until a reflow
+  // (e.g. opening the drawer) forces a recalculation.
+  useEffect(() => {
+    const root = document.documentElement
+    const setAppHeight = () => {
+      const height = Math.round(window.innerHeight)
+      if (height > 0) root.style.setProperty("--app-height", `${height}px`)
+    }
+    setAppHeight()
+    const raf = window.requestAnimationFrame(setAppHeight)
+    const t1 = window.setTimeout(setAppHeight, 50)
+    const t2 = window.setTimeout(setAppHeight, 300)
+    window.addEventListener("resize", setAppHeight)
+    window.addEventListener("orientationchange", setAppHeight)
+    window.visualViewport?.addEventListener("resize", setAppHeight)
+    return () => {
+      window.cancelAnimationFrame(raf)
+      window.clearTimeout(t1)
+      window.clearTimeout(t2)
+      window.removeEventListener("resize", setAppHeight)
+      window.removeEventListener("orientationchange", setAppHeight)
+      window.visualViewport?.removeEventListener("resize", setAppHeight)
+    }
+  }, [])
+
   if (!isPublicRoute && isChecking) {
     return (
-      <div className="flex min-h-dvh items-center justify-center">
+      <div className="flex min-h-[var(--app-height,100svh)] items-center justify-center">
         <div className="space-y-4 text-center">
-          <div className="mx-auto h-10 w-10 animate-spin rounded-full border-b-2 border-primary sm:h-12 sm:w-12" />
+          <Spinner size={40} className="mx-auto" />
           <p className="text-sm text-muted-foreground">Loading...</p>
         </div>
       </div>
@@ -124,12 +151,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const showChrome = !isGuestPage && isAuthenticated
 
   return (
-    <div className="flex h-dvh max-w-[100vw] overflow-hidden">
+    <div className="flex h-[var(--app-height,100svh)] max-h-[var(--app-height,100svh)] max-w-[100vw] overflow-hidden">
       <Suspense fallback={<div className="p-4 text-sm text-muted-foreground">Loading...</div>}>
         {showChrome && isDesktop ? <AppSidebar variant="desktop" /> : null}
         {showChrome && !isDesktop ? <MobileNavDrawer /> : null}
 
-        <div className="relative z-0 flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="relative z-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {showChrome && <AppHeader />}
           {showChrome && <NavigationProgress />}
           {showChrome && <PendingCertPrompt />}
@@ -141,12 +168,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           >
             <main
               className={cn(
-                "flex min-h-full min-w-0 flex-1 flex-col",
+                "flex min-h-full w-full min-w-0 max-w-full flex-1 flex-col",
                 isFullBleed
                   ? isGuestRoute || isLoginRoute
                     ? "bg-transparent p-0"
                     : "bg-slate-950 p-0"
-                  : "bg-background p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-4 md:p-6"
+                  : "bg-background p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:p-4 md:p-6"
               )}
             >
               {children}

@@ -2,6 +2,7 @@
 "use client"
 
 import { useEffect, useState, useRef, useCallback } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useParams } from "next/navigation"
 
 // Helper: Load pdf.js from CDN via script tag (avoids Turbopack bundling issues)
@@ -481,7 +482,7 @@ export default function MaterialViewerPage() {
                 "
               >
                 {verifying ? (
-                  <div className="w-6 h-6 border-3 border-white/20 border-t-white rounded-full animate-spin" />
+                  <Spinner size={28} />
                 ) : (
                   <>
                     <span className="text-amber-400">Unlock</span>
@@ -689,11 +690,8 @@ export default function MaterialViewerPage() {
           </div>
         ) : pdfLoading ? (
           <div className="flex flex-col items-center justify-center gap-4 py-20">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 flex items-center justify-center">
-              <svg className="w-6 h-6 text-indigo-400 animate-spin" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-500/20">
+              <Spinner size={28} />
             </div>
             <p className="text-sm text-white/40">Loading document...</p>
           </div>
@@ -719,7 +717,7 @@ export default function MaterialViewerPage() {
             {/* Rendering overlay */}
             {rendering && (
               <div className="absolute inset-0 bg-white/5 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+                <Spinner size={28} />
               </div>
             )}
           </div>

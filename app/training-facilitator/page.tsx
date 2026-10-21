@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import Image from "next/image"
 import { tmsDb } from "@/lib/supabase-client"
 import { Input } from "@/components/ui/input"
@@ -8,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import QRCode from "qrcode"
 import { toPublicManualUrl } from "@/lib/manual-public-url"
-import { ArrowLeft, ExternalLink, Loader2, Pencil, QrCode, Search, Upload, X } from "lucide-react"
+import { ArrowLeft, ExternalLink, Pencil, QrCode, Search, Upload, X } from "lucide-react"
 
 type Training = {
   courseId: string
@@ -412,7 +413,7 @@ export default function TrainingFacilitatorPage() {
                     </div>
                   )}
                   <label className="mt-3 inline-flex cursor-pointer items-center rounded-lg border border-[#d7d9e2] px-2.5 py-1.5 text-xs font-medium hover:bg-[#f4f5f8] dark:border-[#3a3d4a] dark:hover:bg-[#242733]">
-                    {busy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1.5 h-3.5 w-3.5" />}
+                    {busy ? <Spinner size={14} className="mr-1.5" /> : <Upload className="mr-1.5 h-3.5 w-3.5" />}
                     Upload new
                     <input
                       type="file"
@@ -432,7 +433,7 @@ export default function TrainingFacilitatorPage() {
         </section>
       ) : loading ? (
         <div className="flex items-center justify-center py-16 text-sm text-[#8a8c9a]">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          <Spinner size={18} className="mr-2" />
           Loading trainings
         </div>
       ) : filtered.length === 0 ? (

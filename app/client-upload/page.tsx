@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { Spinner } from "@/components/ui/spinner"
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Upload, CheckCircle, AlertCircle, FileText, X, Loader2 } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, FileText, X } from "lucide-react"
 
 interface UploadPageBlock {
   id: string
@@ -176,7 +177,7 @@ export default function ClientUploadPage() {
   if (loading) {
     return (
       <div className="min-h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 text-blue-400 animate-spin" />
+        <Spinner size={28} />
       </div>
     )
   }
@@ -345,7 +346,7 @@ export default function ClientUploadPage() {
             >
               {uploading ? (
                 <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Spinner size={20} />
                   Uploading...
                 </>
               ) : (

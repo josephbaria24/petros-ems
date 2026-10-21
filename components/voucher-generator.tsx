@@ -2,6 +2,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -500,13 +501,13 @@ const { error } = await tmsDb.from("vouchers").insert([
               onClick={fetchVouchers}
               disabled={loadingVouchers}
             >
-              <RefreshCw className={`h-4 w-4 ${loadingVouchers ? 'animate-spin' : ''}`} />
+              {loadingVouchers ? <Spinner size={16} /> : <RefreshCw className="h-4 w-4" />}
             </Button>
           </CardHeader>
           <CardContent className="max-h-[400px] overflow-y-auto">
             {loadingVouchers ? (
               <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <Spinner size={28} />
               </div>
             ) : savedVouchers.length === 0 ? (
               <p className="text-center text-sm text-muted-foreground py-8">

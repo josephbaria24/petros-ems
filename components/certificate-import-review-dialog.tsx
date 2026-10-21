@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
   DialogContent,
@@ -37,7 +38,7 @@ import {
   updateImportPreviewRow,
   type ImportPreviewRow,
 } from "@/lib/certificate-import-preview"
-import { AlertTriangle, Loader2, Pencil, Search, Upload } from "lucide-react"
+import { AlertTriangle, Pencil, Search, Upload } from "lucide-react"
 
 type CertificateImportReviewDialogProps = {
   open: boolean
@@ -285,7 +286,7 @@ export function CertificateImportReviewDialog({
             </Button>
             <Button onClick={handleConfirmImport} disabled={isImporting || summary.ready === 0}>
               {isImporting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Spinner size={18} className="mr-2" />
               ) : (
                 <Upload className="mr-2 h-4 w-4" />
               )}

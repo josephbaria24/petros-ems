@@ -2,6 +2,7 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { format } from "date-fns"
 import { tmsDb } from "@/lib/supabase-client"
 import {
@@ -21,7 +22,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-import { Loader2, Calendar, MapPin, User, Users, Info } from "lucide-react"
+import { Calendar, MapPin, User, Users, Info } from "lucide-react"
 
 interface Trainee {
     id: string
@@ -145,7 +146,7 @@ export function ScheduleDetailDialog({
 
                 {loading ? (
                     <div className="flex flex-col items-center justify-center py-20 gap-3">
-                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                        <Spinner size={28} />
                         <p className="text-sm text-muted-foreground font-medium">Fetching details...</p>
                     </div>
                 ) : (

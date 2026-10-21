@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import {
@@ -16,7 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, Download, Search } from "lucide-react"
+import { Download, Search } from "lucide-react"
 import {
   exportPassersRoll,
   formatBatchLabelFromSchedule,
@@ -256,7 +257,7 @@ export function DownloadPassersDialog({
           <Button onClick={handleDownload} disabled={downloading || loading} className="gap-2">
             {downloading ? (
               <>
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Spinner size={18} />
                 Generating {progress.current}/{progress.total}...
               </>
             ) : (

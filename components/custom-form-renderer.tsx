@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -8,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
-import { User, Briefcase, Upload, CreditCard, ChevronRight, ChevronLeft, Loader2, CheckCircle2, Download, FileText } from "lucide-react"
+import { User, Briefcase, Upload, CreditCard, ChevronRight, ChevronLeft, CheckCircle2, Download, FileText } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 
@@ -426,7 +427,7 @@ export function CustomFormRenderer({
                     onClick={() => triggerUpload('govt_id')}
                     disabled={!!uploading}
                   >
-                    {uploading === 'govt_id' ? <Loader2 className="h-3 w-3 animate-spin" /> : formData.govt_id ? <CheckCircle2 className="h-3 w-3 text-emerald-500" /> : <Upload className="h-3 w-3" />}
+                    {uploading === 'govt_id' ? <Spinner size={14} /> : formData.govt_id ? <CheckCircle2 className="h-3 w-3 text-emerald-500" /> : <Upload className="h-3 w-3" />}
                     {formData.govt_id ? "Change ID" : "Browse ID"}
                   </Button>
                 </div>
@@ -447,7 +448,7 @@ export function CustomFormRenderer({
                     onClick={() => triggerUpload('photo')}
                     disabled={!!uploading}
                   >
-                    {uploading === 'photo' ? <Loader2 className="h-3 w-3 animate-spin" /> : formData.photo ? <CheckCircle2 className="h-3 w-3 text-emerald-500" /> : <Upload className="h-3 w-3" />}
+                    {uploading === 'photo' ? <Spinner size={14} /> : formData.photo ? <CheckCircle2 className="h-3 w-3 text-emerald-500" /> : <Upload className="h-3 w-3" />}
                     {formData.photo ? "Change Photo" : "Browse Photo"}
                   </Button>
                 </div>
@@ -463,7 +464,7 @@ export function CustomFormRenderer({
                     onClick={() => triggerUpload('prc_license')}
                     disabled={!!uploading}
                   >
-                    {uploading === 'prc_license' ? <Loader2 className="h-3 w-3 animate-spin" /> : formData.prc_license ? <CheckCircle2 className="h-3 w-3 text-emerald-500" /> : <Upload className="h-3 w-3" />}
+                    {uploading === 'prc_license' ? <Spinner size={14} /> : formData.prc_license ? <CheckCircle2 className="h-3 w-3 text-emerald-500" /> : <Upload className="h-3 w-3" />}
                     {formData.prc_license ? "Change License" : "Browse License"}
                   </Button>
                 </div>
@@ -479,7 +480,7 @@ export function CustomFormRenderer({
                     onClick={() => triggerUpload('signature')}
                     disabled={!!uploading}
                   >
-                    {uploading === 'signature' ? <Loader2 className="h-3 w-3 animate-spin" /> : formData.signature ? <CheckCircle2 className="h-3 w-3 text-emerald-500" /> : <Upload className="h-3 w-3" />}
+                    {uploading === 'signature' ? <Spinner size={14} /> : formData.signature ? <CheckCircle2 className="h-3 w-3 text-emerald-500" /> : <Upload className="h-3 w-3" />}
                     {formData.signature ? "Change Signature" : "Browse Signature"}
                   </Button>
                 </div>
@@ -697,7 +698,7 @@ export function CustomFormRenderer({
                 disabled={!!uploading}
               >
                 {uploading === comp.id ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Spinner size={14} />
                 ) : formData[comp.id] ? (
                   <CheckCircle2 className="h-3 w-3 text-emerald-500" />
                 ) : (

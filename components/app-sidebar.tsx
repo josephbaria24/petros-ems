@@ -317,7 +317,15 @@ export function AppSidebar({ variant = "desktop", onNavigate }: AppSidebarProps)
           {compact ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
         </button>
       ) : null}
-      <div className={cn("relative flex items-center px-3 pt-4 pb-3", compact ? "justify-center" : "gap-3")}>
+      <div
+        className={cn(
+          "relative flex items-center px-3 pb-3",
+          compact ? "justify-center" : "gap-3",
+          isMobile
+            ? "pt-[max(1.25rem,calc(env(safe-area-inset-top,0px)+0.75rem))]"
+            : "pt-4"
+        )}
+      >
         <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm ring-1 ring-black/5 dark:bg-white">
           <img src="/logo.png" alt="Petrosphere" className="h-7 w-7 object-contain" />
         </div>

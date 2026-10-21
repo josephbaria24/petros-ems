@@ -2,12 +2,13 @@
 "use client"
 
 import { useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { tmsDb } from "@/lib/supabase-client"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Search, Loader2, ExternalLink } from "lucide-react"
+import { Search, ExternalLink } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
@@ -163,7 +164,7 @@ const handleSearch = async () => {
               />
               <Button onClick={handleSearch} disabled={loading}>
                 {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Spinner size={18} />
                 ) : (
                   <Search className="h-4 w-4" />
                 )}

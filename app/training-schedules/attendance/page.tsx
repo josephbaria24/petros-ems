@@ -1,30 +1,12 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import * as XLSX from "xlsx"
 import { format, parseISO } from "date-fns"
-import {
-  ArrowLeft,
-  Loader2,
-  UserCheck,
-  Upload,
-  Download,
-  Video,
-  Users,
-  Calendar,
-  MapPin,
-  GraduationCap,
-  ChevronDown,
-  Search,
-  QrCode,
-  Link2,
-  Copy,
-  Check,
-  History,
-  Camera,
-} from "lucide-react"
+import { ArrowLeft, UserCheck, Upload, Download, Video, Users, Calendar, MapPin, GraduationCap, ChevronDown, Search, QrCode, Link2, Copy, Check, History, Camera } from "lucide-react"
 import QRCode from "qrcode"
 import { tmsDb } from "@/lib/supabase-client"
 import { Button } from "@/components/ui/button"
@@ -732,9 +714,9 @@ export default function ScheduleAttendancePage() {
 
   if (!scheduleId) {
     return (
-      <div className="space-y-4 p-6">
-        <p className="text-muted-foreground">Missing schedule. Open attendance from a schedule row.</p>
-        <Button asChild variant="outline">
+      <div className="page-shell space-y-3">
+        <p className="text-sm text-muted-foreground">Missing schedule. Open attendance from a schedule row.</p>
+        <Button asChild variant="outline" size="sm">
           <Link href="/training-schedules?tab=all">Back to schedules</Link>
         </Button>
       </div>
@@ -742,150 +724,172 @@ export default function ScheduleAttendancePage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-4 md:p-6">
-      <div className="overflow-hidden rounded-2xl border border-[#FFCC00]/40 bg-gradient-to-br from-[#1A1D66] via-[#24286f] to-[#141654] text-white shadow-md">
-        <div className="h-1.5 bg-[#FFCC00]" />
-        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
-          <div className="min-w-0 space-y-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mb-1 -ml-2 gap-1 text-white/75 hover:bg-white/10 hover:text-white"
-              asChild
-            >
-              <Link href={backHref}>
-                <ArrowLeft className="h-4 w-4" />
-                Schedules
-              </Link>
-            </Button>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">Attendance</h1>
-              <Badge className="gap-1 border-0 bg-[#FFCC00] text-[#1A1D66] hover:bg-[#FFCC00]">
+    <div className="page-shell mx-auto w-full min-w-0 max-w-6xl space-y-3 overflow-x-hidden sm:space-y-4 md:space-y-6">
+      <div className="w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-[#FFCC00]/40 bg-gradient-to-br from-[#1A1D66] via-[#24286f] to-[#141654] text-white shadow-md sm:rounded-xl lg:rounded-2xl">
+        <div className="h-0.5 bg-[#FFCC00] sm:h-1" />
+        <div className="flex w-full min-w-0 max-w-full flex-col gap-2.5 p-2.5 sm:gap-3 sm:p-4 lg:flex-row lg:items-start lg:justify-between lg:gap-4 lg:p-5">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleExcelImport}
+          />
+
+          {/* Left: title + course + check-in link */}
+          <div className="w-full min-w-0 max-w-full flex-1 space-y-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 shrink-0 gap-1 px-1.5 text-white/75 hover:bg-white/10 hover:text-white sm:h-8 sm:px-2"
+                asChild
+              >
+                <Link href={backHref}>
+                  <ArrowLeft className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline">Schedules</span>
+                </Link>
+              </Button>
+              <div className="mx-0.5 h-4 w-px shrink-0 bg-white/20 sm:hidden" aria-hidden />
+              <h1 className="min-w-0 truncate text-base font-bold tracking-tight text-white sm:text-xl lg:text-2xl">
+                Attendance
+              </h1>
+              <Badge className="h-5 shrink-0 gap-0.5 border-0 bg-[#FFCC00] px-1.5 text-[10px] text-[#1A1D66] hover:bg-[#FFCC00] sm:h-6 sm:text-xs">
                 <UserCheck className="h-3 w-3" />
-                Participants
+                <span className="sm:hidden">Pax</span>
+                <span className="hidden sm:inline">Participants</span>
               </Badge>
             </div>
-            <p className="max-w-2xl text-sm text-white/80 md:text-base">
-              <span className="font-semibold text-[#FFCC00]">{courseName || "Training"}</span>
-              {" — "}
-              mark attendance per training day, use quick actions, generate a QR for self check-in, or import Excel.
+
+            <p className="truncate text-[11px] font-medium text-[#FFCC00] sm:text-xs lg:text-sm">
+              {courseName || "Training"}
+              <span className="hidden text-white/75 xl:inline">
+                {" — "}
+                mark days, quick actions, QR check-in, or Excel import.
+              </span>
             </p>
-            {attendanceUrl && (
-              <div className="mt-3 flex max-w-2xl flex-col gap-2 rounded-xl border border-white/15 bg-white/10 p-3 backdrop-blur-sm sm:flex-row sm:items-center">
-                <div className="flex min-w-0 flex-1 items-start gap-2">
-                  <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-[#FFCC00]" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[#FFCC00]">Attendance link</p>
-                    <a
-                      href={attendanceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block truncate text-sm text-white underline-offset-2 hover:underline"
-                    >
-                      {attendanceUrl}
-                    </a>
-                  </div>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="border-white/25 bg-transparent text-white hover:bg-white/10 hover:text-white"
-                    onClick={() => void copyAttendanceLink()}
-                  >
-                    {copiedLink ? <Check className="mr-1.5 h-3.5 w-3.5" /> : <Copy className="mr-1.5 h-3.5 w-3.5" />}
-                    {copiedLink ? "Copied" : "Copy"}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="bg-[#FFCC00] text-[#1A1D66] hover:bg-[#e6b800]"
-                    asChild
-                  >
-                    <a href={attendanceUrl} target="_blank" rel="noreferrer">
-                      Open
-                    </a>
-                  </Button>
-                </div>
+
+            {attendanceUrl ? (
+              <div className="flex w-full min-w-0 max-w-full items-center gap-1 overflow-hidden rounded-md border border-white/15 bg-white/10 px-1.5 py-1 sm:gap-2 sm:px-2.5 sm:py-1.5">
+                <Link2 className="size-3.5 shrink-0 text-[#FFCC00] sm:size-4" />
+                <a
+                  href={attendanceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="min-w-0 flex-1 truncate text-[11px] text-white/90 underline-offset-2 hover:underline sm:text-xs lg:text-sm"
+                  title={attendanceUrl}
+                >
+                  <span className="sm:hidden">Guest check-in link</span>
+                  <span className="hidden sm:inline">{attendanceUrl}</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => void copyAttendanceLink()}
+                  aria-label={copiedLink ? "Copied" : "Copy link"}
+                  className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-[10px] font-medium text-white hover:bg-white/15 sm:h-8 sm:px-2 sm:text-xs"
+                >
+                  {copiedLink ? <Check className="size-3.5 text-[#FFCC00]" /> : <Copy className="size-3.5" />}
+                  <span className="hidden sm:inline">{copiedLink ? "Copied" : "Copy"}</span>
+                </button>
+                <a
+                  href={attendanceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open link"
+                  className="inline-flex h-7 shrink-0 items-center rounded-md bg-[#FFCC00] px-2 text-[10px] font-semibold text-[#1A1D66] hover:bg-[#e6b800] sm:h-8 sm:px-2.5 sm:text-xs"
+                >
+                  Open
+                </a>
               </div>
-            )}
+            ) : null}
           </div>
-          <div className="flex flex-wrap gap-2 sm:justify-end">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="hidden"
-              onChange={handleExcelImport}
-            />
-            <Button
-              className="gap-2 bg-[#FFCC00] text-[#1A1D66] hover:bg-[#e6b800]"
+
+          {/* Actions share the card width on small screens so none are clipped */}
+          <div className="grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] gap-1.5 sm:gap-2 lg:flex lg:w-auto lg:max-w-none lg:shrink-0 lg:flex-wrap lg:justify-end">
+            <button
+              type="button"
               onClick={() => void downloadAttendanceQr()}
-              disabled={generatingQr || loading}
+              disabled={generatingQr || loading || !attendanceUrl}
+              className="inline-flex h-9 w-full min-w-0 items-center justify-center gap-1 rounded-md bg-[#FFCC00] px-1.5 text-[11px] font-semibold text-[#1A1D66] hover:bg-[#e6b800] disabled:opacity-50 sm:h-9 sm:gap-1.5 sm:px-2 sm:text-xs lg:w-auto lg:px-3 lg:text-sm"
             >
-              {generatingQr ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
-              Generate attendance QR
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2 border-white/30 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+              {generatingQr ? <Spinner size={14} /> : <QrCode className="size-3.5 shrink-0 sm:size-4" />}
+              <span className="min-w-0 truncate">
+                <span className="sm:hidden">QR</span>
+                <span className="hidden sm:inline lg:hidden">QR code</span>
+                <span className="hidden lg:inline">Generate QR</span>
+              </span>
+            </button>
+            <button
+              type="button"
               onClick={() => fileRef.current?.click()}
+              className="inline-flex h-9 w-full min-w-0 items-center justify-center gap-1 rounded-md border border-white/30 bg-white/10 px-1.5 text-[11px] font-medium text-white hover:bg-white/15 sm:gap-1.5 sm:px-2 sm:text-xs lg:w-auto lg:px-3 lg:text-sm"
             >
-              <Upload className="h-4 w-4" />
-              Import Excel
-            </Button>
-            <Button
-              variant="outline"
-              className="gap-2 border-white/30 bg-white/5 text-white hover:bg-white/10 hover:text-white"
+              <Upload className="size-3.5 shrink-0 sm:size-4" />
+              <span className="min-w-0 truncate">
+                <span className="lg:hidden">Import</span>
+                <span className="hidden lg:inline">Import Excel</span>
+              </span>
+            </button>
+            <button
+              type="button"
               onClick={downloadTemplate}
               disabled={!rows.length}
+              className="inline-flex h-9 w-full min-w-0 items-center justify-center gap-1 rounded-md border border-white/30 bg-white/10 px-1.5 text-[11px] font-medium text-white hover:bg-white/15 disabled:opacity-40 sm:gap-1.5 sm:px-2 sm:text-xs lg:w-auto lg:px-3 lg:text-sm"
             >
-              <Download className="h-4 w-4" />
-              Download template
-            </Button>
+              <Download className="size-3.5 shrink-0 sm:size-4" />
+              <span className="min-w-0 truncate">
+                <span className="lg:hidden">Template</span>
+                <span className="hidden lg:inline">Download template</span>
+              </span>
+            </button>
           </div>
         </div>
       </div>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted-foreground">
-          <Loader2 className="h-10 w-10 animate-spin" />
+        <div className="flex flex-col items-center justify-center gap-3 py-16 text-muted-foreground sm:py-24">
+          <Spinner size={36} />
           <p className="text-sm font-medium">Loading schedule and participants…</p>
         </div>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card className="border-border/80 shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
+          <div className="grid w-full min-w-0 max-w-full gap-3 md:grid-cols-2 md:gap-4">
+            <Card className="w-full min-w-0 max-w-full gap-0 border-border/80 py-0 shadow-sm">
+              <CardHeader className="px-3 py-3 pb-2 sm:px-6 sm:pt-6">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
                   <GraduationCap className="h-4 w-4 text-primary" />
                   Session details
                 </CardTitle>
-                <CardDescription>Context for this run of the course</CardDescription>
+                <CardDescription className="text-xs sm:text-sm">
+                  Context for this run of the course
+                </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-3 text-sm">
-                <div className="flex flex-wrap gap-2">
+              <CardContent className="grid gap-2.5 px-3 pb-3 text-sm sm:gap-3 sm:px-6 sm:pb-6">
+                <div className="flex flex-wrap gap-1.5">
                   {scheduleMeta?.status && (
-                    <Badge className="capitalize">{scheduleMeta.status}</Badge>
+                    <Badge className="h-5 capitalize px-1.5 text-[10px] sm:h-6 sm:text-xs">
+                      {scheduleMeta.status}
+                    </Badge>
                   )}
-                  <Badge variant="secondary" className="capitalize">
+                  <Badge variant="secondary" className="h-5 capitalize px-1.5 text-[10px] sm:h-6 sm:text-xs">
                     {scheduleMeta?.event_type?.replace(/-/g, " ") || "—"}
                   </Badge>
                   {scheduleMeta?.batch_number != null && (
-                    <Badge variant="outline">Batch #{scheduleMeta.batch_number}</Badge>
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] sm:h-6 sm:text-xs">
+                      Batch #{scheduleMeta.batch_number}
+                    </Badge>
                   )}
                 </div>
-                <div className="flex items-start gap-2 text-card-foreground">
-                  <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="flex items-start gap-2 text-xs text-card-foreground sm:text-sm">
+                  <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground sm:h-4 sm:w-4" />
                   <span>{scheduleLabel}</span>
                 </div>
-                <div className="flex items-start gap-2 text-card-foreground">
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="flex items-start gap-2 text-xs text-card-foreground sm:text-sm">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground sm:h-4 sm:w-4" />
                   <span>{scheduleMeta?.branch || "—"}</span>
                 </div>
-                <div className="flex items-start gap-2 text-card-foreground">
-                  <Users className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="flex items-start gap-2 text-xs text-card-foreground sm:text-sm">
+                  <Users className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground sm:h-4 sm:w-4" />
                   <span>
                     {scheduleMeta?.day_trainers && Object.keys(scheduleMeta.day_trainers).length > 0 ? (
                       <span className="space-y-1">
@@ -906,14 +910,15 @@ export default function ScheduleAttendancePage() {
                   </span>
                 </div>
                 {trainingDayKeys.length > 0 && (
-                  <div className="border-t pt-3">
-                    <h4 className="text-muted-foreground mb-2 text-xs font-semibold uppercase tracking-wide">
-                      Attendance days ({trainingDayKeys.length})
+                  <div className="border-t pt-2.5 sm:pt-3">
+                    <h4 className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground sm:mb-2 sm:text-xs">
+                      Days ({trainingDayKeys.length})
                     </h4>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1 sm:gap-1.5">
                       {trainingDayKeys.map((dk) => (
-                        <Badge key={dk} variant="secondary" className="font-normal">
-                          {format(parseISO(dk), "EEE MMM d, yyyy")}
+                        <Badge key={dk} variant="secondary" className="h-5 px-1.5 text-[10px] font-normal sm:h-6 sm:text-xs">
+                          <span className="sm:hidden">{format(parseISO(dk), "EEE M/d")}</span>
+                          <span className="hidden sm:inline">{format(parseISO(dk), "EEE MMM d, yyyy")}</span>
                         </Badge>
                       ))}
                     </div>
@@ -922,41 +927,46 @@ export default function ScheduleAttendancePage() {
               </CardContent>
             </Card>
 
-            <Card className="border-border/80 shadow-sm">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
+            <Card className="w-full min-w-0 max-w-full gap-0 border-border/80 py-0 shadow-sm">
+              <CardHeader className="px-3 py-3 pb-2 sm:px-6 sm:pt-6">
+                <CardTitle className="flex items-center gap-2 text-sm sm:text-base">
                   <Video className="h-4 w-4 text-primary" />
                   Online classroom
                 </CardTitle>
-                <CardDescription>Saved for this schedule, or from payment records</CardDescription>
+                <CardDescription className="text-xs sm:text-sm">
+                  Saved for this schedule, or from payment records
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm">
+              <CardContent className="space-y-2.5 px-3 pb-3 text-sm sm:space-y-3 sm:px-6 sm:pb-6">
                 {meetingUrl ? (
                   <>
-                    <Badge variant="outline">{meetingProvider}</Badge>
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] sm:h-6 sm:text-xs">
+                      {meetingProvider}
+                    </Badge>
                     <a
                       href={meetingUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block break-all text-primary underline-offset-4 hover:underline"
+                      className="block break-all text-xs text-primary underline-offset-4 hover:underline sm:text-sm"
                     >
                       {meetingUrl}
                     </a>
-                    <p className="text-muted-foreground text-xs leading-relaxed">
+                    <p className="hidden text-xs leading-relaxed text-muted-foreground sm:block">
                       {meetingProvider === "Microsoft Teams"
                         ? "After the Teams meeting ends, open details to see who joined and how long they stayed. TMS attendance is not changed."
                         : "Links are typically set from the Submissions page when you email the online classroom URL to trainees. Use a Zoom attendance report, align columns with the import template, then import here."}
                     </p>
                   </>
                 ) : (
-                  <p className="text-muted-foreground">
+                  <p className="text-xs text-muted-foreground sm:text-sm">
                     No meeting URL saved yet. Open details, paste a Teams join URL, then Save link.
                   </p>
                 )}
                 <Button
                   type="button"
                   variant="outline"
-                  className="gap-2"
+                  size="sm"
+                  className="h-8 w-full gap-2 sm:w-auto"
                   onClick={() => setTeamsDetailsOpen(true)}
                   disabled={loading || !scheduleId}
                 >
@@ -971,40 +981,55 @@ export default function ScheduleAttendancePage() {
             <WorkshopSection scheduleId={scheduleId} courseName={courseName} />
           ) : null}
 
-          <Card className="border-border/80 shadow-sm">
-            <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <CardTitle className="text-base">Summary</CardTitle>
-                <CardDescription>
+          <Card className="w-full min-w-0 max-w-full gap-0 border-border/80 py-0 shadow-sm">
+            <CardHeader className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6 sm:py-4">
+              <div className="min-w-0">
+                <CardTitle className="text-sm sm:text-base">Summary</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">
                   {trainingDayKeys.length > 0
-                    ? "Counts are per participant per training day (session slots)."
-                    : "Live counts from saved attendance flags (whole schedule)."}
+                    ? "Counts are per participant per training day."
+                    : "Live counts from saved attendance flags."}
                 </CardDescription>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge className={STATUS_BADGE.present}>{counts.present} present</Badge>
-                <Badge className={STATUS_BADGE.absent}>{counts.absent} absent</Badge>
-                <Badge className={STATUS_BADGE.late}>{counts.late} late</Badge>
-                <Badge className={STATUS_BADGE.unmarked}>{counts.unmarked} unmarked</Badge>
-                <Badge variant="outline">{counts.total} slots</Badge>
-                <Badge variant="outline">{rows.length} participants</Badge>
+              <div className="flex min-w-0 flex-wrap gap-1 sm:gap-2">
+                <Badge className={cn("h-5 px-1.5 text-[10px] sm:h-6 sm:text-xs", STATUS_BADGE.present)}>
+                  {counts.present} present
+                </Badge>
+                <Badge className={cn("h-5 px-1.5 text-[10px] sm:h-6 sm:text-xs", STATUS_BADGE.absent)}>
+                  {counts.absent} absent
+                </Badge>
+                <Badge className={cn("h-5 px-1.5 text-[10px] sm:h-6 sm:text-xs", STATUS_BADGE.late)}>
+                  {counts.late} late
+                </Badge>
+                <Badge className={cn("h-5 px-1.5 text-[10px] sm:h-6 sm:text-xs", STATUS_BADGE.unmarked)}>
+                  {counts.unmarked} unmarked
+                </Badge>
+                <Badge variant="outline" className="h-5 px-1.5 text-[10px] sm:h-6 sm:text-xs">
+                  {counts.total} slots
+                </Badge>
+                <Badge variant="outline" className="h-5 px-1.5 text-[10px] sm:h-6 sm:text-xs">
+                  {rows.length} pax
+                </Badge>
               </div>
             </CardHeader>
           </Card>
 
-          <Card className="overflow-hidden border-border/80 shadow-sm">
-            <CardHeader className="border-b bg-muted/30">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <CardTitle className="text-base">Participants</CardTitle>
-                  <CardDescription>
-                    Select rows, then use Quick action to set{" "}
-                    {trainingDayKeys.length > 0 ? "all training days at once for" : "attendance for"}{" "}
-                    those participants only.
+          <Card className="w-full min-w-0 max-w-full gap-0 overflow-hidden border-border/80 py-0 shadow-sm">
+            <CardHeader className="border-b bg-muted/30 px-3 py-3 sm:px-6 sm:py-4">
+              <div className="flex flex-col gap-2 sm:gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <CardTitle className="text-sm sm:text-base">Participants</CardTitle>
+                  <CardDescription className="text-xs sm:text-sm">
+                    <span className="sm:hidden">Select rows, then Quick action.</span>
+                    <span className="hidden sm:inline">
+                      Select rows, then use Quick action to set{" "}
+                      {trainingDayKeys.length > 0 ? "all training days at once for" : "attendance for"}{" "}
+                      those participants only.
+                    </span>
                   </CardDescription>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  <span className="text-muted-foreground text-xs whitespace-nowrap">
+                <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-end">
+                  <span className="whitespace-nowrap text-xs text-muted-foreground">
                     {selected.size} selected
                   </span>
                   <DropdownMenu>
@@ -1013,11 +1038,11 @@ export default function ScheduleAttendancePage() {
                       size="sm"
                       variant="secondary"
                       disabled={applyingQuickAction || rows.length === 0 || selected.size === 0}
-                      className="gap-2 shrink-0"
+                      className="h-8 shrink-0 gap-1.5 px-2.5"
                     >
                       {applyingQuickAction ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Spinner size={16} />
                           Applying…
                         </>
                       ) : (
@@ -1067,32 +1092,32 @@ export default function ScheduleAttendancePage() {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="border-b bg-muted/20 px-4 py-3">
+              <div className="border-b bg-muted/20 px-3 py-2.5 sm:px-4 sm:py-3">
                 <div className="relative max-w-md">
                   <Search
-                    className="text-muted-foreground pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2"
+                    className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground sm:left-3"
                     aria-hidden
                   />
                   <Input
                     type="search"
-                    placeholder="Search by name, email, company, or ID…"
+                    placeholder="Search name, email, company…"
                     value={participantSearch}
                     onChange={(e) => setParticipantSearch(e.target.value)}
-                    className="bg-background border-border/80 pl-9 shadow-sm"
+                    className="h-9 border-border/80 bg-background pl-8 text-sm shadow-sm sm:pl-9"
                     aria-label="Search participants"
                   />
                 </div>
                 {participantSearch.trim() && rows.length > 0 && (
-                  <p className="text-muted-foreground mt-2 text-xs">
+                  <p className="mt-1.5 text-xs text-muted-foreground sm:mt-2">
                     Showing {filteredRows.length} of {rows.length}
                   </p>
                 )}
               </div>
-              <div className="max-h-[min(560px,70vh)] overflow-x-auto overflow-y-auto">
+              <div className="table-scroll w-0 min-w-full max-w-full max-h-[min(520px,65vh)] overflow-x-auto overflow-y-auto sm:max-h-[min(560px,70vh)]">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/50 hover:bg-muted/50">
-                      <TableHead className="sticky left-0 z-10 w-10 bg-muted/95 pl-4 backdrop-blur-sm">
+                      <TableHead className="sticky left-0 z-10 w-9 bg-muted/95 pl-2 backdrop-blur-sm sm:w-10 sm:pl-4">
                         <Checkbox
                           className={attendanceCheckboxClassName}
                           checked={headerCheckboxChecked}
@@ -1101,50 +1126,50 @@ export default function ScheduleAttendancePage() {
                           aria-label="Select all visible participants"
                         />
                       </TableHead>
-                      <TableHead className="sticky left-10 z-10 min-w-[140px] bg-muted/95 backdrop-blur-sm">
+                      <TableHead className="sticky left-9 z-10 min-w-[120px] bg-muted/95 text-xs backdrop-blur-sm sm:left-10 sm:min-w-[140px] sm:text-sm">
                         Participant
                       </TableHead>
                       <TableHead className="hidden min-w-[160px] md:table-cell">Email</TableHead>
                       <TableHead className="hidden min-w-[120px] lg:table-cell">Company</TableHead>
-                      <TableHead className="w-[88px] text-center">History</TableHead>
+                      <TableHead className="w-[72px] text-center text-xs sm:w-[88px] sm:text-sm">Hist.</TableHead>
                       {trainingDayKeys.length > 0 ? (
                         trainingDayKeys.map((dk) => {
                           const count = snapshotCounts[dk] || 0
                           return (
                             <TableHead
                               key={dk}
-                              className="min-w-[112px] whitespace-nowrap px-1 text-center align-bottom text-xs font-semibold"
+                              className="min-w-[96px] whitespace-nowrap px-0.5 text-center align-bottom text-[10px] font-semibold sm:min-w-[112px] sm:px-1 sm:text-xs"
                               title={format(parseISO(dk), "EEEE, MMMM d, yyyy")}
                             >
                               <div className="text-muted-foreground">{format(parseISO(dk), "EEE")}</div>
-                              <div>{format(parseISO(dk), "MMM d")}</div>
+                              <div>{format(parseISO(dk), "M/d")}</div>
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                className="mt-1 h-7 w-full gap-1 px-1 text-[10px] font-medium text-[#1A1D66] hover:bg-[#1A1D66]/10 dark:text-[#FFCC00] dark:hover:bg-white/10"
+                                className="mt-0.5 h-6 w-full gap-0.5 px-0.5 text-[9px] font-medium text-[#1A1D66] hover:bg-[#1A1D66]/10 sm:mt-1 sm:h-7 sm:gap-1 sm:px-1 sm:text-[10px] dark:text-[#FFCC00] dark:hover:bg-white/10"
                                 onClick={() => setSnapshotsDay(dk)}
                                 title={`Photos for ${format(parseISO(dk), "EEEE, MMMM d, yyyy")}`}
                               >
-                                <Camera className="h-3.5 w-3.5" />
-                                {count > 0 ? count : "Photos"}
+                                <Camera className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                                {count > 0 ? count : "Pic"}
                               </Button>
                             </TableHead>
                           )
                         })
                       ) : (
-                        <TableHead className="w-[160px]">
+                        <TableHead className="w-[120px] text-xs sm:w-[160px] sm:text-sm">
                           Attendance
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="mt-1 h-7 gap-1 px-1 text-[10px] font-medium text-[#1A1D66] hover:bg-[#1A1D66]/10 dark:text-[#FFCC00]"
+                            className="mt-0.5 h-6 gap-0.5 px-0.5 text-[9px] font-medium text-[#1A1D66] hover:bg-[#1A1D66]/10 sm:mt-1 sm:h-7 sm:gap-1 sm:px-1 sm:text-[10px] dark:text-[#FFCC00]"
                             onClick={() => setSnapshotsDay("all")}
                             title="Photos for this schedule"
                           >
-                            <Camera className="h-3.5 w-3.5" />
-                            {(snapshotCounts.all || 0) > 0 ? snapshotCounts.all : "Photos"}
+                            <Camera className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                            {(snapshotCounts.all || 0) > 0 ? snapshotCounts.all : "Pic"}
                           </Button>
                         </TableHead>
                       )}
@@ -1174,7 +1199,7 @@ export default function ScheduleAttendancePage() {
                         const busy = savingIds.has(r.id)
                         return (
                           <TableRow key={r.id} className="group">
-                            <TableCell className="sticky left-0 z-[1] bg-background pl-4 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)]">
+                            <TableCell className="sticky left-0 z-[1] bg-background pl-2 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)] sm:pl-4">
                               <Checkbox
                                 className={attendanceCheckboxClassName}
                                 checked={selected.has(r.id)}
@@ -1182,11 +1207,11 @@ export default function ScheduleAttendancePage() {
                                 aria-label={`Select ${r.first_name} ${r.last_name}`}
                               />
                             </TableCell>
-                            <TableCell className="sticky left-10 z-[1] min-w-[140px] bg-background shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)]">
-                              <div className="font-medium">
+                            <TableCell className="sticky left-9 z-[1] min-w-[120px] bg-background shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)] sm:left-10 sm:min-w-[140px]">
+                              <div className="text-xs font-medium sm:text-sm">
                                 {r.last_name}, {r.first_name}
                               </div>
-                              <div className="text-muted-foreground mt-0.5 font-mono text-[10px] md:hidden">
+                              <div className="mt-0.5 truncate font-mono text-[10px] text-muted-foreground md:hidden">
                                 {r.email || "—"}
                               </div>
                               {trainingDayKeys.length === 0 ? (
@@ -1213,7 +1238,7 @@ export default function ScheduleAttendancePage() {
                             <TableCell className="text-muted-foreground hidden max-w-[160px] truncate text-sm lg:table-cell">
                               {r.company_name || "—"}
                             </TableCell>
-                            <TableCell className="p-1 text-center align-middle">
+                            <TableCell className="p-0.5 text-center align-middle sm:p-1">
                               {(() => {
                                 const log = getAttendanceLog(r.custom_data)
                                 return (
@@ -1223,15 +1248,15 @@ export default function ScheduleAttendancePage() {
                                         type="button"
                                         size="sm"
                                         variant="outline"
-                                        className="h-8 gap-1 px-2 text-xs"
+                                        className="h-7 gap-0.5 px-1.5 text-[10px] sm:h-8 sm:gap-1 sm:px-2 sm:text-xs"
                                         disabled={log.length === 0}
                                         title={log.length ? "View attendance history" : "No history yet"}
                                       >
-                                        <History className="h-3.5 w-3.5" />
+                                        <History className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                                         {log.length || "—"}
                                       </Button>
                                     </PopoverTrigger>
-                                    <PopoverContent align="end" className="w-80 p-0">
+                                    <PopoverContent align="end" className="w-[min(20rem,calc(100vw-2rem))] p-0">
                                       <div className="border-b px-3 py-2">
                                         <p className="text-sm font-semibold">Attendance history</p>
                                         <p className="text-muted-foreground text-xs">
@@ -1280,7 +1305,7 @@ export default function ScheduleAttendancePage() {
                                   <TableCell key={dk} className="p-1 align-middle">
                                     <div className="flex items-center justify-center gap-0.5">
                                       {busy && (
-                                        <Loader2 className="text-muted-foreground h-3 w-3 shrink-0 animate-spin" />
+                                        <Spinner size={14} className="shrink-0" />
                                       )}
                                       <Select
                                         value={stDay}
@@ -1324,7 +1349,7 @@ export default function ScheduleAttendancePage() {
                                   const st = getAttendanceFromCustomData(r.custom_data)
                                   return (
                                     <div className="flex items-center gap-2">
-                                      {busy && <Loader2 className="h-4 w-4 shrink-0 animate-spin" />}
+                                      {busy && <Spinner size={18} className="shrink-0" />}
                                       <Select
                                         value={st}
                                         onValueChange={(v) =>

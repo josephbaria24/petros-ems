@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -192,7 +193,7 @@ export default function AdminEmailStatusPage() {
 
       {loading ? (
         <div className="flex items-center gap-3 py-16 text-sm text-muted-foreground">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <Spinner size={28} />
           Loading email statuses…
         </div>
       ) : error ? (

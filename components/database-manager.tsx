@@ -5,6 +5,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { Spinner } from "@/components/ui/spinner"
 import { Database, RefreshCw, Trash2, Download } from "lucide-react"
 
 export default function DatabaseManager() {
@@ -142,7 +143,7 @@ export default function DatabaseManager() {
             variant="outline"
             className="w-full"
           >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+            {loading ? <Spinner size={16} className="mr-2" /> : <RefreshCw className="mr-2 h-4 w-4" />}
             Refresh Stats
           </Button>
 

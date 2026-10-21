@@ -2,6 +2,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useParams, useRouter } from "next/navigation"
 import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
@@ -37,21 +38,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
-import {
-  ArrowLeft,
-  Upload,
-  Loader2,
-  Eye,
-  Copy,
-  Trash2,
-  FileText,
-  Lock,
-  BookOpen,
-  Plus,
-  ExternalLink,
-  Check,
-  Pencil,
-} from "lucide-react"
+import { ArrowLeft, Upload, Eye, Copy, Trash2, FileText, Lock, BookOpen, Plus, ExternalLink, Check, Pencil } from "lucide-react"
 import Link from "next/link"
 
 type Material = {
@@ -359,7 +346,7 @@ export default function CourseMaterialsPage() {
             {loading ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-12">
-                  <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-muted-foreground" />
+                  <Spinner size={24} className="mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground">Loading materials...</p>
                 </TableCell>
               </TableRow>
@@ -570,7 +557,7 @@ export default function CourseMaterialsPage() {
             <Button onClick={handleUpload} disabled={uploading} className="cursor-pointer">
               {uploading ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner size={18} className="mr-2" />
                   Uploading...
                 </>
               ) : (
@@ -630,7 +617,7 @@ export default function CourseMaterialsPage() {
             <Button onClick={handleUpdate} disabled={updating} className="cursor-pointer">
               {updating ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner size={18} className="mr-2" />
                   Updating...
                 </>
               ) : (
@@ -659,7 +646,7 @@ export default function CourseMaterialsPage() {
             >
               {deleting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner size={18} className="mr-2" />
                   Deleting...
                 </>
               ) : (

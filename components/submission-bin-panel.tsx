@@ -1,19 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { format, parseISO } from "date-fns"
-import {
-  Check,
-  Copy,
-  ExternalLink,
-  Eye,
-  FileText,
-  Inbox,
-  Loader2,
-  QrCode,
-  RefreshCw,
-  Trash2,
-} from "lucide-react"
+import { Check, Copy, ExternalLink, Eye, FileText, Inbox, QrCode, RefreshCw, Trash2 } from "lucide-react"
 import QRCode from "qrcode"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -161,7 +151,7 @@ export function SubmissionBinPanel({ scheduleId, courseName, onCountChange }: Su
             {items.length} file{items.length === 1 ? "" : "s"}
           </Badge>
           <Button size="sm" variant="outline" className="gap-1.5" onClick={() => void load()} disabled={loading}>
-            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {loading ? <Spinner size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
             Refresh
           </Button>
         </div>
@@ -192,7 +182,7 @@ export function SubmissionBinPanel({ scheduleId, courseName, onCountChange }: Su
                 {copied ? "Copied" : "Copy"}
               </Button>
               <Button size="sm" variant="outline" className="gap-1.5" disabled={qrBusy} onClick={() => void downloadQr()}>
-                {qrBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <QrCode className="h-3.5 w-3.5" />}
+                {qrBusy ? <Spinner size={14} /> : <QrCode className="h-3.5 w-3.5" />}
                 QR
               </Button>
             </div>
@@ -201,7 +191,7 @@ export function SubmissionBinPanel({ scheduleId, courseName, onCountChange }: Su
           <div className="min-w-0">
             {loading ? (
               <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground">
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Spinner size={20} />
                 Loading submissions…
               </div>
             ) : items.length === 0 ? (
@@ -265,7 +255,7 @@ export function SubmissionBinPanel({ scheduleId, courseName, onCountChange }: Su
                               title="Remove"
                             >
                               {deletingId === item.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <Spinner size={18} />
                               ) : (
                                 <Trash2 className="h-4 w-4" />
                               )}

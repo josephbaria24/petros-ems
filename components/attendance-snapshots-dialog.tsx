@@ -1,14 +1,8 @@
 "use client"
 
 import * as React from "react"
-import {
-  Camera,
-  Download,
-  Loader2,
-  Pencil,
-  Trash2,
-  Upload,
-} from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
+import { Camera, Download, Pencil, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -270,7 +264,7 @@ export function AttendanceSnapshotsDialog({
                 disabled={uploading}
                 onClick={() => fileRef.current?.click()}
               >
-                {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                {uploading ? <Spinner size={14} /> : <Upload className="h-3.5 w-3.5" />}
                 Upload photos
               </Button>
             </div>
@@ -279,7 +273,7 @@ export function AttendanceSnapshotsDialog({
           <div className="min-h-0 flex-1 overflow-y-auto p-5">
             {loading ? (
               <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <Spinner size={20} />
                 Loading snapshots…
               </div>
             ) : snapshots.length === 0 ? (
@@ -327,7 +321,7 @@ export function AttendanceSnapshotsDialog({
                           onClick={() => void downloadSnapshot(item)}
                         >
                           {busyId === item.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <Spinner size={14} />
                           ) : (
                             <Download className="h-3 w-3" />
                           )}

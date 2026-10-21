@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -29,21 +30,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import {
-    Search,
-    Plus,
-    Pencil,
-    Trash2,
-    RefreshCcw,
-    ExternalLink,
-    ChevronLeft,
-    ChevronRight,
-    Clock,
-    Filter,
-    ArrowUpDown,
-    ArrowUp,
-    ArrowDown,
-} from "lucide-react"
+import { Search, Plus, Pencil, Trash2, RefreshCcw, ExternalLink, ChevronLeft, ChevronRight, Clock, Filter, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { tmsDb } from "@/lib/supabase-client"
 import { createClient } from "@/lib/supabase-client"
 import { toast } from "sonner"
@@ -572,7 +559,7 @@ export default function AdminCertificateVerifierPage() {
                         Logs
                     </Button>
                     <Button variant="outline" size="sm" onClick={handleSyncTrainings} disabled={isSyncing}>
-                        <RefreshCcw className={`w-4 h-4 mr-2 ${isSyncing ? "animate-spin" : ""}`} />
+                        {isSyncing ? <Spinner size={16} className="mr-2" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
                         {isSyncing ? "Syncing..." : "Sync Trainings"}
                     </Button>
                     <Button variant="outline" size="sm" asChild>
@@ -735,7 +722,7 @@ export default function AdminCertificateVerifierPage() {
                                         <TableRow>
                                             <TableCell colSpan={9} className="h-32 text-center">
                                                 <div className="flex items-center justify-center gap-2">
-                                                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                                                    <Spinner size={28} />
                                                     Loading...
                                                 </div>
                                             </TableCell>

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
 import {
@@ -27,29 +28,7 @@ import {
     TabsList,
     TabsTrigger,
 } from "@/components/ui/tabs"
-import {
-    ClipboardList,
-    Plus,
-    PlusCircle,
-    X,
-    Save,
-    Link,
-    BarChart3,
-    Loader2,
-    Trash2,
-    Settings2,
-    Edit2,
-    Eye,
-    Calendar,
-    GripVertical,
-    UserCircle,
-    BookOpen,
-    Star,
-    MessageSquare,
-    CircleDot,
-    Type,
-    Hash,
-} from "lucide-react"
+import { ClipboardList, Plus, PlusCircle, X, Save, Link, BarChart3, Trash2, Settings2, Edit2, Eye, Calendar, GripVertical, UserCircle, BookOpen, Star, MessageSquare, CircleDot, Type, Hash } from "lucide-react"
 import { format } from "date-fns"
 import {
     BarChart,
@@ -773,7 +752,7 @@ export function EvaluationDialog({
             <DialogFooter className="p-5 border-t bg-muted/10">
                 <Button variant="outline" onClick={() => onOpenChange(false)} className="rounded-lg">Cancel</Button>
                 <Button onClick={handleSaveBuilder} disabled={loading} className="gap-2 rounded-lg">
-                    {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {loading && <Spinner size={18} />}
                     <Save className="h-4 w-4" /> Save Evaluation
                 </Button>
             </DialogFooter>
@@ -1172,7 +1151,7 @@ export function EvaluationDialog({
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsSaveTemplateOpen(false)}>Cancel</Button>
                         <Button onClick={handleSaveTemplate} disabled={loading}>
-                            {loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                            {loading && <Spinner size={18} className="mr-2" />}
                             Save Template
                         </Button>
                     </DialogFooter>
@@ -1387,7 +1366,7 @@ export function ScheduleEvaluationsDialog({
                             <TabsContent value="training" className="mt-4">
                                 {loading ? (
                                     <div className="flex flex-col items-center justify-center py-10 gap-2">
-                                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                        <Spinner size={28} />
                                         <p className="text-xs text-muted-foreground">Loading evaluations...</p>
                                     </div>
                                 ) : evaluations.length === 0 ? (
@@ -1409,7 +1388,7 @@ export function ScheduleEvaluationsDialog({
                             <TabsContent value="trainer" className="mt-4">
                                 {loading ? (
                                     <div className="flex flex-col items-center justify-center py-10 gap-2">
-                                        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                        <Spinner size={28} />
                                         <p className="text-xs text-muted-foreground">Loading evaluations...</p>
                                     </div>
                                 ) : scheduleTrainers.length === 0 ? (

@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useCallback, useEffect, useRef, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
   DialogContent,
@@ -12,17 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Input } from "@/components/ui/input"
-import {
-  Loader2,
-  Paintbrush,
-  Eraser,
-  Pipette,
-  PaintBucket,
-  Undo2,
-  Redo2,
-  RotateCcw,
-  Save,
-} from "lucide-react"
+import { Paintbrush, Eraser, Pipette, PaintBucket, Undo2, Redo2, RotateCcw, Save } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export type PaintTool = "paint" | "erase" | "soft-erase" | "eyedropper" | "fill"
@@ -587,7 +578,7 @@ export function ImagePaintDialog({
         >
           {loading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
-              <Loader2 className="h-6 w-6 animate-spin" />
+              <Spinner size={24} />
             </div>
           )}
           {loadError && (
@@ -666,7 +657,7 @@ export function ImagePaintDialog({
           </Button>
           <Button type="button" onClick={() => void handleSave()} disabled={saving || loading || !!loadError}>
             {saving ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Spinner size={18} className="mr-2" />
             ) : (
               <Save className="h-4 w-4 mr-2" />
             )}

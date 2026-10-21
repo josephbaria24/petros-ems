@@ -597,7 +597,7 @@ export function PendingCertPrompt() {
           e.preventDefault()
         }}
         aria-label={`Pending certificate reminders: ${totalPeople} still need cert & ID. Drag to a corner, click to open.`}
-        className={`fixed bottom-5 right-5 z-[80] flex touch-none select-none items-center justify-center rounded-full border border-amber-500 bg-amber-400 text-amber-950 shadow-md shadow-amber-500/30 ring-1 ring-amber-300/70 hover:bg-amber-300 h-12 w-12 p-0 sm:h-auto sm:w-auto sm:max-w-[12rem] sm:justify-start sm:gap-1.5 sm:px-2 sm:py-1 sm:text-left ${
+        className={`fixed bottom-[max(1.25rem,env(safe-area-inset-bottom,0px))] right-[max(1.25rem,env(safe-area-inset-right,0px))] z-[80] flex touch-none select-none items-center justify-center rounded-full border border-amber-500 bg-amber-400 text-amber-950 shadow-md shadow-amber-500/30 ring-1 ring-amber-300/70 hover:bg-amber-300 h-12 w-12 p-0 sm:h-auto sm:w-auto sm:max-w-[12rem] sm:justify-start sm:gap-1.5 sm:px-2 sm:py-1 sm:text-left ${
           chipPos ? "" : "invisible"
         } ${
           draggingChip

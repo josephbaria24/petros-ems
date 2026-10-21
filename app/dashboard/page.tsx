@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   ChartContainer,
@@ -36,9 +37,7 @@ import {
 import { CourseDetailsModal } from "@/components/modals/course-details-modal"
 import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
-import {
-  Users, BookOpen, Calendar, TrendingUp, Loader2, Pencil,
-} from "lucide-react"
+import { Users, BookOpen, Calendar, TrendingUp, Pencil } from "lucide-react"
 import {
   Area,
   Bar, BarChart,
@@ -703,7 +702,7 @@ export default function DashboardPage() {
                     onKeyDown={e => e.key === "Enter" && saveTarget()}
                   />
                   <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={saveTarget} disabled={isSavingTarget}>
-                    {isSavingTarget ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                    {isSavingTarget ? <Spinner size={14} /> : "Save"}
                   </Button>
                   <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setEditingTarget(false)}>
                     Cancel

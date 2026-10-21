@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { Spinner } from "@/components/ui/spinner"
 import { ImageCropDialog } from '@/components/image-crop-dialog';
 import {
   Dialog,
@@ -34,7 +35,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Loader2, Download, Trash2, ChevronDown, Edit, User, RefreshCw, AlertCircle, CheckCircle2, XCircle, X, Briefcase, CreditCard } from "lucide-react";
+import { Plus, Download, Trash2, ChevronDown, Edit, User, RefreshCw, AlertCircle, CheckCircle2, XCircle, X, Briefcase, CreditCard } from "lucide-react"
 import { tmsDb } from "@/lib/supabase-client";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Checkbox } from "./ui/checkbox";
@@ -2044,9 +2045,9 @@ const handleRestoreIdOriginal = async () => {
       <Dialog open={open} onOpenChange={onOpenChange}>
         {/* ✅ VIEW 1: PHOTO VERIFICATION - For Pending/Resubmitted */}
         {needsPhotoVerification ? (
-  <DialogContent className="w-[40vw] max-h-[90vh] flex flex-col">
-    <DialogHeader>
-      <DialogTitle>
+  <DialogContent className="flex max-h-[min(92dvh,880px)] w-[calc(100%-0.75rem)] max-w-2xl flex-col gap-3 overflow-hidden p-3 sm:w-[90vw] sm:gap-4 sm:p-6 lg:w-[40vw]">
+    <DialogHeader className="space-y-1 pr-8 text-left">
+      <DialogTitle className="text-base sm:text-lg">
         {isResubmission ? "Review Resubmitted Photos" : "Review Submission"}
       </DialogTitle>
       {isResubmission && trainee.declined_photos && (
@@ -2060,23 +2061,21 @@ const handleRestoreIdOriginal = async () => {
       )}
     </DialogHeader>
 
-    {/* ✅ FIXED: Added ScrollArea with max height */}
-    <ScrollArea className="flex-1 overflow-y-auto pr-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <ScrollArea className="min-h-0 flex-1 overflow-y-auto pr-2 sm:pr-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
         {/* ID Picture */}
         <div className="relative cursor-pointer" onClick={() => setShowIdViewModal(true)}>
-          <h4 className="text-sm font-semibold mb-2">
+          <h4 className="mb-1.5 text-xs font-semibold sm:mb-2 sm:text-sm">
             ID Picture
             {trainee.declined_photos?.id_picture && (
               <span className="ml-2 text-xs text-red-600">(Was Declined)</span>
             )}
           </h4>
-          {/* ✅ FIXED: Added max-height and object-contain */}
           <img
             src={trainee.id_picture_url}
             alt="ID Picture"
-            className={`w-full max-h-[300px] object-contain rounded border hover:opacity-80 transition ${
-              trainee.declined_photos?.id_picture ? 'border-red-400 border-2' : ''
+            className={`w-full max-h-[200px] rounded border object-contain transition hover:opacity-80 sm:max-h-[300px] ${
+              trainee.declined_photos?.id_picture ? 'border-2 border-red-400' : ''
             }`}
           />
           <Button
@@ -2104,8 +2103,8 @@ const handleRestoreIdOriginal = async () => {
           <img
             src={trainee.picture_2x2_url}
             alt="2x2 Photo"
-            className={`w-full max-h-[300px] object-contain rounded border hover:opacity-80 transition ${
-              trainee.declined_photos?.picture_2x2 ? 'border-red-400 border-2' : ''
+            className={`w-full max-h-[200px] rounded border object-contain transition hover:opacity-80 sm:max-h-[300px] ${
+              trainee.declined_photos?.picture_2x2 ? 'border-2 border-red-400' : ''
             }`}
           />
           <Button
@@ -2119,7 +2118,7 @@ const handleRestoreIdOriginal = async () => {
             disabled={updatingPhoto}
           >
             {updatingPhoto ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Spinner size={14} />
             ) : (
               <Edit className="h-3 w-3" />
             )}
@@ -2128,16 +2127,16 @@ const handleRestoreIdOriginal = async () => {
       </div>
     </ScrollArea>
     
-    {/* ✅ FIXED: Footer stays at bottom */}
-    <DialogFooter className="pt-4 border-t mt-4">
+    <DialogFooter className="mt-3 flex-col gap-2 border-t pt-3 sm:mt-4 sm:flex-row sm:pt-4">
       <Button 
-        variant="destructive" 
+        variant="destructive"
+        className="w-full sm:w-auto"
         onClick={onDecline}
         disabled={saving}
       >
         {saving ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner size={18} className="mr-2" />
             Processing...
           </>
         ) : (
@@ -2145,16 +2144,20 @@ const handleRestoreIdOriginal = async () => {
         )}
       </Button>
       <Button 
+        className="w-full sm:w-auto"
         onClick={onVerify}
         disabled={saving}
       >
         {saving ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Spinner size={18} className="mr-2" />
             Verifying...
           </>
         ) : (
-          'Verify & Proceed to Payment'
+          <>
+            <span className="sm:hidden">Verify</span>
+            <span className="hidden sm:inline">Verify & Proceed to Payment</span>
+          </>
         )}
       </Button>
     </DialogFooter>
@@ -2165,23 +2168,23 @@ const handleRestoreIdOriginal = async () => {
 
         //* ✅ VIEW 2: DECLINED WAITING VIEW - Shows when status is "Declined (Waiting for Resubmission)" */}
         : isDeclinedAwaitingResubmission ? (
-          <DialogContent className="w-[50vw] max-h-[85vh] flex flex-col">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-red-600" />
+          <DialogContent className="flex max-h-[min(92dvh,880px)] w-[calc(100%-0.75rem)] max-w-2xl flex-col gap-3 overflow-hidden p-3 sm:w-[90vw] sm:gap-4 sm:p-6 lg:w-[50vw]">
+            <DialogHeader className="space-y-1 pr-8 text-left">
+              <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
                 Waiting for Photo Resubmission
               </DialogTitle>
             </DialogHeader>
 
-            <div className="overflow-y-auto pr-4 flex-1">
-              <div className="space-y-4">
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1 sm:pr-4">
+              <div className="space-y-3 sm:space-y-4">
                 {/* Status Banner */}
-                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
-                    <div>
-                      <p className="font-semibold text-red-800">Status: Declined - Awaiting Resubmission</p>
-                      <p className="text-sm text-red-600 mt-1">
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 sm:p-4">
+                  <div className="flex items-start gap-2 sm:gap-3">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600 sm:h-5 sm:w-5" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-red-800 sm:text-base">Declined — awaiting resubmission</p>
+                      <p className="mt-1 text-xs text-red-600 sm:text-sm">
                         The trainee has been notified via email to resubmit their photos.
                       </p>
                     </div>
@@ -2189,14 +2192,14 @@ const handleRestoreIdOriginal = async () => {
                 </div>
 
                 {/* Trainee Info */}
-                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                  <Avatar className="h-16 w-16">
+                <div className="flex items-center gap-3 rounded-lg bg-gray-50 p-3 sm:gap-4 sm:p-4 dark:bg-muted/40">
+                  <Avatar className="h-12 w-12 shrink-0 sm:h-16 sm:w-16">
                     <AvatarImage src={trainee.picture_2x2_url} />
                   </Avatar>
-                  <div>
-                    <p className="font-semibold text-lg">{trainee.first_name} {trainee.last_name}</p>
-                    <p className="text-sm text-muted-foreground">{trainee.email}</p>
-                    <p className="text-sm text-muted-foreground">{trainee.phone_number}</p>
+                  <div className="min-w-0">
+                    <p className="truncate text-base font-semibold sm:text-lg">{trainee.first_name} {trainee.last_name}</p>
+                    <p className="truncate text-xs text-muted-foreground sm:text-sm">{trainee.email}</p>
+                    <p className="text-xs text-muted-foreground sm:text-sm">{trainee.phone_number}</p>
                   </div>
                 </div>
 
@@ -2256,42 +2259,47 @@ const handleRestoreIdOriginal = async () => {
                 </div>
               </div>
             </div>
-            <DialogFooter className="mt-4">
+            <DialogFooter className="mt-2 flex-col gap-2 sm:mt-4 sm:flex-row sm:justify-end">
               <Button
                 variant="outline"
+                className="w-full sm:w-auto"
                 onClick={handleFollowUp}
                 disabled={sendingFollowUp || markingPendingVerification}
               >
                 {sendingFollowUp ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Spinner size={18} className="mr-2" />
                     Sending...
                   </>
                 ) : (
                   <>
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Send Follow-Up Email
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    <span className="sm:hidden">Follow-Up</span>
+                    <span className="hidden sm:inline">Send Follow-Up Email</span>
                   </>
                 )}
               </Button>
               <Button
                 variant="secondary"
+                className="w-full sm:w-auto"
                 onClick={handleMarkPendingVerification}
                 disabled={markingPendingVerification || sendingFollowUp}
               >
                 {markingPendingVerification ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Spinner size={18} className="mr-2" />
                     Updating...
                   </>
                 ) : (
                   <>
-                    <CheckCircle2 className="h-4 w-4 mr-2" />
-                    Mark as Pending Verification
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    <span className="sm:hidden">Mark Pending</span>
+                    <span className="hidden sm:inline">Mark as Pending Verification</span>
                   </>
                 )}
               </Button>
               <Button
+                className="w-full sm:w-auto"
                 onClick={() => onOpenChange(false)}
                 disabled={markingPendingVerification || sendingFollowUp}
               >
@@ -2304,62 +2312,45 @@ const handleRestoreIdOriginal = async () => {
     
         //* ✅ VIEW 3: FULL DETAILS VIEW - For Pending Payment, Partially Paid, Payment Completed, etc. */}
         : showFullDetailsView ? (
-  <DialogContent className="w-[70vw] p-0">
-    <ScrollArea className="h-[90vh] p-6 custom-scrollbar">
-      <DialogHeader>
-        <DialogTitle className="text-indigo-900 text-sm">
-          Submission ID: {trainee?.id}
+  <DialogContent className="flex max-h-[min(92dvh,880px)] w-[calc(100%-0.75rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0 sm:w-[92vw] lg:w-[70vw]">
+    <ScrollArea className="custom-scrollbar h-[min(92dvh,880px)] max-h-[min(92dvh,880px)]">
+      <div className="space-y-3 p-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:space-y-4 sm:p-6">
+      <DialogHeader className="space-y-1 pr-8 text-left">
+        <DialogTitle className="text-xs font-semibold text-indigo-900 dark:text-indigo-300 sm:text-sm">
+          <span className="text-muted-foreground">Submission ID</span>
+          <span className="mt-0.5 block break-all font-mono text-[11px] font-medium tracking-tight sm:text-sm">
+            {trainee?.id}
+          </span>
         </DialogTitle>
+        <p className="text-right text-[11px] text-muted-foreground sm:text-sm">
+          {new Date().toLocaleDateString()}
+        </p>
       </DialogHeader>
-
-      <div className="text-right text-sm text-muted-foreground mb-2">
-        {new Date().toLocaleDateString()}
-      </div>
 
      {/* Tabs */}
 <Tabs
   value={activeTab}
   onValueChange={(v) => setActiveTab(v as "info" | "payment")}
-  className="w-full"
+  className="w-full min-w-0"
 >
   <div className="flex justify-center">
-    <TabsList className="inline-flex w-fit gap-2 mb-4 bg-muted/40 p-1 rounded-xl border">
+    <TabsList className="mb-3 grid h-auto w-full grid-cols-2 gap-1 rounded-xl border bg-muted/40 p-1 sm:mb-4 sm:inline-flex sm:w-fit sm:gap-2">
       <TabsTrigger
         value="info"
-        className="
-          flex items-center gap-2 px-4 py-2 rounded-lg
-          text-muted-foreground font-medium
-          data-[state=active]:bg-background
-          data-[state=active]:text-foreground
-          data-[state=active]:shadow-sm
-          data-[state=active]:ring-2
-          data-[state=active]:ring-primary/60
-          data-[state=active]:border
-          data-[state=active]:border-primary/30
-          transition
-        "
+        className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition data-[state=active]:border data-[state=active]:border-primary/30 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-2 data-[state=active]:ring-primary/60 sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
       >
-        <User className="h-4 w-4" />
-        User Info
+        <User className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+        <span className="sm:hidden">Info</span>
+        <span className="hidden sm:inline">User Info</span>
       </TabsTrigger>
 
       <TabsTrigger
         value="payment"
-        className="
-          flex items-center gap-2 px-4 py-2 rounded-lg
-          text-muted-foreground font-medium
-          data-[state=active]:bg-background
-          data-[state=active]:text-foreground
-          data-[state=active]:shadow-sm
-          data-[state=active]:ring-2
-          data-[state=active]:ring-primary/60
-          data-[state=active]:border
-          data-[state=active]:border-primary/30
-          transition
-        "
+        className="flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition data-[state=active]:border data-[state=active]:border-primary/30 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:ring-2 data-[state=active]:ring-primary/60 sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
       >
-        <CreditCard className="h-4 w-4" />
-        Payment Details
+        <CreditCard className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+        <span className="sm:hidden">Payment</span>
+        <span className="hidden sm:inline">Payment Details</span>
       </TabsTrigger>
     </TabsList>
   </div>
@@ -2367,15 +2358,15 @@ const handleRestoreIdOriginal = async () => {
 
 
         {/* ===================== TAB 1: USER INFO ===================== */}
-        <TabsContent value="info" className="space-y-4">
+        <TabsContent value="info" className="mt-0 space-y-3 sm:space-y-4">
           {/* Photo Section */}
-          <div className="flex flex-col items-center gap-2 py-4">
-            <div className="flex gap-4 items-start">
-              <div className="flex flex-col items-center gap-2">
-                <Label className="text-xs text-muted-foreground">2x2 Photo</Label>
+          <div className="flex flex-col items-center gap-1.5 py-2 sm:gap-2 sm:py-4">
+            <div className="flex items-start gap-3 sm:gap-4">
+              <div className="flex flex-col items-center gap-1 sm:gap-2">
+                <Label className="text-[10px] text-muted-foreground sm:text-xs">2x2 Photo</Label>
                 <div className="relative cursor-pointer" onClick={() => setShow2x2ViewModal(true)}>
-                  <div className="border-2 border-primary rounded-lg p-1">
-                    <Avatar className="h-24 w-24">
+                  <div className="rounded-lg border-2 border-primary p-0.5 sm:p-1">
+                    <Avatar className="h-16 w-16 sm:h-24 sm:w-24">
                       <AvatarImage src={trainee?.picture_2x2_url} />
                     </Avatar>
                   </div>
@@ -2393,14 +2384,14 @@ const handleRestoreIdOriginal = async () => {
                 </div>
               </div>
 
-              <div className="flex flex-col items-center gap-2">
-                <Label className="text-xs text-muted-foreground">ID Picture</Label>
+              <div className="flex flex-col items-center gap-1 sm:gap-2">
+                <Label className="text-[10px] text-muted-foreground sm:text-xs">ID Picture</Label>
                 <div className="relative cursor-pointer" onClick={() => setShowIdViewModal(true)}>
-                  <div className="border-2 border-primary rounded-lg p-1 w-32 h-24 overflow-hidden">
+                  <div className="h-16 w-24 overflow-hidden rounded-lg border-2 border-primary p-0.5 sm:h-24 sm:w-32 sm:p-1">
                     <img
                       src={trainee?.id_picture_url}
                       alt="ID"
-                      className="w-full h-full object-cover rounded"
+                      className="h-full w-full rounded object-cover"
                     />
                   </div>
                   <Button
@@ -2414,7 +2405,7 @@ const handleRestoreIdOriginal = async () => {
                     disabled={updatingPhoto}
                   >
                     {updatingPhoto ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <Spinner size={14} />
                     ) : (
                       <Edit className="h-3 w-3" />
                     )}
@@ -2423,21 +2414,22 @@ const handleRestoreIdOriginal = async () => {
               </div>
             </div>
 
-            <span className="font-bold text-indigo-900 text-lg">
+            <span className="text-center text-base font-bold text-indigo-900 dark:text-indigo-200 sm:text-lg">
               {trainee?.first_name} {trainee?.last_name}
             </span>
-            <span className="text-sm italic text-muted-foreground">
+            <span className="max-w-full truncate px-2 text-center text-xs italic text-muted-foreground sm:text-sm">
               {trainee?.email}
             </span>
           </div>
 
           {/* Personal Details */}
-          <section className="border rounded overflow-hidden">
-            <div className="flex justify-between items-center font-black px-4 py-2 bg-card ">
+          <section className="overflow-hidden rounded-lg border">
+            <div className="flex items-center justify-between bg-card px-3 py-1.5 text-sm font-semibold sm:px-4 sm:py-2 sm:text-base sm:font-black">
               Personal Details
               <Button
                 size="sm"
                 variant="ghost"
+                className="h-8 w-8 p-0"
                 onClick={() => setIsEditingDetails(!isEditingDetails)}
               >
                 <Edit className="h-4 w-4" />
@@ -2447,7 +2439,7 @@ const handleRestoreIdOriginal = async () => {
             {/* KEEP YOUR EXISTING Personal Details CONTENT EXACTLY */}
             {isEditingDetails ? (
 
-    <div className="p-4 space-y-4">
+    <div className="space-y-3 p-3 sm:space-y-4 sm:p-4">
       {/* Name Section */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div className="space-y-2">
@@ -2719,7 +2711,7 @@ const handleRestoreIdOriginal = async () => {
         >
           {updatingDetails ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Spinner size={18} className="mr-2" />
               Saving...
             </>
           ) : (
@@ -2730,11 +2722,11 @@ const handleRestoreIdOriginal = async () => {
     </div>
   ) : (
     /* VIEW MODE - Display all data */
-    <div className="p-4 space-y-4">
+    <div className="space-y-3 p-3 sm:space-y-4 sm:p-4">
       {/* Full Name Display */}
-      <div className="pb-3 border-b">
-        <div className="text-xs text-muted-foreground mb-1">Full Name</div>
-        <div className="font-semibold text-base">
+      <div className="border-b pb-2 sm:pb-3">
+        <div className="mb-0.5 text-[10px] text-muted-foreground sm:mb-1 sm:text-xs">Full Name</div>
+        <div className="text-sm font-semibold sm:text-base">
           {[
             trainee?.first_name,
             trainee?.middle_initial && trainee?.middle_initial + '.',
@@ -2746,30 +2738,30 @@ const handleRestoreIdOriginal = async () => {
       </div>
 
       {/* Basic Information Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 text-sm">
+      <div className="grid grid-cols-2 gap-2.5 text-sm sm:grid-cols-3 sm:gap-4 md:grid-cols-4">
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Gender</div>
-          <div className="font-medium">{trainee?.gender || 'N/A'}</div>
+          <div className="mb-0.5 text-[10px] text-muted-foreground sm:mb-1 sm:text-xs">Gender</div>
+          <div className="text-xs font-medium sm:text-sm">{trainee?.gender || 'N/A'}</div>
         </div>
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Age</div>
-          <div className="font-medium">{trainee?.age || 'N/A'}</div>
+          <div className="mb-0.5 text-[10px] text-muted-foreground sm:mb-1 sm:text-xs">Age</div>
+          <div className="text-xs font-medium sm:text-sm">{trainee?.age || 'N/A'}</div>
         </div>
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Employment Status</div>
-          <div className="font-medium">{trainee?.employment_status || 'N/A'}</div>
+          <div className="mb-0.5 text-[10px] text-muted-foreground sm:mb-1 sm:text-xs">Employment</div>
+          <div className="text-xs font-medium sm:text-sm">{trainee?.employment_status || 'N/A'}</div>
+        </div>
+        <div className="min-w-0">
+          <div className="mb-0.5 text-[10px] text-muted-foreground sm:mb-1 sm:text-xs">Email</div>
+          <div className="break-all text-[11px] font-medium sm:text-xs">{trainee?.email || 'N/A'}</div>
         </div>
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Email</div>
-          <div className="font-medium text-xs break-all">{trainee?.email || 'N/A'}</div>
+          <div className="mb-0.5 text-[10px] text-muted-foreground sm:mb-1 sm:text-xs">Phone</div>
+          <div className="text-xs font-medium sm:text-sm">{trainee?.phone_number || 'N/A'}</div>
         </div>
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Phone Number</div>
-          <div className="font-medium">{trainee?.phone_number || 'N/A'}</div>
-        </div>
-        <div>
-          <div className="text-xs text-muted-foreground mb-1">Food Restriction</div>
-          <div className="font-medium">{trainee?.food_restriction || 'None'}</div>
+          <div className="mb-0.5 text-[10px] text-muted-foreground sm:mb-1 sm:text-xs">Food Restriction</div>
+          <div className="text-xs font-medium sm:text-sm">{trainee?.food_restriction || 'None'}</div>
         </div>
       </div>
 
@@ -2925,14 +2917,14 @@ const handleRestoreIdOriginal = async () => {
   )}
 </section>
                 {/* Mailing Address */}
-          <section className="border rounded overflow-hidden">
-            <div className="flex justify-between items-center font-bold px-4 py-2 bg-card">
-              Mailing Address Details
-              <Button size="sm" variant="ghost" onClick={() => setIsEditingAddress(!isEditingAddress)}>
-                <Edit />
+          <section className="overflow-hidden rounded-lg border">
+            <div className="flex items-center justify-between bg-card px-3 py-1.5 text-sm font-semibold sm:px-4 sm:py-2 sm:text-base sm:font-bold">
+              Mailing Address
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setIsEditingAddress(!isEditingAddress)}>
+                <Edit className="h-4 w-4" />
               </Button>
             </div>
-            <div className="p-4 text-sm">
+            <div className="p-3 text-sm sm:p-4">
               {isEditingAddress ? (
                 <>
                   <Label>Street</Label>
@@ -2944,7 +2936,7 @@ const handleRestoreIdOriginal = async () => {
                   <Button onClick={handleSaveAddress} className="mt-2" disabled={updatingAddress}>
                     {updatingAddress ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Spinner size={18} className="mr-2" />
                         Saving...
                       </>
                     ) : (
@@ -2967,18 +2959,18 @@ const handleRestoreIdOriginal = async () => {
         </TabsContent>
 
                 {/* ===================== TAB 2: PAYMENT ===================== */}
-        <TabsContent value="payment" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <TabsContent value="payment" className="mt-0 space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4">
             {/* Payment Details Section */}
-            <section className="border rounded overflow-hidden">
-              <div className="font-bold px-4 py-2 bg-green-100 dark:text-blue-950 rounded border border-green-300">
+            <section className="overflow-hidden rounded-lg border">
+              <div className="border border-green-300 bg-green-100 px-3 py-1.5 text-sm font-semibold dark:text-blue-950 sm:px-4 sm:py-2 sm:text-base sm:font-bold">
                 Payment Details
               </div>
 
-              <div className="p-4 text-sm space-y-2">
-                <div className="flex justify-between">
-                  <span>Training Fee ({getEventTypeLabel()}):</span>
-                  <span>{formatCurrency(getTrainingFee())}</span>
+              <div className="space-y-2 p-3 text-xs sm:p-4 sm:text-sm">
+                <div className="flex justify-between gap-2">
+                  <span className="min-w-0 truncate">Training Fee ({getEventTypeLabel()}):</span>
+                  <span className="shrink-0 font-medium">{formatCurrency(getTrainingFee())}</span>
                 </div>
 
                 {/* ✅ FIXED JSX COMMENT */}
@@ -3182,7 +3174,7 @@ const handleRestoreIdOriginal = async () => {
           >
             {applyingDiscount ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Spinner size={18} className="mr-2" />
                 Applying...
               </>
             ) : (
@@ -3221,7 +3213,7 @@ const handleRestoreIdOriginal = async () => {
           >
             {isVerifyingVoucher ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner size={18} className="mr-2" />
                 Verifying...
               </>
             ) : (
@@ -3318,7 +3310,7 @@ const handleRestoreIdOriginal = async () => {
             >
               {applyingDiscount ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Spinner size={18} className="mr-2" />
                   Saving...
                 </>
               ) : (
@@ -3343,7 +3335,7 @@ const handleRestoreIdOriginal = async () => {
             className="text-red-600 hover:text-red-700 hover:bg-red-50"
           >
             {applyingDiscount ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Spinner size={18} />
             ) : (
               <X className="h-4 w-4" />
             )}
@@ -3449,8 +3441,8 @@ const handleRestoreIdOriginal = async () => {
             </section>
 
             {/* Payment History Section */}
-            <section className="border rounded overflow-hidden">
-              <div className="bg-yellow-100 dark:text-blue-950 rounded border border-yellow-300 font-bold px-4 py-2 flex justify-between items-center">
+            <section className="overflow-hidden rounded-lg border">
+              <div className="flex items-center justify-between border border-yellow-300 bg-yellow-100 px-3 py-1.5 text-sm font-semibold dark:text-blue-950 sm:px-4 sm:py-2 sm:text-base sm:font-bold">
                 <span>Payment History</span>
                 {(!hasPayments || !isCounterPayment) && (
                   <Button
@@ -3461,7 +3453,7 @@ const handleRestoreIdOriginal = async () => {
                     disabled={uploading}
                   >
                     {uploading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Spinner size={18} />
                     ) : (
                       <Plus className="h-4 w-4" />
                     )}
@@ -3527,7 +3519,7 @@ const handleRestoreIdOriginal = async () => {
                                   disabled={deletingPayment || saving || decliningPayment === payment.id}
                                 >
                                   {deletingPayment && deleteId === payment.id ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                    <Spinner size={14} />
                                   ) : (
                                     <Trash2 className="h-3 w-3" />
                                   )}
@@ -3606,7 +3598,7 @@ const handleRestoreIdOriginal = async () => {
                                     >
                                       {saving && selectedPaymentId === payment.id ? (
                                         <>
-                                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                          <Spinner size={14} className="mr-1" />
                                           Approving...
                                         </>
                                       ) : (
@@ -3622,7 +3614,7 @@ const handleRestoreIdOriginal = async () => {
                                     >
                                       {decliningPayment === payment.id ? (
                                         <>
-                                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                          <Spinner size={14} className="mr-1" />
                                           Declining...
                                         </>
                                       ) : (
@@ -3643,21 +3635,21 @@ const handleRestoreIdOriginal = async () => {
       </Tabs>
 
              {isPending && (
-        <DialogFooter className="pt-4">
-          <Button variant="destructive" onClick={onDecline} disabled={saving}>
+        <DialogFooter className="flex-col gap-2 pt-2 sm:flex-row sm:pt-4">
+          <Button variant="destructive" className="w-full sm:w-auto" onClick={onDecline} disabled={saving}>
             {saving ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Spinner size={18} className="mr-2" />
                 Processing...
               </>
             ) : (
               "Decline"
             )}
           </Button>
-          <Button onClick={onVerify} disabled={saving}>
+          <Button className="w-full sm:w-auto" onClick={onVerify} disabled={saving}>
             {saving ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Spinner size={18} className="mr-2" />
                 Verifying...
               </>
             ) : (
@@ -3666,6 +3658,7 @@ const handleRestoreIdOriginal = async () => {
           </Button>
         </DialogFooter>
       )}
+      </div>
     </ScrollArea>
   </DialogContent>
 ) : null}
@@ -3676,15 +3669,15 @@ const handleRestoreIdOriginal = async () => {
       
       {/* 2x2 Photo Viewer Dialog */}
       <Dialog open={show2x2ViewModal} onOpenChange={setShow2x2ViewModal}>
-        <DialogContent className="w-[50vw] max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>2x2 Photo Viewer</DialogTitle>
+        <DialogContent className="w-[calc(100%-0.75rem)] max-w-3xl p-3 sm:w-[90vw] sm:p-6">
+          <DialogHeader className="pr-8 text-left">
+            <DialogTitle className="text-base sm:text-lg">2x2 Photo Viewer</DialogTitle>
           </DialogHeader>
-          <div className="w-full h-full text-center">
+          <div className="w-full text-center">
             <img
               src={trainee.picture_2x2_url}
               alt="2x2 Full View"
-              className="max-w-full max-h-[80vh] mx-auto rounded border shadow"
+              className="mx-auto max-h-[70dvh] max-w-full rounded border shadow sm:max-h-[80vh]"
             />
           </div>
         </DialogContent>
@@ -3692,15 +3685,15 @@ const handleRestoreIdOriginal = async () => {
 
       {/* ID Photo Viewer Dialog */}
       <Dialog open={showIdViewModal} onOpenChange={setShowIdViewModal}>
-        <DialogContent className="w-[50vw] max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>ID Picture Viewer</DialogTitle>
+        <DialogContent className="w-[calc(100%-0.75rem)] max-w-3xl p-3 sm:w-[90vw] sm:p-6">
+          <DialogHeader className="pr-8 text-left">
+            <DialogTitle className="text-base sm:text-lg">ID Picture Viewer</DialogTitle>
           </DialogHeader>
-          <div className="w-full h-full text-center">
+          <div className="w-full text-center">
             <img
               src={trainee.id_picture_url}
               alt="ID Full View"
-              className="max-w-full max-h-[80vh] mx-auto rounded border shadow"
+              className="mx-auto max-h-[70dvh] max-w-full rounded border shadow sm:max-h-[80vh]"
             />
           </div>
         </DialogContent>
@@ -3708,18 +3701,18 @@ const handleRestoreIdOriginal = async () => {
 
       {/* Preview Dialog for Receipt Upload */}
       <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>
-        <DialogContent className="lg:w-[40vw] sm:w-[80vw]">
-          <DialogHeader>
-            <DialogTitle>Receipt Preview</DialogTitle>
+        <DialogContent className="w-[calc(100%-0.75rem)] max-w-lg p-3 sm:w-[80vw] sm:p-6 lg:w-[40vw]">
+          <DialogHeader className="pr-8 text-left">
+            <DialogTitle className="text-base sm:text-lg">Receipt Preview</DialogTitle>
           </DialogHeader>
           
           {previewImage && (
-            <div className="border rounded p-4">
-              <img src={previewImage} alt="Receipt" className="max-h-96 mx-auto" />
+            <div className="rounded border p-2 sm:p-4">
+              <img src={previewImage} alt="Receipt" className="mx-auto max-h-56 sm:max-h-96" />
             </div>
           )}
           
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             <div>
               <Label htmlFor="amount">Amount Paid</Label>
               <Input
@@ -3743,13 +3736,13 @@ const handleRestoreIdOriginal = async () => {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button disabled={saving}>
+                <Button className="w-full sm:w-auto" disabled={saving}>
                   {saving ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Spinner size={18} className="mr-2" />
                       Saving...
                     </>
                   ) : (
@@ -3811,7 +3804,7 @@ const handleRestoreIdOriginal = async () => {
             <AlertDialogAction onClick={handleMarkAsPaid} disabled={saving}>
               {saving ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner size={18} className="mr-2" />
                   Saving...
                 </>
               ) : (
@@ -3845,7 +3838,7 @@ const handleRestoreIdOriginal = async () => {
               >
                 {deletingPayment ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Spinner size={18} className="mr-2" />
                     Deleting...
                   </>
                 ) : (
@@ -4081,7 +4074,7 @@ const handleRestoreIdOriginal = async () => {
             >
               {saving ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner size={18} className="mr-2" />
                   Approving...
                 </>
               ) : (

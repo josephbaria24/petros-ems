@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { usePathname, useSearchParams } from "next/navigation"
-import { Loader2 } from "lucide-react"
 import { stopNavLoading, subscribeNavLoading } from "@/lib/nav-loading-store"
 import { cn } from "@/lib/utils"
 
@@ -87,7 +87,7 @@ export function NavigationProgress() {
         aria-hidden={!active}
       >
         <div className="pointer-events-none flex items-center gap-2 rounded-full border border-border/60 bg-card/95 px-3 py-2 text-sm font-medium text-foreground shadow-lg">
-          <Loader2 className="h-4 w-4 animate-spin text-[#1A1D66] dark:text-[#FFCC00]" />
+          <Spinner size={20} />
           Loading…
         </div>
       </div>

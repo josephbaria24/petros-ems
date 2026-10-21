@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { ChevronDown, ClipboardList, Loader2, RefreshCw } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
+import { ChevronDown, ClipboardList, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -197,7 +198,7 @@ export function ExamResultsPreview({
           }}
           disabled={loading}
         >
-          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          {loading ? <Spinner size={14} /> : <RefreshCw className="h-3.5 w-3.5" />}
           Refresh
         </Button>
       </div>
@@ -227,7 +228,7 @@ export function ExamResultsPreview({
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
+          <Spinner size={20} />
           Loading results…
         </div>
       ) : rows.length === 0 && unmatched.length === 0 ? (

@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { Check, ChevronsUpDown, FileDown, Loader2, Plus, Trash2 } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
+import { Check, ChevronsUpDown, FileDown, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import {
   AlertDialog,
@@ -323,16 +324,16 @@ export function OshProgramForm({ value, onChange, readOnly, downloadName }: OshP
   }
 
   return (
-    <div id="osh-program-sheet" className="overflow-x-auto rounded-lg bg-[#5f6368] p-3">
-      <div className="mx-auto mb-2 flex w-full max-w-[980px] justify-end print:hidden" data-export-hide="true">
+    <div id="osh-program-sheet" className="w-full min-w-0 overflow-x-auto rounded-lg bg-[#5f6368] p-1.5 sm:p-3">
+      <div className="mx-auto mb-1.5 flex w-full max-w-[980px] justify-end print:hidden sm:mb-2" data-export-hide="true">
         <Button
           type="button"
           size="sm"
-          className="w-full gap-1.5 bg-[#1A1D66] hover:bg-[#141654] sm:w-auto"
+          className="h-9 w-full gap-1.5 bg-[#1A1D66] text-[11px] hover:bg-[#141654] sm:h-8 sm:w-auto sm:text-xs"
           disabled={downloading}
           onClick={() => void downloadSheet()}
         >
-          {downloading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
+          {downloading ? <Spinner size={14} /> : <FileDown className="h-3.5 w-3.5" />}
           Download sheet
         </Button>
       </div>

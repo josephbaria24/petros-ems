@@ -2,6 +2,7 @@
 "use client"
 
 import { useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,6 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
-import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { tmsDb } from "@/lib/supabase-client"
 
@@ -237,7 +237,7 @@ export function DeclinePhotoDialog({
           >
             {sending ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Spinner size={18} className="mr-2" />
                 Sending...
               </>
             ) : (

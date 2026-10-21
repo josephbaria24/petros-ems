@@ -88,6 +88,7 @@
     "react-hook-form": "^7.60.0",
     "react-image-crop": "^11.0.10",
     "react-resizable-panels": "^2.1.7",
+    "react-spinners": "^0.17.1",
     "recharts": "2.15.4",
     "sileo": "^0.1.5",
     "sonner": "^1.7.4",

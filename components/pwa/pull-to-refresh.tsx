@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
 const THRESHOLD = 72
@@ -169,13 +170,11 @@ export function PullToRefresh({
         >
           <div
             className={cn(
-              "flex size-11 items-center justify-center rounded-full border-2 border-[#FFCC00] bg-white shadow-lg shadow-[#FFCC00]/30 dark:bg-[#161824]",
-              phase === "refreshing" && "animate-spin",
+              "flex size-12 items-center justify-center rounded-full border border-[#FFCC00]/70 bg-white/95 shadow-lg shadow-[#FFCC00]/25 dark:bg-[#161824]",
               phase === "ready" && "ring-2 ring-[#FFCC00]/80 ring-offset-2 ring-offset-transparent"
             )}
-            style={phase === "refreshing" ? undefined : { transform: `rotate(${progress * 180}deg)` }}
           >
-            <img src="/icons/icon-192.png" alt="" width={28} height={28} className="size-7 rounded-full object-contain" />
+            <Spinner size={phase === "refreshing" ? 28 : 22 + Math.round(progress * 6)} />
           </div>
           <span className="rounded-full bg-[#1A1D66]/90 px-2.5 py-0.5 text-[10px] font-medium text-white shadow-sm backdrop-blur-sm">
             {phase === "refreshing" ? "Refreshing…" : phase === "ready" ? "Release to refresh" : "Pull to refresh"}
@@ -184,7 +183,7 @@ export function PullToRefresh({
       </div>
 
       <div
-        className="min-h-full"
+        className="min-h-full w-full min-w-0 max-w-full"
         style={{
           transform: pull > 0 || phase === "refreshing" ? `translateY(${pull * 0.35}px)` : undefined,
           transition: phase === "pulling" || phase === "ready" ? "none" : "transform 180ms ease-out",

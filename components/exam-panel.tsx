@@ -1,23 +1,8 @@
 "use client"
 
 import * as React from "react"
-import {
-  AlertTriangle,
-  Check,
-  Copy,
-  Download,
-  ExternalLink,
-  FileSpreadsheet,
-  GripVertical,
-  Link2,
-  Loader2,
-  Plus,
-  QrCode,
-  Save,
-  Trash2,
-  Upload,
-  ChevronDown,
-} from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
+import { AlertTriangle, Check, Copy, Download, ExternalLink, FileSpreadsheet, GripVertical, Link2, Plus, QrCode, Save, Trash2, Upload, ChevronDown } from "lucide-react"
 import QRCode from "qrcode"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -238,7 +223,7 @@ export function ExamPanel({
             disabled={saving}
             onClick={() => void onSave()}
           >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {saving ? <Spinner size={14} /> : <Save className="h-3.5 w-3.5" />}
             Save
           </Button>
         </div>
@@ -343,7 +328,7 @@ export function ExamPanel({
                 disabled={qrBusy}
                 onClick={() => void downloadQr()}
               >
-                {qrBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <QrCode className="h-3.5 w-3.5" />}
+                {qrBusy ? <Spinner size={14} /> : <QrCode className="h-3.5 w-3.5" />}
                 QR
               </Button>
             </div>
@@ -533,7 +518,7 @@ export function ExamPanel({
                   disabled={qrBusy}
                   onClick={() => void downloadQr()}
                 >
-                  {qrBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <QrCode className="h-3.5 w-3.5" />}
+                  {qrBusy ? <Spinner size={14} /> : <QrCode className="h-3.5 w-3.5" />}
                   QR
                 </Button>
               </div>

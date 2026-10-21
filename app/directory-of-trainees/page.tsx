@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Spinner } from "@/components/ui/spinner"
 import { tmsDb } from '@/lib/supabase-client';
 import { Button } from '@/components/ui/button'
 
-import { Upload, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { Upload, X, CheckCircle, AlertCircle } from "lucide-react"
 import * as XLSX from 'xlsx'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -842,7 +843,7 @@ export default function DirectoryTabs() {
             >
               {importing ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Spinner size={18} className="mr-2" />
                   Importing...
                 </>
               ) : (

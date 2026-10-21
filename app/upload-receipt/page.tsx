@@ -2,7 +2,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Upload, CheckCircle, AlertCircle, Search, Eye, X, Clock, Download, History } from 'lucide-react';
+import { Spinner } from "@/components/ui/spinner"
+import { Upload, CheckCircle, AlertCircle, Search, Eye, X, Clock, Download, History } from "lucide-react"
 
 interface Payment {
   id: string;
@@ -304,7 +305,7 @@ const calculateTotalRequired = () => {
                 >
                   {checkingStatus ? (
                     <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <Spinner size={28} />
                       Checking...
                     </>
                   ) : (
@@ -656,7 +657,7 @@ const calculateTotalRequired = () => {
             >
               {uploading ? (
                 <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <Spinner size={28} />
                   Uploading...
                 </>
               ) : (

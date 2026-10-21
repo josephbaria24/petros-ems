@@ -2,13 +2,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useSearchParams } from "next/navigation"
 import { tmsDb } from "@/lib/supabase-client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Upload, CheckCircle, XCircle, AlertCircle } from "lucide-react"
+import { Upload, CheckCircle, XCircle, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
 
 export default function ReuploadPage() {
@@ -202,7 +203,7 @@ const validateAndFetchTrainee = async () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <Spinner size={28} />
       </div>
     )
   }
@@ -395,7 +396,7 @@ const validateAndFetchTrainee = async () => {
             >
               {submitting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner size={18} className="mr-2" />
                   Submitting...
                 </>
               ) : (

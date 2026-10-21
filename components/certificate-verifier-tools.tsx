@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,7 +16,7 @@ import {
   parseCertificateCsv,
   recordsToCsv,
 } from "@/lib/certificate-csv"
-import { Copy, Download, Loader2, Trash2, Upload } from "lucide-react"
+import { Copy, Download, Trash2, Upload } from "lucide-react"
 import { CertificateImportReviewDialog } from "@/components/certificate-import-review-dialog"
 import { buildImportPreviewRows, type ImportPreviewRow } from "@/lib/certificate-import-preview"
 
@@ -241,7 +242,7 @@ export function CertificateVerifierTools({
           >
             <Button onClick={handleGenerateBackup} disabled={isBackingUp}>
               {isBackingUp ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Spinner size={18} className="mr-2" />
               ) : (
                 <Download className="mr-2 h-4 w-4" />
               )}
@@ -292,7 +293,7 @@ export function CertificateVerifierTools({
               </div>
               <Button disabled={isImporting || !selectedFile} onClick={handlePrepareImport}>
                 {isImporting ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner size={18} className="mr-2" />
                 ) : (
                   <Upload className="mr-2 h-4 w-4" />
                 )}
@@ -363,7 +364,7 @@ export function CertificateVerifierTools({
                 onClick={handleDeleteDatabase}
               >
                 {isDeletingAll ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner size={18} className="mr-2" />
                 ) : (
                   <Trash2 className="mr-2 h-4 w-4" />
                 )}

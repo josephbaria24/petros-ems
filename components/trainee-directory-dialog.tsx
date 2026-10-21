@@ -6,6 +6,7 @@ import JSZip from "jszip"
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog"
 import { Progress } from "@/components/ui/progress"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { createPortal } from "react-dom"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -18,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { tmsDb } from "@/lib/supabase-client"
-import { Download, Mail, Loader2, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Eye, ListOrdered, Crop, Eraser, Minus, Plus, RotateCcw, RotateCw, Maximize2, Minimize2, FileStack, Files, Paintbrush } from "lucide-react"
+import { Download, Mail, Award, CalendarCheck, Trophy, MoreVertical, Database, RefreshCw, Trash2, PenSquare, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Eye, ListOrdered, Crop, Eraser, Minus, Plus, RotateCcw, RotateCw, Maximize2, Minimize2, FileStack, Files, Paintbrush } from "lucide-react"
 import { Slider } from "@/components/ui/slider"
 import { ImageCropDialog } from "@/components/image-crop-dialog"
 import { ImagePaintDialog } from "@/components/image-paint-dialog"
@@ -3426,7 +3427,7 @@ export default function ParticipantDirectoryDialog({
                     >
                       {isRefreshingSerials ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+                          <Spinner size={18} className="sm:mr-2" />
                           <span className="hidden sm:inline">Syncing...</span>
                         </>
                       ) : (
@@ -3454,7 +3455,7 @@ export default function ParticipantDirectoryDialog({
                     >
                       {isDownloadingDirectory ? (
                         <>
-                          <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+                          <Spinner size={18} className="sm:mr-2" />
                           <span className="hidden sm:inline">Preparing...</span>
                         </>
                       ) : (
@@ -3555,7 +3556,7 @@ export default function ParticipantDirectoryDialog({
             <div className="flex justify-between items-center text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
               <span>Background Certificate Caching</span>
               <span className="flex items-center gap-1.5">
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Spinner size={14} />
                 {preFetchProgress} / {preFetchTotal}
               </span>
             </div>
@@ -3639,7 +3640,7 @@ export default function ParticipantDirectoryDialog({
           <div className="bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-md p-4 mb-2">
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm font-semibold text-primary flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Spinner size={18} />
                 Sending Certificates via Email...
               </span>
               <span className="text-sm font-medium text-primary">{progress}%</span>
@@ -3650,7 +3651,7 @@ export default function ParticipantDirectoryDialog({
 
         {loading ? (
           <div className="flex justify-center items-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <Spinner size={28} />
           </div>
         ) : trainees.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
@@ -3762,7 +3763,7 @@ export default function ParticipantDirectoryDialog({
               className="w-full border-violet-200 bg-violet-50 text-violet-900 hover:bg-violet-100 sm:w-auto dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-200"
             >
               {isRemovingBg ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Spinner size={18} className="mr-2" />
               ) : (
                 <Eraser className="mr-2 h-4 w-4" />
               )}
@@ -3777,7 +3778,7 @@ export default function ParticipantDirectoryDialog({
             >
               {isLoadingPreviews ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner size={18} className="mr-2" />
                   Preparing Previews...
                 </>
               ) : (
@@ -4453,7 +4454,7 @@ export default function ParticipantDirectoryDialog({
                 {!certificatePreviews[activePreviewIndex]?.url && (
                   <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-background/80 p-4 text-center backdrop-blur-[2px] sm:p-6">
                     <div className="relative mb-4">
-                      <div className="h-12 w-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin sm:h-16 sm:w-16" />
+                      <Spinner size={40} className="sm:h-16 sm:w-16" />
                     </div>
                     <h3 className="text-base font-bold text-foreground sm:text-lg">Generating Certificate...</h3>
                     <p className="mt-2 max-w-xs text-xs text-muted-foreground sm:text-sm">
@@ -4484,7 +4485,7 @@ export default function ParticipantDirectoryDialog({
                 >
                   {certificatePreviews.length === 0 ? (
                     <div className="flex flex-col items-center gap-2 text-muted-foreground animate-in fade-in transition-all">
-                      <Loader2 className="h-8 w-8 animate-spin opacity-20" />
+                      <Spinner size={28} className="opacity-20" />
                       <span className="text-sm">Preparing Previews...</span>
                     </div>
                   ) : (
@@ -4697,7 +4698,7 @@ export default function ParticipantDirectoryDialog({
                             >
                               {isSavingInlineEdit ? (
                                 <>
-                                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                  <Spinner size={14} className="mr-1" />
                                   Saving
                                 </>
                               ) : (
@@ -4868,7 +4869,7 @@ export default function ParticipantDirectoryDialog({
                     disabled={isSendingEmails}
                   >
                     {isSendingEmails ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Spinner size={18} />
                     ) : (
                       <Mail className="h-4 w-4" />
                     )}
@@ -4894,7 +4895,7 @@ export default function ParticipantDirectoryDialog({
                     disabled={isGenerating}
                   >
                     {isGenerating ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Spinner size={18} />
                     ) : (
                       <Download className="h-4 w-4" />
                     )}
@@ -4947,7 +4948,7 @@ export default function ParticipantDirectoryDialog({
                           }
                         >
                           {isRemovingBg ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <Spinner size={14} />
                           ) : (
                             <Eraser className="h-3 w-3" />
                           )}
@@ -4967,7 +4968,7 @@ export default function ParticipantDirectoryDialog({
                           }
                         >
                           {isUploading ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <Spinner size={14} />
                           ) : (
                             <RotateCcw className="h-3 w-3" />
                           )}
@@ -5464,7 +5465,7 @@ export default function ParticipantDirectoryDialog({
               onClick={() => setBgJobExpanded((openPanel) => !openPanel)}
             >
               {isRemovingBg ? (
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-violet-600" />
+                <Spinner size={18} className="shrink-0" />
               ) : (
                 <Eraser className="h-4 w-4 shrink-0 text-violet-600" />
               )}

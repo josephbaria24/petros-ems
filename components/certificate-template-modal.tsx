@@ -2,16 +2,13 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  Upload, X, Plus, Minus, Trash2, Save, Eye, Loader2, Award, CalendarCheck, Trophy,
-  ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize, Minimize,
-  ArrowLeftRight, ArrowUpDown, Copy, FlipHorizontal, CircleHelp, Undo2, Redo2
-} from "lucide-react"
+import { Upload, X, Plus, Minus, Trash2, Save, Eye, Award, CalendarCheck, Trophy, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize, Minimize, ArrowLeftRight, ArrowUpDown, Copy, FlipHorizontal, CircleHelp, Undo2, Redo2 } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -1706,7 +1703,7 @@ toast.success("Template saved successfully!")
           disabled={uploading}
         >
           {uploading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Spinner size={18} />
           ) : (
             <>
               <Upload className="h-4 w-4 mr-2" />
@@ -2426,7 +2423,7 @@ toast.success("Template saved successfully!")
       <div className="space-y-4 py-4 max-h-96 overflow-y-auto">
         {loadingCourses ? (
           <div className="flex justify-center p-8">
-            <Loader2 className="h-8 w-8 animate-spin" />
+            <Spinner size={28} />
           </div>
         ) : coursesWithTemplates.length > 0 ? (
           <div className="grid gap-2">

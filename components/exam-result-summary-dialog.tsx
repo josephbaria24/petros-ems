@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { format, parseISO } from "date-fns"
-import { Download, Loader2, Pencil, X } from "lucide-react"
+import { Download, Pencil, X } from "lucide-react"
 import { toast } from "sonner"
 import {
   AlertDialog,
@@ -443,7 +444,7 @@ export function ExamResultSummaryDialog({
                   onClick={() => void exportPdf()}
                 >
                   {exporting ? (
-                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    <Spinner size={14} className="mr-1.5" />
                   ) : (
                     <Download className="mr-1.5 h-3.5 w-3.5" />
                   )}
@@ -456,7 +457,7 @@ export function ExamResultSummaryDialog({
           <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-200/80 p-4 dark:bg-zinc-900">
             {loading ? (
               <div className="flex flex-col items-center justify-center gap-3 py-24 text-[#1A1D66] dark:text-foreground">
-                <Loader2 className="h-8 w-8 animate-spin" />
+                <Spinner size={28} />
                 Building summary preview…
               </div>
             ) : (

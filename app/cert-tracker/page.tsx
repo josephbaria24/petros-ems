@@ -2,7 +2,8 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useEffect } from 'react';
-import { Search, Download, CheckCircle2, Circle, Clock, AlertCircle, Loader2, ChevronDown, ChevronUp, FileText, Package } from 'lucide-react';
+import { Spinner } from "@/components/ui/spinner"
+import { Search, Download, CheckCircle2, Circle, Clock, AlertCircle, ChevronDown, ChevronUp, FileText, Package } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -448,7 +449,7 @@ const CertificateTracker = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+          <Spinner size={28} className="mx-auto mb-4" />
           <p className="text-gray-600">Loading certificate data...</p>
         </div>
       </div>

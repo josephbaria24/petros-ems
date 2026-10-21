@@ -1,8 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useSearchParams } from "next/navigation"
-import { CheckCircle2, Loader2, TriangleAlert } from "lucide-react"
+import { CheckCircle2, TriangleAlert } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -240,7 +241,7 @@ export default function GuestExamPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#f4f5fb] text-[#1A1D66] dark:bg-background dark:text-foreground">
-        <Loader2 className="h-8 w-8 animate-spin" />
+        <Spinner size={28} />
         Loading exam…
       </div>
     )
@@ -482,7 +483,7 @@ export default function GuestExamPage() {
                 void submit()
               }}
             >
-              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {submitting ? <Spinner size={18} className="mr-2" /> : null}
               {submitting ? "Submitting…" : "Yes, submit as this name"}
             </AlertDialogAction>
           </AlertDialogFooter>

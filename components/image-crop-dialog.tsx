@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useRef, useCallback, useEffect } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import ReactCrop, {
   Crop,
   PixelCrop,
@@ -12,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Loader2, RotateCw, Maximize2, Upload, Crop as CropIcon } from "lucide-react"
+import { RotateCw, Maximize2, Upload, Crop as CropIcon } from "lucide-react"
 
 export type ImageCropType = "2x2" | "id" | "template" | "free"
 
@@ -345,7 +346,7 @@ export function ImageCropDialog({
                 <Button onClick={() => fileInputRef.current?.click()} disabled={uploading} size="lg">
                   {uploading ? (
                     <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      <Spinner size={20} className="mr-2" />
                       Loading...
                     </>
                   ) : (
@@ -469,7 +470,7 @@ export function ImageCropDialog({
               <Button onClick={handleSave} disabled={saving || !completedCrop}>
                 {saving ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Spinner size={18} className="mr-2" />
                     Saving...
                   </>
                 ) : (

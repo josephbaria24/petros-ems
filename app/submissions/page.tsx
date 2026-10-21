@@ -2,6 +2,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useSearchParams, useRouter } from "next/navigation"
 import { tmsDb } from "@/lib/supabase-client"
 import { toast } from "sonner"
@@ -16,21 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  CheckCircle,
-  XCircle,
-  Clock,
-  Wallet,
-  MoreVertical,
-  Zap,
-  Loader2,
-  PieChart,
-  ArrowLeft,
-  AlertCircle,
-  Upload,
-  MoveRight,
-  Settings2
-} from "lucide-react";
+import { CheckCircle, XCircle, Clock, Wallet, MoreVertical, Zap, PieChart, ArrowLeft, AlertCircle, Upload, MoveRight, Settings2 } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -196,92 +183,90 @@ const formatScheduleDate = (schedule: any) => {
 };
 
 
+  const statusBadgeClass =
+    "h-5 max-w-full gap-1 truncate border px-1.5 text-[10px] font-medium sm:h-6 sm:px-2 sm:text-xs [&_svg]:h-3 [&_svg]:w-3"
+
   const getStatusBadge = (status: string) => {
-  const normalized = status?.toLowerCase().trim() || "pending";
-  
+    const normalized = status?.toLowerCase().trim() || "pending"
 
-
-  switch (normalized) {
-    case "pending":
-      return (
-        <Badge className="bg-orange-100 text-orange-800 border border-orange-300">
-          <Clock className="w-4 h-4 mr-1" />
-          Pending
-        </Badge>
-      );
-    
-    case "awaiting receipt":
-      return (
-        <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-300">
-          <Clock className="w-4 h-4 mr-1" />
-          Awaiting Receipt
-        </Badge>
-      );
-    
-    case "declined (waiting for resubmission)":
-      return (
-        <Badge className="bg-red-100 text-red-800 border border-red-300">
-          <AlertCircle className="w-4 h-4 mr-1" />
-          Declined - Awaiting Resubmission
-        </Badge>
-      );
-    
-    case "resubmitted (pending verification)":
-      return (
-        <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
-          <Upload className="w-4 h-4 mr-1" />
-          Resubmitted - Pending Verification
-        </Badge>
-      );
-    
-    case "pending payment":
-      return (
-        <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-300">
-          <Wallet className="w-4 h-4 mr-1" />
-          Pending Payment
-        </Badge>
-      );
-    
-    case "partially paid":
-      return (
-        <Badge className="bg-blue-100 text-blue-800 border border-blue-300">
-          <PieChart className="w-4 h-4 mr-1" />
-          Partially Paid
-        </Badge>
-      );
-    
-    case "payment completed":
-      return (
-        <Badge className="bg-green-100 text-green-800 border border-green-300">
-          <CheckCircle className="w-4 h-4 mr-1" />
-          Payment Completed
-        </Badge>
-      );
-    
-    case "payment completed (discounted)":
-      return (
-        <Badge className="bg-green-100 text-green-800 border border-green-300">
-          <Wallet className="w-4 h-4 mr-1" />
-          Payment Completed (Discounted)
-        </Badge>
-      );
-    
-    case "partially paid (discounted)":
-      return (
-        <Badge className="bg-purple-100 text-purple-800 border border-purple-300">
-          <PieChart className="w-4 h-4 mr-1" />
-          Partially Paid (Discounted)
-        </Badge>
-      );
-    
-    default:
-      return (
-        <Badge variant="outline" className="text-muted-foreground">
-          {status}
-        </Badge>
-      );
+    switch (normalized) {
+      case "pending":
+        return (
+          <Badge className={`${statusBadgeClass} border-orange-300 bg-orange-100 text-orange-800`}>
+            <Clock />
+            Pending
+          </Badge>
+        )
+      case "awaiting receipt":
+        return (
+          <Badge className={`${statusBadgeClass} border-yellow-300 bg-yellow-100 text-yellow-800`}>
+            <Clock />
+            <span className="sm:hidden">Awaiting</span>
+            <span className="hidden sm:inline">Awaiting Receipt</span>
+          </Badge>
+        )
+      case "declined (waiting for resubmission)":
+        return (
+          <Badge className={`${statusBadgeClass} border-red-300 bg-red-100 text-red-800`}>
+            <AlertCircle />
+            <span className="sm:hidden">Declined</span>
+            <span className="hidden sm:inline">Declined - Awaiting Resubmission</span>
+          </Badge>
+        )
+      case "resubmitted (pending verification)":
+        return (
+          <Badge className={`${statusBadgeClass} border-purple-300 bg-purple-100 text-purple-800`}>
+            <Upload />
+            <span className="sm:hidden">Resubmitted</span>
+            <span className="hidden sm:inline">Resubmitted - Pending Verification</span>
+          </Badge>
+        )
+      case "pending payment":
+        return (
+          <Badge className={`${statusBadgeClass} border-yellow-300 bg-yellow-100 text-yellow-800`}>
+            <Wallet />
+            <span className="sm:hidden">Unpaid</span>
+            <span className="hidden sm:inline">Pending Payment</span>
+          </Badge>
+        )
+      case "partially paid":
+        return (
+          <Badge className={`${statusBadgeClass} border-blue-300 bg-blue-100 text-blue-800`}>
+            <PieChart />
+            Partial
+          </Badge>
+        )
+      case "payment completed":
+        return (
+          <Badge className={`${statusBadgeClass} border-green-300 bg-green-100 text-green-800`}>
+            <CheckCircle />
+            Paid
+          </Badge>
+        )
+      case "payment completed (discounted)":
+        return (
+          <Badge className={`${statusBadgeClass} border-green-300 bg-green-100 text-green-800`}>
+            <Wallet />
+            <span className="sm:hidden">Paid</span>
+            <span className="hidden sm:inline">Payment Completed (Discounted)</span>
+          </Badge>
+        )
+      case "partially paid (discounted)":
+        return (
+          <Badge className={`${statusBadgeClass} border-purple-300 bg-purple-100 text-purple-800`}>
+            <PieChart />
+            <span className="sm:hidden">Partial</span>
+            <span className="hidden sm:inline">Partially Paid (Discounted)</span>
+          </Badge>
+        )
+      default:
+        return (
+          <Badge variant="outline" className={`${statusBadgeClass} text-muted-foreground`}>
+            {status}
+          </Badge>
+        )
+    }
   }
-};
   
 
 
@@ -738,10 +723,13 @@ useEffect(() => {
   setHighlightedRow(highlightId)
 
   const scrollTimer = setTimeout(() => {
-    const element = document.getElementById(`trainee-row-${highlightId}`)
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "center" })
-    }
+    const candidates = document.querySelectorAll<HTMLElement>(
+      `[data-trainee-row="${highlightId}"]`
+    )
+    const element =
+      Array.from(candidates).find((el) => el.getClientRects().length > 0) ||
+      candidates[0]
+    element?.scrollIntoView({ behavior: "smooth", block: "center" })
   }, 100)
 
   const clearTimer = setTimeout(() => {
@@ -1182,92 +1170,98 @@ const filteredTrainees = trainees.filter((t) => {
       }
     `}</style>
     
-    <div className="p-6 space-y-2">
-      <div className="flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Link href={`/training-schedules?tab=${fromTab}`}>
-            <Button variant="ghost" size="sm" className="gap-2">
+    <div className="page-shell min-w-0 max-w-full space-y-3 overflow-x-hidden">
+      <div className="flex min-w-0 flex-col gap-3 sm:gap-2">
+        <div className="flex min-w-0 items-start gap-2">
+          <Link href={`/training-schedules?tab=${fromTab}`} className="shrink-0">
+            <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2">
               <ArrowLeft className="h-4 w-4" />
-              Back
+              <span className="sm:inline">Back</span>
             </Button>
           </Link>
-           {/* ✅ ADD THIS REFRESH BUTTON */}
-          <div>
-            {courseName && (
-              <div className="flex flex-col">
-                <p className="text-sm text-muted-foreground font-medium">
+          <div className="min-w-0 flex-1">
+            {courseName ? (
+              <div className="mb-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
+                <p className="truncate text-xs font-medium text-muted-foreground sm:text-sm">
                   {courseName}
-                  {batchNumber && (
-                      <Badge variant="default" className="ml-2 text-xs">
-                        Batch #{batchNumber}
-                      </Badge>
-                    )}
-                  {scheduleDateText ? (
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      • {scheduleDateText}
-                    </span>
-                  ) : null}
                 </p>
+                {batchNumber ? (
+                  <Badge variant="default" className="h-5 shrink-0 px-1.5 text-[10px]">
+                    Batch #{batchNumber}
+                  </Badge>
+                ) : null}
+                {scheduleDateText ? (
+                  <span className="truncate text-[10px] text-muted-foreground sm:text-xs">
+                    • {scheduleDateText}
+                  </span>
+                ) : null}
               </div>
-            )}
-
-            <h1 className="text-2xl font-bold">Trainee Submissions</h1>
+            ) : null}
+            <h1 className="page-title text-xl font-bold tracking-tight sm:text-2xl">
+              Trainee Submissions
+            </h1>
           </div>
         </div>
-        
+
         {bulkMode ? (
-          <div className="flex gap-2">
-            <Badge variant="outline" className="px-3 py-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <Badge variant="outline" className="h-7 px-2 text-xs">
               {selectedIds.length} selected
             </Badge>
             {processing && (
-              <Badge variant="secondary" className="px-3 py-1">
+              <Badge variant="secondary" className="h-7 px-2 text-xs">
                 {progressCurrent} / {progressTotal}
               </Badge>
             )}
             <Button
               size="sm"
               variant="outline"
+              className="h-8"
               onClick={handleCancelBulk}
               disabled={processing}
             >
               Cancel
             </Button>
-           <Button
-            size="sm"
-            onClick={
-              bulkMode === "paid" 
-                ? handleBulkMarkAsPaid 
-                : bulkMode === "room" 
-                ? handleRoomLinkSubmit 
-                : handleMoveScheduleSubmit
-            }
-            disabled={selectedIds.length === 0 || processing}
-          >
-            {processing ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Processing... ({progressCurrent}/{progressTotal})
-              </>
-            ) : bulkMode === "paid" ? (
-              "Mark as Paid"
-            ) : bulkMode === "room" ? (
-              "Send Room Link"
-            ) : (
-              "Move Schedule"
-            )}
-          </Button>
+            <Button
+              size="sm"
+              className="h-8"
+              onClick={
+                bulkMode === "paid"
+                  ? handleBulkMarkAsPaid
+                  : bulkMode === "room"
+                    ? handleRoomLinkSubmit
+                    : handleMoveScheduleSubmit
+              }
+              disabled={selectedIds.length === 0 || processing}
+            >
+              {processing ? (
+                <>
+                  <Spinner size={18} className="mr-1.5" />
+                  <span className="sm:hidden">…</span>
+                  <span className="hidden sm:inline">
+                    Processing... ({progressCurrent}/{progressTotal})
+                  </span>
+                </>
+              ) : bulkMode === "paid" ? (
+                "Mark Paid"
+              ) : bulkMode === "room" ? (
+                "Send Link"
+              ) : (
+                "Move"
+              )}
+            </Button>
           </div>
         ) : (
-          <div className="flex gap-2">
+          <div className="flex min-w-0 gap-1.5">
             <Popover>
               <PopoverTrigger asChild>
-                <Button size="sm" variant="outline" className="gap-2 cursor-pointer">
+                <Button size="sm" variant="outline" className="h-8 flex-1 gap-1.5 px-2 sm:flex-none">
                   <Settings2 className="h-4 w-4" />
-                  Duplication Config
+                  <span className="sm:hidden">Duplicates</span>
+                  <span className="hidden sm:inline">Duplication Config</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-64">
+              <PopoverContent className="w-64" align="start">
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <h4 className="font-medium leading-none">Duplication Basis</h4>
@@ -1277,37 +1271,43 @@ const filteredTrainees = trainees.filter((t) => {
                   </div>
                   <div className="grid gap-2">
                     <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="basis-name" 
-                        checked={duplicateBasis.includes('name')}
+                      <Checkbox
+                        id="basis-name"
+                        checked={duplicateBasis.includes("name")}
                         onCheckedChange={(checked) => {
-                          if (checked) setDuplicateBasis(prev => [...prev, 'name'])
-                          else setDuplicateBasis(prev => prev.filter(b => b !== 'name'))
+                          if (checked) setDuplicateBasis((prev) => [...prev, "name"])
+                          else setDuplicateBasis((prev) => prev.filter((b) => b !== "name"))
                         }}
                       />
-                      <Label htmlFor="basis-name" className="cursor-pointer">Full Name</Label>
+                      <Label htmlFor="basis-name" className="cursor-pointer">
+                        Full Name
+                      </Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="basis-email" 
-                        checked={duplicateBasis.includes('email')}
+                      <Checkbox
+                        id="basis-email"
+                        checked={duplicateBasis.includes("email")}
                         onCheckedChange={(checked) => {
-                          if (checked) setDuplicateBasis(prev => [...prev, 'email'])
-                          else setDuplicateBasis(prev => prev.filter(b => b !== 'email'))
+                          if (checked) setDuplicateBasis((prev) => [...prev, "email"])
+                          else setDuplicateBasis((prev) => prev.filter((b) => b !== "email"))
                         }}
                       />
-                      <Label htmlFor="basis-email" className="cursor-pointer">Email Address</Label>
+                      <Label htmlFor="basis-email" className="cursor-pointer">
+                        Email Address
+                      </Label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="basis-phone" 
-                        checked={duplicateBasis.includes('phone')}
+                      <Checkbox
+                        id="basis-phone"
+                        checked={duplicateBasis.includes("phone")}
                         onCheckedChange={(checked) => {
-                          if (checked) setDuplicateBasis(prev => [...prev, 'phone'])
-                          else setDuplicateBasis(prev => prev.filter(b => b !== 'phone'))
+                          if (checked) setDuplicateBasis((prev) => [...prev, "phone"])
+                          else setDuplicateBasis((prev) => prev.filter((b) => b !== "phone"))
                         }}
                       />
-                      <Label htmlFor="basis-phone" className="cursor-pointer">Phone Number</Label>
+                      <Label htmlFor="basis-phone" className="cursor-pointer">
+                        Phone Number
+                      </Label>
                     </div>
                   </div>
                 </div>
@@ -1318,13 +1318,14 @@ const filteredTrainees = trainees.filter((t) => {
               <DropdownMenuTrigger asChild>
                 <Button
                   size="sm"
-                  className="cursor-pointer bg-primary text-white hover:bg-primary/90 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-500"
+                  className="h-8 flex-1 gap-1.5 bg-primary px-2 text-white hover:bg-primary/90 sm:flex-none dark:bg-blue-600 dark:text-white dark:hover:bg-blue-500"
                 >
-                  <Zap className="h-4 w-4 mr-2" />
-                  Quick Actions
+                  <Zap className="h-4 w-4" />
+                  <span className="sm:hidden">Actions</span>
+                  <span className="hidden sm:inline">Quick Actions</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuItem onClick={() => handleQuickAction("paid")} className="cursor-pointer">
                   Quick Mark as Paid
                 </DropdownMenuItem>
@@ -1337,27 +1338,30 @@ const filteredTrainees = trainees.filter((t) => {
                 <DropdownMenuItem onClick={() => handleQuickAction("move")} className="cursor-pointer">
                   Move to Another Schedule
                 </DropdownMenuItem>
-                <DropdownMenuItem 
+                <DropdownMenuItem
                   onClick={() => {
                     setShowDuplicatesOnly(!showDuplicatesOnly)
                     if (!showDuplicatesOnly) {
                       detectDuplicates()
                     }
-                  }} 
+                  }}
                   className="cursor-pointer"
                 >
                   {showDuplicatesOnly ? (
                     <>
-                      <XCircle className="h-4 w-4 mr-2" />
+                      <XCircle className="mr-2 h-4 w-4" />
                       Show All Entries
                     </>
                   ) : (
                     <>
-                      <AlertCircle className="h-4 w-4 mr-2" />
+                      <AlertCircle className="mr-2 h-4 w-4" />
                       View Duplicate Entries
                       {duplicateGroups.size > 0 && (
                         <Badge variant="destructive" className="ml-2">
-                          {Array.from(duplicateGroups.values()).reduce((sum, group) => sum + group.length, 0)}
+                          {Array.from(duplicateGroups.values()).reduce(
+                            (sum, group) => sum + group.length,
+                            0
+                          )}
                         </Badge>
                       )}
                     </>
@@ -1372,205 +1376,331 @@ const filteredTrainees = trainees.filter((t) => {
       <Input
         type="text"
         placeholder="Search trainee..."
-        className="max-w-md"
+        className="h-9 w-full max-w-md"
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
       />
 
+      {showDuplicatesOnly && (
+        <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 sm:flex-row sm:items-center sm:gap-2 sm:p-3 dark:border-amber-900/50 dark:bg-amber-950/40">
+          <div className="flex min-w-0 flex-1 items-start gap-2">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                Showing duplicates only
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                {duplicateGroups.size} group(s) ·{" "}
+                {Array.from(duplicateGroups.values()).reduce((sum, group) => sum + group.length, 0)}{" "}
+                trainee(s)
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowDuplicatesOnly(false)}
+            className="h-8 shrink-0"
+          >
+            Clear
+          </Button>
+        </div>
+      )}
 
-{showDuplicatesOnly && (
-  <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-    <AlertCircle className="h-5 w-5 text-amber-600" />
-    <div className="flex-1">
-      <p className="text-sm font-medium text-amber-900">
-        Showing Duplicate Entries Only
-      </p>
-      <p className="text-xs text-amber-700">
-        Found {duplicateGroups.size} duplicate group(s) with {Array.from(duplicateGroups.values()).reduce((sum, group) => sum + group.length, 0)} trainee(s)
-      </p>
-    </div>
-    <Button 
-      size="sm" 
-      variant="outline" 
-      onClick={() => setShowDuplicatesOnly(false)}
-      className="cursor-pointer"
-    >
-      Clear Filter
-    </Button>
-  </div>
-)}
-
-      <Card>
-  <div className="max-h-[70vh] overflow-y-auto">
-    <Table>
-      <TableHeader>
-        <TableRow>
-          {bulkMode && (
-            <TableHead className="w-12">
-              <Checkbox
-                checked={selectedIds.length === filteredTrainees.length && filteredTrainees.length > 0}
-                onCheckedChange={handleSelectAll}
-              />
-            </TableHead>
-          )}
-          <TableHead>#</TableHead>
-          <TableHead>Name</TableHead>
-          <TableHead>Email</TableHead>
-          <TableHead>Phone</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Photo</TableHead>
-          <TableHead>PVC ID</TableHead>
-          {!bulkMode && <TableHead>Actions</TableHead>}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
+      {/* Mobile card list */}
+      <div className="space-y-2 md:hidden">
         {isLoadingTrainees ? (
-          // Skeleton rows
-          Array.from({ length: 5 }).map((_, index) => (
-            <TableRow key={`skeleton-${index}`}>
-              {bulkMode && (
-                <TableCell>
-                  <Skeleton className="h-4 w-4" />
-                </TableCell>
-              )}
-              <TableCell>
-                <Skeleton className="h-4 w-8" />
-              </TableCell>
-              <TableCell>
-                <Skeleton className="h-4 w-32" />
-              </TableCell>
-              <TableCell>
-                <Skeleton className="h-4 w-40" />
-              </TableCell>
-              <TableCell>
-                <Skeleton className="h-4 w-24" />
-              </TableCell>
-              <TableCell>
-                <Skeleton className="h-6 w-32" />
-              </TableCell>
-              <TableCell>
-                <Skeleton className="h-10 w-10 rounded-full" />
-              </TableCell>
-              <TableCell> {/* ADD THIS */}
-                <Skeleton className="h-6 w-16" />
-              </TableCell>
-              {!bulkMode && (
-                <TableCell>
-                  <Skeleton className="h-8 w-8" />
-                </TableCell>
-              )}
-            </TableRow>
+          Array.from({ length: 4 }).map((_, index) => (
+            <Card key={`m-skel-${index}`} className="gap-0 p-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-36" />
+                  <Skeleton className="h-3 w-48" />
+                  <Skeleton className="h-5 w-20" />
+                </div>
+              </div>
+            </Card>
           ))
         ) : filteredTrainees.length === 0 ? (
-          // Empty state
-          <TableRow>
-            <TableCell 
-                colSpan={bulkMode ? 9 : 8} 
-                className="text-center py-8 text-muted-foreground"
-              >
-              No trainees found
-            </TableCell>
-          </TableRow>
+          <Card className="p-6 text-center text-sm text-muted-foreground shadow-sm">
+            No trainees found
+          </Card>
         ) : (
-          // Actual data
-          filteredTrainees.map((trainee, index) => (
-           <TableRow
-  id={`trainee-row-${trainee.id}`}
-  key={trainee.id}
-  className={`
-    ${bulkMode ? "" : "cursor-pointer"} 
-    ${highlightedRow === trainee.id ? "bg-yellow-100 dark:bg-yellow-900/20 animate-pulse" : ""}
-    transition-colors duration-300
-  `}
-  onClick={() => !bulkMode && handleView(trainee)}
->
-              {bulkMode && (
-                <TableCell onClick={(e) => e.stopPropagation()}>
-                  <Checkbox
-                    checked={selectedIds.includes(trainee.id)}
-                    onCheckedChange={() => handleRowSelect(trainee.id)}
-                  />
-                </TableCell>
-              )}
-              <TableCell>{index + 1}</TableCell>
-              <TableCell>
-  <div className="flex items-center gap-2">
-    {hasPendingReceipt(trainee) && (
-      <div 
-        className="w-2 h-2 bg-orange-500 rounded-full blink-dot" 
-        title="Pending receipt approval"
-      />
-    )}
-    {Array.from(duplicateGroups.values()).some(group => 
-      group.length > 1 && group.some(t => t.id === trainee.id)
-    ) && (
-      <Badge variant="destructive" className="text-xs px-1 py-0">
-        DUP
-      </Badge>
-    )}
-    <span>{trainee.first_name} {trainee.last_name}</span>
-  </div>
-</TableCell>
-              <TableCell>{trainee.email || "N/A"}</TableCell>
-              <TableCell>{trainee.phone_number || "N/A"}</TableCell>
-              <TableCell>
-                {getStatusBadge(trainee.status || "Pending")}
-              </TableCell>
-              <TableCell>
-                <Avatar>
-                  <AvatarImage src={trainee.picture_2x2_url} alt="2x2" />
-                  <AvatarFallback>
-                    {trainee.first_name[0]}
-                    {trainee.last_name[0]}
-                  </AvatarFallback>
-                </Avatar>
-              </TableCell>
-              <TableCell>
-                {trainee.add_pvc_id ? (
-                  <Badge className="bg-green-100 text-green-800 border border-green-300">
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Yes
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-muted-foreground">
-                    <XCircle className="w-3 h-3 mr-1" />
-                    No
-                  </Badge>
-                )}
-              </TableCell>
-              {!bulkMode && (
-                <TableCell onClick={(e) => e.stopPropagation()}>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleView(trainee)}>
-                        View Details
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDeclinePhoto(trainee)}>
-                        Decline Photos
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem 
-                        className="text-destructive cursor-pointer"
-                        onClick={() => handleInitiateDelete(trainee)}
-                      >
-                        Delete Trainee
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              )}
-            </TableRow>
-          ))
+          filteredTrainees.map((trainee, index) => {
+            const isDup = Array.from(duplicateGroups.values()).some(
+              (group) => group.length > 1 && group.some((t) => t.id === trainee.id)
+            )
+            return (
+              <Card
+                key={trainee.id}
+                data-trainee-row={trainee.id}
+                className={`gap-0 overflow-hidden p-0 shadow-sm transition-colors ${
+                  bulkMode ? "" : "cursor-pointer active:bg-muted/40"
+                } ${
+                  highlightedRow === trainee.id
+                    ? "bg-yellow-100 dark:bg-yellow-900/20"
+                    : ""
+                }`}
+                onClick={() => !bulkMode && handleView(trainee)}
+              >
+                <div className="flex items-start gap-2.5 p-3">
+                  {bulkMode ? (
+                    <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={selectedIds.includes(trainee.id)}
+                        onCheckedChange={() => handleRowSelect(trainee.id)}
+                      />
+                    </div>
+                  ) : null}
+                  <Avatar className="h-10 w-10 shrink-0">
+                    <AvatarImage src={trainee.picture_2x2_url} alt="2x2" />
+                    <AvatarFallback className="text-xs">
+                      {trainee.first_name?.[0]}
+                      {trainee.last_name?.[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-muted-foreground">#{index + 1}</span>
+                          {hasPendingReceipt(trainee) ? (
+                            <span
+                              className="blink-dot h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500"
+                              title="Pending receipt approval"
+                            />
+                          ) : null}
+                          {isDup ? (
+                            <Badge variant="destructive" className="h-4 px-1 text-[9px]">
+                              DUP
+                            </Badge>
+                          ) : null}
+                        </div>
+                        <p className="truncate text-sm font-semibold leading-tight">
+                          {trainee.first_name} {trainee.last_name}
+                        </p>
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {trainee.email || "No email"}
+                          {trainee.phone_number ? ` · ${trainee.phone_number}` : ""}
+                        </p>
+                      </div>
+                      {!bulkMode ? (
+                        <div onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 shrink-0 p-0">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleView(trainee)}>
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleDeclinePhoto(trainee)}>
+                                Decline Photos
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                className="cursor-pointer text-destructive"
+                                onClick={() => handleInitiateDelete(trainee)}
+                              >
+                                Delete Trainee
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      {getStatusBadge(trainee.status || "Pending")}
+                      {trainee.add_pvc_id ? (
+                        <Badge className="h-5 border border-green-300 bg-green-100 px-1.5 text-[10px] text-green-800">
+                          PVC
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            )
+          })
         )}
-      </TableBody>
-    </Table>
-  </div>
-</Card>
+      </div>
+
+      {/* Desktop table */}
+      <Card className="hidden min-w-0 overflow-hidden shadow-sm md:block">
+        <div className="table-scroll max-h-[70vh] overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {bulkMode && (
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={
+                        selectedIds.length === filteredTrainees.length &&
+                        filteredTrainees.length > 0
+                      }
+                      onCheckedChange={handleSelectAll}
+                    />
+                  </TableHead>
+                )}
+                <TableHead className="w-10">#</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Photo</TableHead>
+                <TableHead>PVC ID</TableHead>
+                {!bulkMode && <TableHead className="w-12">Actions</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoadingTrainees ? (
+                Array.from({ length: 5 }).map((_, index) => (
+                  <TableRow key={`skeleton-${index}`}>
+                    {bulkMode && (
+                      <TableCell>
+                        <Skeleton className="h-4 w-4" />
+                      </TableCell>
+                    )}
+                    <TableCell>
+                      <Skeleton className="h-4 w-8" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-32" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-40" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-4 w-24" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-6 w-32" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-10 w-10 rounded-full" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-6 w-16" />
+                    </TableCell>
+                    {!bulkMode && (
+                      <TableCell>
+                        <Skeleton className="h-8 w-8" />
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))
+              ) : filteredTrainees.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={bulkMode ? 9 : 8}
+                    className="py-8 text-center text-muted-foreground"
+                  >
+                    No trainees found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredTrainees.map((trainee, index) => (
+                  <TableRow
+                    data-trainee-row={trainee.id}
+                    key={trainee.id}
+                    className={`${bulkMode ? "" : "cursor-pointer"} ${
+                      highlightedRow === trainee.id
+                        ? "bg-yellow-100 animate-pulse dark:bg-yellow-900/20"
+                        : ""
+                    } transition-colors duration-300`}
+                    onClick={() => !bulkMode && handleView(trainee)}
+                  >
+                    {bulkMode && (
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox
+                          checked={selectedIds.includes(trainee.id)}
+                          onCheckedChange={() => handleRowSelect(trainee.id)}
+                        />
+                      </TableCell>
+                    )}
+                    <TableCell>{index + 1}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {hasPendingReceipt(trainee) && (
+                          <div
+                            className="blink-dot h-2 w-2 rounded-full bg-orange-500"
+                            title="Pending receipt approval"
+                          />
+                        )}
+                        {Array.from(duplicateGroups.values()).some(
+                          (group) =>
+                            group.length > 1 && group.some((t) => t.id === trainee.id)
+                        ) && (
+                          <Badge variant="destructive" className="px-1 py-0 text-xs">
+                            DUP
+                          </Badge>
+                        )}
+                        <span>
+                          {trainee.first_name} {trainee.last_name}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>{trainee.email || "N/A"}</TableCell>
+                    <TableCell>{trainee.phone_number || "N/A"}</TableCell>
+                    <TableCell>{getStatusBadge(trainee.status || "Pending")}</TableCell>
+                    <TableCell>
+                      <Avatar>
+                        <AvatarImage src={trainee.picture_2x2_url} alt="2x2" />
+                        <AvatarFallback>
+                          {trainee.first_name[0]}
+                          {trainee.last_name[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                    </TableCell>
+                    <TableCell>
+                      {trainee.add_pvc_id ? (
+                        <Badge className="border border-green-300 bg-green-100 text-green-800">
+                          <CheckCircle className="mr-1 h-3 w-3" />
+                          Yes
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-muted-foreground">
+                          <XCircle className="mr-1 h-3 w-3" />
+                          No
+                        </Badge>
+                      )}
+                    </TableCell>
+                    {!bulkMode && (
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleView(trainee)}>
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDeclinePhoto(trainee)}>
+                              Decline Photos
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="cursor-pointer text-destructive"
+                              onClick={() => handleInitiateDelete(trainee)}
+                            >
+                              Delete Trainee
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
 
       <Dialog open={roomLinkDialog} onOpenChange={setRoomLinkDialog}>
         <DialogContent className="lg:w-[40vw] sm:w-[80vw]">
@@ -1615,7 +1745,7 @@ const filteredTrainees = trainees.filter((t) => {
             <Button onClick={handleBulkSendRoomLink} disabled={!roomLink.trim() || processing}>
               {processing ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Spinner size={18} className="mr-2" />
                   Sending... ({progressCurrent}/{progressTotal})
                 </>
               ) : (
@@ -1727,7 +1857,7 @@ const filteredTrainees = trainees.filter((t) => {
       >
         {isDeleting ? (
           <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <Spinner size={18} className="mr-2" />
             Deleting...
           </>
         ) : (
@@ -1861,7 +1991,7 @@ const filteredTrainees = trainees.filter((t) => {
       >
         {processing ? (
           <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <Spinner size={18} className="mr-2" />
             Moving... ({progressCurrent}/{progressTotal})
           </>
         ) : (

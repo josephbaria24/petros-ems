@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useSearchParams } from "next/navigation"
 import { format, parseISO } from "date-fns"
-import { CheckCircle2, Clock, Loader2, UserCheck } from "lucide-react"
+import { CheckCircle2, Clock, UserCheck } from "lucide-react"
 import { tmsDb } from "@/lib/supabase-client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -261,7 +262,7 @@ function GuestAttendanceForm() {
   if (loading) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center gap-2 text-muted-foreground">
-        <Loader2 className="h-6 w-6 animate-spin" />
+        <Spinner size={24} />
         <span className="text-base">Loading attendance form…</span>
       </div>
     )
@@ -405,7 +406,7 @@ function GuestAttendanceForm() {
         >
           {submitting ? (
             <>
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              <Spinner size={20} className="mr-2" />
               Saving…
             </>
           ) : (
@@ -422,7 +423,7 @@ export default function GuestAttendancePage() {
     <React.Suspense
       fallback={
         <div className="flex min-h-[70vh] items-center justify-center gap-2 text-muted-foreground">
-          <Loader2 className="h-6 w-6 animate-spin" />
+          <Spinner size={24} />
           <span className="text-base">Loading…</span>
         </div>
       }

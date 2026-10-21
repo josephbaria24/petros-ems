@@ -3,12 +3,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Settings, Search, FileText, Plus, Loader2 } from "lucide-react"
+import { Settings, Search, FileText, Plus } from "lucide-react"
 import CertificateTemplateModal from "@/components/certificate-template-modal"
 import { tmsDb } from "@/lib/supabase-client"
 
@@ -195,7 +196,7 @@ export default function CertificateManagementPage() {
         <CardContent>
           {loading ? (
             <div className="flex justify-center items-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <Spinner size={28} />
             </div>
           ) : filteredCourses.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
