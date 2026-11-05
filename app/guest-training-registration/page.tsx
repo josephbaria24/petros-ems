@@ -225,7 +225,13 @@ export default function GuestTrainingRegistration() {
 
 
 
-  // First, add this helper function at the top of your component (around line 500):
+  // Work status for PVC: Student → student price; Unemployed/Employed → professional price (same)
+  const isStudentWorkStatus = (status = form.employment_status) =>
+    status === "Student" || (status === "Unemployed" && !!form.is_student)
+
+  const isProfessionalWorkStatus = (status = form.employment_status) =>
+    status === "Unemployed/Employed" || status === "Employed" || (status === "Unemployed" && !form.is_student)
+
   const getPvcFee = () => {
     if (!course?.has_pvc_id) return 0;
 
@@ -234,23 +240,42 @@ export default function GuestTrainingRegistration() {
       return 0;
     }
 
-    // If course has PVC optional OR has discount, charge based on employment status
+    // If course has PVC optional OR has discount, charge based on work status
     if (course.pvc_id_type === 'optional' || discount > 0) {
-      // Determine if user is student/unemployed
-      const isStudent = form.employment_status === 'Unemployed' && form.is_student;
-      const isUnemployed = form.employment_status === 'Unemployed';
-
-      // Use student price for students/unemployed
-      if (isStudent || isUnemployed) {
-        return course.pvc_student_price || 150; // fallback to 150
+      // Student rate only for students — unemployed & employed share professional rate
+      if (isStudentWorkStatus()) {
+        return course.pvc_student_price || 150;
       }
 
-      // Use professional price for employed
-      return course.pvc_professional_price || 300; // fallback to 300
+      return course.pvc_professional_price || 300;
     }
 
     return 0;
   };
+
+  /** Map UI work status to DB employment_status + is_student */
+  const resolveEmploymentForSave = (status = form.employment_status, data: any = form) => {
+    if (status === "Student" || (status === "Unemployed" && data.is_student)) {
+      return { employment_status: "Unemployed", is_student: true as boolean }
+    }
+    // Unemployed/Employed (professional): keep Employed if company provided, else Unemployed
+    const hasCompany = !!(data.company_name && String(data.company_name).trim())
+    if (status === "Unemployed/Employed") {
+      return { employment_status: hasCompany ? "Employed" : "Unemployed", is_student: false as boolean }
+    }
+    if (status === "Employed") {
+      return { employment_status: "Employed", is_student: false as boolean }
+    }
+    return { employment_status: status || "Unemployed", is_student: false as boolean }
+  }
+
+  const workStatusFromExisting = (existing: any) => {
+    if (existing?.is_student) return "Student"
+    if (existing?.employment_status === "Employed" || existing?.employment_status === "Unemployed") {
+      return "Unemployed/Employed"
+    }
+    return existing?.employment_status || ""
+  }
 
 
 
@@ -432,6 +457,16 @@ export default function GuestTrainingRegistration() {
       }
     }
 
+    if (!form.employment_status) {
+      newErrors.employment_status = true
+      if (!firstErrorField) firstErrorField = "employment_status"
+    }
+
+    if (isStudentWorkStatus() && !(form.school_name || "").toString().trim()) {
+      newErrors.school_name = true
+      if (!firstErrorField) firstErrorField = "school_name"
+    }
+
     setErrors(newErrors)
 
     if (firstErrorField) {
@@ -477,8 +512,8 @@ export default function GuestTrainingRegistration() {
     setDuplicateData(null)
     setDuplicateBookingRef("")
 
-    // Proceed to next step
-    if (form.employment_status === "Unemployed") {
+    // Proceed to next step — students skip employment details
+    if (isStudentWorkStatus()) {
       setStep(3)
     } else {
       setStep(2)
@@ -509,7 +544,7 @@ export default function GuestTrainingRegistration() {
       shipping_city: existingData.custom_data?.shipping_city || "",
       shipping_province: existingData.custom_data?.shipping_province || "",
       facebook_profile_url: existingData.custom_data?.facebook_profile_url || "",
-      employment_status: existingData.employment_status || "",
+      employment_status: workStatusFromExisting(existingData),
       company_name: existingData.company_name || "",
       company_position: existingData.company_position || "",
       company_industry: existingData.company_industry || "",
@@ -520,7 +555,7 @@ export default function GuestTrainingRegistration() {
       total_workers: existingData.total_workers || null,  // ✅ CHANGE THIS LINE - use null instead of ""
       id_picture_url: existingData.id_picture_url || "",
       picture_2x2_url: existingData.picture_2x2_url || "",
-      is_student: existingData.is_student || false,
+      is_student: !!existingData.is_student,
       school_name: existingData.school_name || "",
       add_pvc_id: existingData.add_pvc_id || false,
     })
@@ -547,7 +582,11 @@ export default function GuestTrainingRegistration() {
 
 
   const validateStep2 = () => {
-    if (form.employment_status !== "Employed") return true
+    // Unemployed/Employed: company details are optional (fill in only if employed)
+    if (!isProfessionalWorkStatus()) return true
+    if (form.employment_status === "Unemployed/Employed" && !(form.company_name || "").toString().trim()) {
+      return true
+    }
 
     const newErrors: any = {}
     let firstErrorField: string | null = null
@@ -1172,9 +1211,19 @@ export default function GuestTrainingRegistration() {
         has_discount: discount > 0 || !!mainData.has_discount,
         add_pvc_id: form.add_pvc_id || mainData.add_pvc_id || false,
         pvc_fee: (form.add_pvc_id || mainData.add_pvc_id) ? getPvcFee() : null,
-        is_student: (form.employment_status || mainData.employment_status) === "Unemployed" ? !!(form.is_student || mainData.is_student) : false,
-        school_name: (form.employment_status || mainData.employment_status) === "Unemployed" && (form.is_student || mainData.is_student) ? (form.school_name || mainData.school_name) : null,
-        total_workers: (form.employment_status || mainData.employment_status) === "Employed" && (form.total_workers || mainData.total_workers) ? parseInt(String(form.total_workers || mainData.total_workers)) : null,
+        ...(() => {
+          const merged = { ...mainData, ...form }
+          const resolved = resolveEmploymentForSave(form.employment_status || mainData.employment_status, merged)
+          return {
+            employment_status: resolved.employment_status,
+            is_student: resolved.is_student,
+            school_name: resolved.is_student ? (form.school_name || mainData.school_name || null) : null,
+            total_workers:
+              resolved.employment_status === "Employed" && (form.total_workers || mainData.total_workers)
+                ? parseInt(String(form.total_workers || mainData.total_workers))
+                : null,
+          }
+        })(),
       }
 
       let trainingId: string
@@ -1300,10 +1349,14 @@ export default function GuestTrainingRegistration() {
                 gender: form.gender,
                 age: form.age,
                 address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
-                employmentStatus: form.employment_status,
+                employmentStatus: form.employment_status === "Student"
+                  ? "Student"
+                  : form.employment_status === "Unemployed/Employed"
+                    ? (form.company_name ? "Employed" : "Unemployed")
+                    : form.employment_status,
               },
               employmentInfo:
-                form.employment_status === "Employed"
+                isProfessionalWorkStatus() && form.company_name
                   ? {
                     companyName: form.company_name,
                     position: form.company_position,
@@ -1377,10 +1430,14 @@ export default function GuestTrainingRegistration() {
                 gender: form.gender,
                 age: form.age,
                 address: `${form.mailing_street}, ${form.mailing_city}, ${form.mailing_province}`,
-                employmentStatus: form.employment_status,
+                employmentStatus: form.employment_status === "Student"
+                  ? "Student"
+                  : form.employment_status === "Unemployed/Employed"
+                    ? (form.company_name ? "Employed" : "Unemployed")
+                    : form.employment_status,
               },
               employmentInfo:
-                form.employment_status === "Employed"
+                isProfessionalWorkStatus() && form.company_name
                   ? {
                     companyName: form.company_name,
                     position: form.company_position,
@@ -1411,7 +1468,11 @@ export default function GuestTrainingRegistration() {
       toast.error("Something went wrong.")
     }
   }
-  const isEmployed = form.employment_status === "Employed"
+  const showEmploymentStep = isProfessionalWorkStatus()
+  // Company fields become required once the registrant starts filling company name
+  const companyFieldsRequired =
+    form.employment_status === "Employed" ||
+    !!(form.company_name || "").toString().trim()
 
   const steps = course?.registration_form_type === 'custom' 
     ? [
@@ -1420,7 +1481,7 @@ export default function GuestTrainingRegistration() {
       ]
     : [
         { id: 1, title: "Personal Details", subtitle: "Tell us a bit about yourself", icon: User, completed: step > 1 },
-        ...(isEmployed ? [{ id: 2, title: "Employment Details", subtitle: "Share your employment information", icon: Briefcase, completed: step > 2 }] : []),
+        ...(showEmploymentStep ? [{ id: 2, title: "Employment Details", subtitle: "Share your employment information", icon: Briefcase, completed: step > 2 }] : []),
         { id: 3, title: "Verification Details", subtitle: "Upload your identification documents", icon: Upload, completed: step > 3 },
         { id: 4, title: "Confirmation", subtitle: "You're all set! Enjoy your journey.", icon: CheckCircle2, completed: step > 4 }
       ]
@@ -1528,7 +1589,7 @@ export default function GuestTrainingRegistration() {
               <Button
                 variant="ghost"
                 onClick={() => {
-                  if (step === 3 && form.employment_status === "Unemployed") {
+                  if (step === 3 && isStudentWorkStatus()) {
                     setStep(1)
                   } else {
                     setStep(Math.max(0, step - 1))
@@ -2012,7 +2073,10 @@ export default function GuestTrainingRegistration() {
                     </FormSection>
 
                     <FormSection title="Work status">
-                      <Label>Employment Status<Req /></Label>
+                      <Label>Work Status<Req /></Label>
+                      <p className="mt-1 text-xs text-[#6b7194]">
+                        Used for PVC ID pricing: students get the student rate; unemployed and employed share the professional rate.
+                      </p>
 
                       <div className={errors.employment_status ? "mt-2 rounded-md border border-red-500 p-2" : "mt-2"}>
                         <RadioGroup
@@ -2021,63 +2085,50 @@ export default function GuestTrainingRegistration() {
                             setForm((prev: any) => ({
                               ...prev,
                               employment_status: val,
-                              is_student: val === "Unemployed" ? prev.is_student ?? false : false,
-                              school_name: val === "Unemployed" ? prev.school_name ?? "" : null,
+                              is_student: val === "Student",
+                              school_name: val === "Student" ? prev.school_name ?? "" : null,
                             }))
-                            setErrors((prev) => ({ ...prev, employment_status: false }))
+                            setErrors((prev) => ({
+                              ...prev,
+                              employment_status: false,
+                              school_name: false,
+                            }))
                           }}
-
                           className="grid grid-cols-2 gap-2"
                         >
                           <div className="flex items-center gap-2 rounded-xl border border-[#e4e8f8] bg-white px-3 py-2.5">
-                            <RadioGroupItem value="Unemployed" id="unemployed" />
-                            <Label htmlFor="unemployed" className="cursor-pointer font-medium">Unemployed</Label>
+                            <RadioGroupItem value="Student" id="work-student" />
+                            <Label htmlFor="work-student" className="cursor-pointer font-medium">Student</Label>
                           </div>
                           <div className="flex items-center gap-2 rounded-xl border border-[#e4e8f8] bg-white px-3 py-2.5">
-                            <RadioGroupItem value="Employed" id="employed" />
-                            <Label htmlFor="employed" className="cursor-pointer font-medium">Employed</Label>
+                            <RadioGroupItem value="Unemployed/Employed" id="work-professional" />
+                            <Label htmlFor="work-professional" className="cursor-pointer font-medium leading-tight">
+                              Unemployed/Employed
+                            </Label>
                           </div>
                         </RadioGroup>
                       </div>
-                      {form.employment_status === "Unemployed" && (
-                        <div className="space-y-3 pt-2">
-                          <div className="flex items-center gap-3">
-                            <Checkbox
-                              id="is_student"
-                              checked={!!form.is_student}
-                              onCheckedChange={(checked) =>
-                                setForm((prev: any) => ({
-                                  ...prev,
-                                  is_student: Boolean(checked),
-                                  school_name: checked ? prev.school_name ?? "" : null,
-                                }))
-                              }
-                            />
-                            <Label htmlFor="is_student" className="cursor-pointer">
-                              I am currently a student
-                            </Label>
-                          </div>
-
-                          {form.is_student && (
-                            <div className="space-y-2">
-                              <Label htmlFor="school_name">
-                                School / University Name<Req />
-                              </Label>
-                              <Input
-                                id="school_name"
-                                name="school_name"
-                                value={form.school_name || ""}
-                                onChange={handleChange}
-                                placeholder="Enter school or university"
-                              />
-                            </div>
+                      {form.employment_status === "Student" && (
+                        <div className="space-y-2 pt-2">
+                          <Label htmlFor="school_name">
+                            School / University Name<Req />
+                          </Label>
+                          <Input
+                            id="school_name"
+                            name="school_name"
+                            value={form.school_name || ""}
+                            onChange={handleChange}
+                            placeholder="Enter school or university"
+                            className={errors.school_name ? "border-red-500" : undefined}
+                          />
+                          {errors.school_name && (
+                            <p className="text-xs text-red-500">School / university name is required</p>
                           )}
                         </div>
                       )}
 
-
                       {errors.employment_status && (
-                        <p className="text-red-500 text-xs">Employment status is required</p>
+                        <p className="text-red-500 text-xs">Work status is required</p>
                       )}
                     </FormSection>
 
@@ -2089,7 +2140,7 @@ export default function GuestTrainingRegistration() {
                         const isStepValid = await validateStep1()
                         if (!isStepValid) return
 
-                        if (form.employment_status === "Unemployed") {
+                        if (isStudentWorkStatus()) {
                           setStep(3)
                         } else {
                           setStep(2)
@@ -2108,22 +2159,24 @@ export default function GuestTrainingRegistration() {
                 <div className="space-y-4">
                   <div>
                     <h2 className="text-xl font-bold text-[#00044a] sm:text-2xl">Employment Details</h2>
-                    <p className="mt-1 text-sm text-[#6b7194]">Share your employment information</p>
+                    <p className="mt-1 text-sm text-[#6b7194]">
+                      Optional if you are unemployed — fill in company details only if you are currently employed.
+                    </p>
                   </div>
 
                   <FormSection title="Company">
                     <div className="grid grid-cols-2 gap-x-3 gap-y-3">
                       <div className="col-span-2 space-y-1.5">
-                        <Label htmlFor="company_name">Company Name</Label>
-                        <Input id="company_name" required={isEmployed} name="company_name" onChange={handleChange} placeholder="Enter company name" />
+                        <Label htmlFor="company_name">Company Name{companyFieldsRequired ? <Req /> : null}</Label>
+                        <Input id="company_name" required={companyFieldsRequired} name="company_name" onChange={handleChange} placeholder="Enter company name" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="company_position" className="text-sm font-medium">Position</Label>
-                        <Input id="company_position" required={isEmployed} name="company_position" onChange={handleChange} placeholder="Your position" />
+                        <Input id="company_position" required={companyFieldsRequired} name="company_position" onChange={handleChange} placeholder="Your position" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="company_industry" className="text-sm font-medium">
-                          Industry *
+                          Industry{companyFieldsRequired ? <Req /> : null}
                         </Label>
                         <SearchableDropdown
                           items={industries.map(ind => ({ code: ind.id, name: ind.name }))}
@@ -2138,7 +2191,7 @@ export default function GuestTrainingRegistration() {
                           }}
                           placeholder="Select Industry"
                           className="w-full"
-                          disabled={!isEmployed}
+                          disabled={false}
                         />
                         {errors.company_industry && (
                           <p className="text-red-500 text-xs">Industry is required</p>
@@ -2146,11 +2199,11 @@ export default function GuestTrainingRegistration() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="company_email" className="text-sm font-medium">Company Email</Label>
-                        <Input id="company_email" required={isEmployed} name="company_email" type="email" onChange={handleChange} placeholder="company@example.com" />
+                        <Input id="company_email" required={companyFieldsRequired} name="company_email" type="email" onChange={handleChange} placeholder="company@example.com" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="company_landline" className="text-sm font-medium">Company Landline</Label>
-                        <Input id="company_landline" required={isEmployed} name="company_landline" onChange={handleChange} placeholder="(02) 1234-5678" />
+                        <Input id="company_landline" required={companyFieldsRequired} name="company_landline" onChange={handleChange} placeholder="(02) 1234-5678" />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="company_city" className="text-sm font-medium">
@@ -2162,7 +2215,7 @@ export default function GuestTrainingRegistration() {
                           value={form.company_city || ""}
                           onChange={handleChange}
                           placeholder="Enter city or municipality"
-                          required={isEmployed}
+                          required={companyFieldsRequired}
                         />
                       </div>
                       <div className="space-y-2">
@@ -2178,7 +2231,7 @@ export default function GuestTrainingRegistration() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="total_workers" className="text-sm font-medium">Total Number of Workers</Label>
-                        <Input id="total_workers" required={isEmployed} name="total_workers" type="number" onChange={handleChange} placeholder="e.g., 50" />
+                        <Input id="total_workers" required={companyFieldsRequired} name="total_workers" type="number" onChange={handleChange} placeholder="e.g., 50" />
                       </div>
                     </div>
                   </FormSection>
@@ -2515,9 +2568,9 @@ export default function GuestTrainingRegistration() {
                                     </p>
                                     <p className="text-xs text-blue-700 mb-3">
                                       You can optionally add a Physical PVC ID card to your registration.
-                                      {form.employment_status === 'Unemployed'
-                                        ? ' Student/Unemployed rate applies.'
-                                        : ' Professional rate applies.'}
+                                      {isStudentWorkStatus()
+                                        ? ' Student rate applies.'
+                                        : ' Professional rate applies (same for unemployed and employed).'}
                                     </p>
                                     <div className="flex items-center gap-3">
                                       <Checkbox

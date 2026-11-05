@@ -865,14 +865,13 @@ const getPvcFee = (trainee: any) => {
     return 0;
   }
 
-  // Calculate based on employment status
-  const isStudent = trainee.employment_status === 'Unemployed' && trainee.is_student;
-  const isUnemployed = trainee.employment_status === 'Unemployed';
-  
-  if (isStudent || isUnemployed) {
+  // Student rate only for students — unemployed & employed share professional rate
+  const isStudent = !!trainee.is_student || trainee.employment_status === "Student";
+
+  if (isStudent) {
     return course.pvc_student_price || 150;
   }
-  
+
   return course.pvc_professional_price || 150;
 };
 
@@ -892,7 +891,9 @@ const getPvcDisplayText = (trainee: any) => {
   // User opted for PVC
   if (trainee.add_pvc_id) {
     const fee = getPvcFee(trainee);
-    const employmentLabel = trainee.employment_status === 'Unemployed' ? 'Student/Unemployed' : 'Professional';
+    const employmentLabel = trainee.is_student || trainee.employment_status === "Student"
+      ? "Student"
+      : "Professional (Unemployed/Employed)";
     return `Yes - ₱${fee.toLocaleString()} (${employmentLabel} Rate)`;
   }
 

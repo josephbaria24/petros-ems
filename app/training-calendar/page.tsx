@@ -2,8 +2,9 @@
 
 "use client"
 
-import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, Calendar, List, X, Edit2, Save, Plus, Trash2, MoreVertical, Image as ImageIcon } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { ChevronLeft, ChevronRight, Calendar, List, X, Edit2, Save, Plus, Trash2, MoreVertical, Image as ImageIcon, Search } from 'lucide-react'
+import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
@@ -19,6 +20,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { cn } from '@/lib/utils'
 
 type ScheduleEvent = {
   id: string
@@ -34,6 +36,134 @@ type ScheduleEvent = {
   course_id: string | null
 
 }
+
+type ListStatusFilter =
+  | "active"
+  | "all"
+  | "upcoming"
+  | "ongoing"
+  | "finished"
+  | "cancelled"
+
+function isOnlineBranch(branch: string) {
+  const b = branch.trim().toLowerCase()
+  return (
+    b === "online" ||
+    b === "live-online" ||
+    b === "live online" ||
+    b.includes("online")
+  )
+}
+
+function deliveryFormatLabel(event: ScheduleEvent): "Live-Online" | "Classroom" {
+  return isOnlineBranch(event.branch) ? "Live-Online" : "Classroom"
+}
+
+function getCalendarStatusLabel(
+  event: ScheduleEvent
+): "Cancelled" | "Finished" | "Ongoing" | "Upcoming" {
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+  if (event.status === "cancelled") return "Cancelled"
+  if (event.status === "finished") return "Finished"
+  const eventEnd = new Date(event.endDate)
+  eventEnd.setHours(0, 0, 0, 0)
+  const eventStart = new Date(event.startDate)
+  eventStart.setHours(0, 0, 0, 0)
+  if (now > eventEnd) return "Finished"
+  if (now >= eventStart && now <= eventEnd) return "Ongoing"
+  return "Upcoming"
+}
+
+function matchesListStatusFilter(event: ScheduleEvent, filter: ListStatusFilter): boolean {
+  const label = getCalendarStatusLabel(event)
+  switch (filter) {
+    case "all":
+      return true
+    case "active":
+      return label === "Upcoming" || label === "Ongoing"
+    case "upcoming":
+      return label === "Upcoming"
+    case "ongoing":
+      return label === "Ongoing"
+    case "finished":
+      return label === "Finished"
+    case "cancelled":
+      return label === "Cancelled"
+    default:
+      return true
+  }
+}
+
+function listStatusSortPriority(label: ReturnType<typeof getCalendarStatusLabel>): number {
+  if (label === "Ongoing") return 0
+  if (label === "Upcoming") return 1
+  if (label === "Finished") return 2
+  return 3
+}
+
+function eventSearchHaystack(event: ScheduleEvent): string {
+  const label = getCalendarStatusLabel(event)
+  const df = deliveryFormatLabel(event)
+  const parts: string[] = [
+    event.courseTitle,
+    event.course,
+    event.branch,
+    event.id,
+    label,
+    event.status,
+    event.scheduleType,
+    df,
+    format(event.startDate, "yyyy-MM-dd"),
+    format(event.endDate, "yyyy-MM-dd"),
+    format(event.startDate, "MMM"),
+    format(event.startDate, "MMMM"),
+    format(event.endDate, "MMM"),
+    format(event.endDate, "MMMM"),
+    String(event.startDate.getFullYear()),
+    String(event.endDate.getFullYear()),
+    String(event.startDate.getDate()),
+    String(event.endDate.getDate()),
+  ]
+  if (event.scheduleType === "staggered" && event.dates?.length) {
+    for (const d of event.dates) {
+      parts.push(
+        format(d, "yyyy-MM-dd"),
+        format(d, "MMM"),
+        format(d, "MMMM"),
+        String(d.getFullYear()),
+        String(d.getDate())
+      )
+    }
+  }
+  return parts
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+}
+
+function searchMatchesAllKeywords(rawQuery: string, haystack: string): boolean {
+  const tokens = rawQuery
+    .toLowerCase()
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (tokens.length === 0) return true
+  return tokens.every((t) => haystack.includes(t))
+}
+
+const LIST_STATUS_FILTER_OPTIONS: {
+  key: ListStatusFilter
+  label: string
+  labelShort?: string
+}[] = [
+  { key: "active", label: "Upcoming & ongoing", labelShort: "Active" },
+  { key: "all", label: "All" },
+  { key: "upcoming", label: "Upcoming" },
+  { key: "ongoing", label: "Ongoing" },
+  { key: "finished", label: "Finished" },
+  { key: "cancelled", label: "Cancelled", labelShort: "Cancel" },
+]
 
 type NewsItem = {
   id?: string;   // id is optional so new items can be created
@@ -253,6 +383,8 @@ function NewsEditor({
 export default function TrainingCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [viewType, setViewType] = useState<'calendar' | 'list'>('calendar')
+  const [listQuery, setListQuery] = useState("")
+  const [listStatusFilter, setListStatusFilter] = useState<ListStatusFilter>("active")
   const [events, setEvents] = useState<ScheduleEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(null)
@@ -454,8 +586,6 @@ export default function TrainingCalendar() {
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December']
 
-  const monthNamesShort = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
-
   const daysInMonth = (date: Date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
   }
@@ -540,27 +670,47 @@ export default function TrainingCalendar() {
     return '#10b981'
   }
 
-  const getStatusLabel = (event: ScheduleEvent) => {
-    const now = new Date()
-    now.setHours(0, 0, 0, 0)
+  const getStatusLabel = (event: ScheduleEvent) => getCalendarStatusLabel(event)
 
-    if (event.status === 'finished') return 'Finished'
-    if (event.status === 'cancelled') return 'Cancelled'
-
-    const eventEnd = new Date(event.endDate)
-    eventEnd.setHours(0, 0, 0, 0)
-
-    const eventStart = new Date(event.startDate)
-    eventStart.setHours(0, 0, 0, 0)
-
-    if (now > eventEnd) return 'Finished'
-    if (now >= eventStart && now <= eventEnd) return 'Ongoing'
-    return 'Upcoming'
+  const getStatusBadgeClass = (event: ScheduleEvent) => {
+    if (event.status === "cancelled") {
+      return "border-red-200 bg-red-100 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-100"
+    }
+    const label = getStatusLabel(event)
+    if (label === "Finished") {
+      return "border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+    }
+    if (label === "Ongoing") {
+      return "border-amber-200 bg-amber-100 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100"
+    }
+    return "border-emerald-200 bg-emerald-100 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100"
   }
+
+  const listFilteredEvents = useMemo(() => {
+    let list = events.filter((e) => matchesListStatusFilter(e, listStatusFilter))
+    list.sort((a, b) => {
+      const pa = listStatusSortPriority(getCalendarStatusLabel(a))
+      const pb = listStatusSortPriority(getCalendarStatusLabel(b))
+      if (pa !== pb) return pa - pb
+      return a.startDate.getTime() - b.startDate.getTime()
+    })
+    if (listQuery.trim()) {
+      list = list.filter((e) =>
+        searchMatchesAllKeywords(listQuery, eventSearchHaystack(e))
+      )
+    }
+    return list
+  }, [events, listStatusFilter, listQuery])
 
   const openModal = (event: ScheduleEvent) => {
     setSelectedEvent(event)
     setShowModal(true)
+  }
+
+  const openEditFromList = (event: ScheduleEvent) => {
+    setSelectedEvent(event)
+    setEditingScheduleId(event.id)
+    setEditScheduleOpen(true)
   }
 
   const closeModal = () => {
@@ -752,80 +902,236 @@ export default function TrainingCalendar() {
 
 
   const renderListView = () => {
-    const eventsByCourse: { [key: string]: ScheduleEvent[] } = {}
-
-    events.forEach(event => {
-      const key = event.courseTitle || event.course
-      if (!eventsByCourse[key]) {
-        eventsByCourse[key] = []
-      }
-      eventsByCourse[key].push(event)
-    })
-
-    const sortedCourses = Object.keys(eventsByCourse).sort()
-
     return (
-      <div className="table-scroll min-w-0 overflow-x-auto">
-        <table className="w-full min-w-[720px] border-collapse text-sm">
-          <thead>
-            <tr className="bg-primary text-primary-foreground">
-              <th className="sticky left-0 z-10 border border-border bg-primary p-2 text-left text-xs font-semibold sm:p-3 sm:text-sm">
-                TRAINING PROGRAM
-              </th>
-              {monthNamesShort.map(month => (
-                <th key={month} className="min-w-14 border border-border p-2 text-center text-xs font-semibold sm:min-w-20 sm:p-3 sm:text-sm">
-                  {month}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sortedCourses.map(courseName => (
-              <tr key={courseName} className="border-b border-border hover:bg-muted/50">
-                <td className="sticky left-0 z-10 max-w-[140px] truncate border border-border bg-card p-2 text-xs font-medium sm:max-w-none sm:p-3 sm:text-sm">
-                  {courseName}
-                </td>
-                {[...Array(12)].map((_, monthIdx) => {
-                  const monthEvents = eventsByCourse[courseName].filter(event =>
-                    new Date(event.startDate).getMonth() === monthIdx
-                  )
-
+      <div className="flex min-h-0 flex-1 flex-col gap-2 sm:gap-4">
+        <div className="flex shrink-0 flex-col gap-2 sm:gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0 flex-1 space-y-1 sm:space-y-1.5">
+            <span className="text-muted-foreground text-[10px] font-semibold uppercase tracking-wide sm:text-xs sm:normal-case sm:font-medium">
+              Filters
+            </span>
+            <div
+              className="flex max-w-full flex-wrap gap-1 sm:-mx-1 sm:flex-nowrap sm:gap-0.5 sm:overflow-x-auto sm:pb-0.5 sm:[scrollbar-width:thin]"
+              role="tablist"
+              aria-label="Filter by schedule status"
+            >
+              <div className="contents sm:flex sm:rounded-full sm:bg-muted/80 sm:p-0.5 sm:ring-1 sm:ring-border/60">
+                {LIST_STATUS_FILTER_OPTIONS.map(({ key, label, labelShort }) => {
+                  const active = listStatusFilter === key
                   return (
-                    <td key={monthIdx} className="p-2 text-center border border-border align-top">
-                      {monthEvents.map((event, idx) => {
-                        const startDay = new Date(event.startDate).getDate()
-                        const endDay = new Date(event.endDate).getDate()
-                        const color = getStatusColor(event)
-
-                        return (
-                          <div key={idx} className="mb-2">
-                            <div
-                              className="inline-block px-2 py-1 text-white rounded cursor-pointer hover:opacity-80 text-xs"
-                              style={{ backgroundColor: color }}
-                              onClick={() => openModal(event)}
-                              title={`${event.courseTitle} - ${event.branch}`}
-                            >
-                              {event.scheduleType === 'staggered' && event.dates
-                                ? event.dates
-                                  .filter(d => d.getMonth() === monthIdx && d.getFullYear() === currentDate.getFullYear())
-                                  .map(d => d.getDate())
-                                  .join(', ')
-                                : `${startDay} - ${endDay}`}
-                            </div>
-
-                            {event.branch !== 'Finished' && (
-                              <div className="text-xs text-muted-foreground mt-1">{event.branch}</div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </td>
+                    <button
+                      key={key}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setListStatusFilter(key)}
+                      className={cn(
+                        "shrink-0 rounded-full border font-medium whitespace-nowrap transition-all",
+                        "px-2 py-1 text-[10px] sm:border-0 sm:px-3 sm:py-1.5 sm:text-xs",
+                        active
+                          ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                          : "border-border/70 bg-card/50 text-muted-foreground hover:border-border hover:bg-background/90 hover:text-foreground sm:bg-transparent",
+                        !active && "sm:hover:bg-background/80"
+                      )}
+                    >
+                      {labelShort ? (
+                        <>
+                          <span className="sm:hidden">{labelShort}</span>
+                          <span className="hidden sm:inline">{label}</span>
+                        </>
+                      ) : (
+                        label
+                      )}
+                    </button>
                   )
                 })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              </div>
+            </div>
+          </div>
+          <div className="relative w-full shrink-0 sm:max-w-xs lg:max-w-sm">
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 sm:left-3 sm:size-4" />
+            <Input
+              value={listQuery}
+              onChange={(e) => setListQuery(e.target.value)}
+              placeholder="Search…"
+              className="h-8 rounded-full border-border/80 py-1 pr-2.5 pl-8 text-xs shadow-sm sm:h-10 sm:pl-9 sm:text-sm"
+              aria-label="Search events"
+            />
+          </div>
+        </div>
+
+        <p className="text-muted-foreground shrink-0 text-[10px] sm:text-xs">
+          {listFilteredEvents.length} event
+          {listFilteredEvents.length !== 1 ? "s" : ""}
+          {events.length !== listFilteredEvents.length
+            ? ` (of ${events.length} total)`
+            : ""}
+        </p>
+
+        <div
+          className={cn(
+            "border-border/80 bg-muted/10 flex flex-col overflow-hidden rounded-lg border shadow-inner sm:rounded-xl",
+            "h-[min(520px,calc(100dvh-11.5rem))] min-h-[240px] sm:h-[min(720px,calc(100dvh-14rem))] sm:min-h-[320px]"
+          )}
+        >
+          {listFilteredEvents.length === 0 ? (
+            <div className="flex flex-1 flex-col items-center justify-center p-6 text-center sm:p-8">
+              <p className="text-muted-foreground text-sm">
+                No events match your filters. Try another status or clear search.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => {
+                  setListQuery("")
+                  setListStatusFilter("active")
+                }}
+              >
+                Reset to upcoming & ongoing
+              </Button>
+            </div>
+          ) : (
+            <ul className="flex flex-1 flex-col gap-2 overflow-y-auto overscroll-y-contain p-1.5 sm:gap-4 sm:p-3">
+              {listFilteredEvents.map((event) => {
+                const dateRange = `${format(event.startDate, "MMM dd, yyyy")} - ${format(event.endDate, "MMM dd, yyyy")}`
+                const dateRangeShort = `${format(event.startDate, "MMM dd")} - ${format(event.endDate, "MMM dd")}`
+                const locationLine =
+                  event.branch === "online"
+                    ? "Online"
+                    : event.branch.charAt(0).toUpperCase() + event.branch.slice(1)
+                return (
+                  <li key={event.id}>
+                    <Card className="overflow-hidden rounded-xl border-border/80 shadow-sm transition-shadow hover:shadow-md sm:rounded-2xl">
+                      <div className="flex flex-col gap-2 p-2.5 sm:gap-4 sm:p-4 lg:flex-row lg:items-stretch lg:gap-5 lg:p-5">
+                        <div className="flex min-w-0 gap-2.5 sm:gap-4 lg:max-w-[min(100%,28rem)] lg:flex-[1.15]">
+                          <div className="bg-muted text-foreground flex size-11 shrink-0 flex-col items-center justify-center rounded-lg sm:size-14 sm:rounded-xl lg:size-16">
+                            <span className="text-muted-foreground text-[8px] font-bold tracking-wide uppercase sm:text-[10px] sm:font-semibold lg:text-xs">
+                              {format(event.startDate, "EEE")}
+                            </span>
+                            <span className="text-base font-bold leading-none sm:text-xl lg:text-2xl">
+                              {format(event.startDate, "dd")}
+                            </span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h2 className="line-clamp-2 text-sm font-bold leading-snug sm:line-clamp-none sm:text-base lg:text-lg">
+                              {event.courseTitle}
+                            </h2>
+                            <p className="text-muted-foreground mt-0.5 hidden font-mono text-xs sm:mt-1 sm:block sm:text-sm">
+                              {event.course}
+                            </p>
+                            <p className="text-muted-foreground mt-0.5 truncate text-[10px] sm:mt-1.5 sm:text-xs">
+                              <span className="text-foreground/80 hidden font-medium sm:inline">
+                                Location ·{" "}
+                              </span>
+                              {locationLine}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-1 sm:hidden">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "rounded-full border px-1.5 py-0 text-[9px] font-semibold",
+                              getStatusBadgeClass(event)
+                            )}
+                          >
+                            {getStatusLabel(event)}
+                          </Badge>
+                          <span className="text-muted-foreground max-w-[55%] truncate font-mono text-[9px] tabular-nums">
+                            {dateRangeShort}
+                          </span>
+                          <Badge
+                            variant="secondary"
+                            className="rounded-full px-1.5 py-0 text-[9px] font-normal"
+                          >
+                            {deliveryFormatLabel(event)}
+                          </Badge>
+                          <Badge
+                            variant="secondary"
+                            className="rounded-full px-1.5 py-0 text-[9px] capitalize"
+                          >
+                            {event.scheduleType}
+                          </Badge>
+                        </div>
+
+                        <div className="hidden flex-1 grid-cols-2 gap-x-3 gap-y-2 sm:grid lg:grid-cols-2 xl:grid-cols-3">
+                          <div className="col-span-2 flex min-w-0 flex-col gap-1 sm:col-span-2 xl:col-span-3">
+                            <span className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+                              Status
+                            </span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                                  getStatusBadgeClass(event)
+                                )}
+                              >
+                                {getStatusLabel(event)}
+                              </Badge>
+                              <Badge
+                                variant="secondary"
+                                className="rounded-full text-xs font-normal capitalize"
+                              >
+                                {event.status}
+                              </Badge>
+                            </div>
+                          </div>
+                          <div className="col-span-2 flex min-w-0 flex-col gap-1 sm:col-span-1">
+                            <span className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+                              Event dates
+                            </span>
+                            <span className="text-foreground text-xs font-medium sm:text-sm">
+                              {dateRange}
+                            </span>
+                          </div>
+                          <div className="flex min-w-0 flex-col gap-1">
+                            <span className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+                              Format
+                            </span>
+                            <Badge variant="secondary" className="w-fit rounded-full text-xs">
+                              {deliveryFormatLabel(event)}
+                            </Badge>
+                          </div>
+                          <div className="flex min-w-0 flex-col gap-1">
+                            <span className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
+                              Schedule
+                            </span>
+                            <Badge variant="secondary" className="w-fit rounded-full text-xs capitalize">
+                              {event.scheduleType}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-row gap-1.5 sm:justify-end lg:w-40 lg:flex-col lg:justify-center">
+                          <Button
+                            size="sm"
+                            className="h-7 flex-1 rounded-full px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:flex-none"
+                            onClick={() => openModal(event)}
+                          >
+                            <span className="sm:hidden">Details</span>
+                            <span className="hidden sm:inline">View details</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 flex-1 rounded-full px-2 text-[11px] sm:h-9 sm:px-3 sm:text-sm lg:h-10 lg:flex-none"
+                            onClick={() => openEditFromList(event)}
+                          >
+                            <Edit2 className="mr-1 hidden size-3.5 sm:inline" />
+                            <span className="sm:hidden">Edit</span>
+                            <span className="hidden sm:inline">Edit schedule</span>
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
       </div>
     )
   }
@@ -934,9 +1240,7 @@ export default function TrainingCalendar() {
           )}
 
           {viewType === 'list' && (
-            <Card className="min-w-0 overflow-hidden p-3 sm:p-6">
-              {renderListView()}
-            </Card>
+            <div className="min-w-0">{renderListView()}</div>
           )}
         </div>
 
@@ -970,7 +1274,7 @@ export default function TrainingCalendar() {
                 <ul className="list-inside list-disc space-y-1 text-muted-foreground">
                   <li>Edit news carousel above</li>
                   <li>Click events to view details</li>
-                  <li>Switch between calendar/list views</li>
+                  <li>Use List filters to browse upcoming & ongoing events</li>
                 </ul>
               </div>
             </div>

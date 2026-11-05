@@ -1194,7 +1194,7 @@ export default function CoursesPage() {
                               }
                             />
                             <p className="text-xs text-muted-foreground">
-                              Price for students/unemployed
+                              Price for students
                             </p>
                           </div>
 
@@ -1213,15 +1213,15 @@ export default function CoursesPage() {
                               }
                             />
                             <p className="text-xs text-muted-foreground">
-                              Price for employed professionals
+                              Same price for unemployed and employed (professional)
                             </p>
                           </div>
                         </div>
 
                         <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 p-3 rounded-md">
                           <p className="text-xs text-amber-800 dark:text-amber-200">
-                            💡 <strong>Tip:</strong> These prices will be shown to registrants based on their employment status.
-                            Students/unemployed see the student price, employed see the professional price.
+                            💡 <strong>Tip:</strong> Registrants choose Student or Unemployed/Employed.
+                            Students see the student price; unemployed and employed share the professional price.
                           </p>
                         </div>
                       </>
@@ -1458,7 +1458,7 @@ export default function CoursesPage() {
                               }
                             />
                             <p className="text-xs text-muted-foreground">
-                              Price for students/unemployed
+                              Price for students
                             </p>
                           </div>
 
@@ -1477,15 +1477,15 @@ export default function CoursesPage() {
                               }
                             />
                             <p className="text-xs text-muted-foreground">
-                              Price for employed professionals
+                              Same price for unemployed and employed (professional)
                             </p>
                           </div>
                         </div>
 
                         <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 p-3 rounded-md">
                           <p className="text-xs text-amber-800 dark:text-amber-200">
-                            💡 <strong>Tip:</strong> These prices will be shown to registrants based on their employment status.
-                            Students/unemployed see the student price, employed see the professional price.
+                            💡 <strong>Tip:</strong> Registrants choose Student or Unemployed/Employed.
+                            Students see the student price; unemployed and employed share the professional price.
                           </p>
                         </div>
                       </>
