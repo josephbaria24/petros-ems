@@ -344,7 +344,7 @@ export default function QrGeneratorPage() {
                       className={cn(
                         "h-9 flex-1 rounded-md border text-xs font-medium transition-colors",
                         size === opt.value
-                          ? "border-[#1A1D66] bg-[#1A1D66] text-white"
+                          ? "border-primary bg-primary text-primary-foreground"
                           : "border-border bg-background text-foreground hover:bg-muted"
                       )}
                     >
@@ -392,18 +392,29 @@ export default function QrGeneratorPage() {
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
-                className="gap-1.5 bg-[#1A1D66] hover:bg-[#141654]"
+                className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
                 disabled={busy || !text.trim()}
                 onClick={() => void generate()}
               >
                 {busy ? <Spinner size={14} /> : <QrCode className="h-4 w-4" />}
                 Generate
               </Button>
-              <Button type="button" variant="outline" className="gap-1.5" disabled={!text.trim()} onClick={() => void copyContent()}>
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-1.5 border-border bg-background text-foreground hover:bg-muted"
+                disabled={!text.trim()}
+                onClick={() => void copyContent()}
+              >
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 {copied ? "Copied" : "Copy text"}
               </Button>
-              <Button type="button" variant="ghost" className="gap-1.5" onClick={clearAll}>
+              <Button
+                type="button"
+                variant="ghost"
+                className="gap-1.5 text-foreground hover:bg-muted"
+                onClick={clearAll}
+              >
                 <Plus className="h-4 w-4" />
                 New
               </Button>
@@ -419,8 +430,8 @@ export default function QrGeneratorPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-4 px-4 py-5 sm:px-6">
-            <p className="w-full max-w-[280px] text-center text-xs font-medium leading-snug text-muted-foreground sm:text-sm">
-              You will die first before this QR expires.
+            <p className="w-full max-w-[280px] rounded-md border border-[#FFCC00]/50 bg-[#FFCC00]/15 px-2.5 py-1.5 text-center text-xs font-semibold leading-snug text-[#1A1D66] sm:text-sm dark:border-[#FFCC00]/60 dark:bg-[#FFCC00]/20 dark:text-[#FFCC00]">
+              You will die first before this QR expires. ☺
             </p>
             <div className="flex aspect-square w-full max-w-[280px] items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-3">
               {busy ? (
@@ -441,7 +452,7 @@ export default function QrGeneratorPage() {
             <div className="flex w-full max-w-[280px] flex-col gap-2">
               <Button
                 type="button"
-                className="w-full gap-1.5 bg-[#FFCC00] text-[#1A1D66] hover:bg-[#e6b800]"
+                className="w-full gap-1.5 bg-[#FFCC00] text-[#1A1D66] hover:bg-[#e6b800] dark:bg-[#FFCC00] dark:text-[#1A1D66] dark:hover:bg-[#e6b800]"
                 disabled={!dataUrl || busy}
                 onClick={downloadPng}
               >
@@ -451,7 +462,7 @@ export default function QrGeneratorPage() {
               <Button
                 type="button"
                 variant="outline"
-                className="w-full gap-1.5"
+                className="w-full gap-1.5 border-border bg-background text-foreground hover:bg-muted"
                 disabled={!text.trim() || busy}
                 onClick={openSaveDialog}
               >
@@ -600,7 +611,7 @@ export default function QrGeneratorPage() {
             </Button>
             <Button
               type="button"
-              className="gap-1.5 bg-[#1A1D66] hover:bg-[#141654]"
+              className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
               disabled={busy}
               onClick={() => void saveToBin()}
             >
