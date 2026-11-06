@@ -15,6 +15,7 @@ const PROTECTED_PREFIXES = [
   "/cert-tracker",
   "/certificate-verifier",
   "/voucher-manager",
+  "/qr-generator",
   "/trainer-repository",
   "/training-reports",
 ] as const

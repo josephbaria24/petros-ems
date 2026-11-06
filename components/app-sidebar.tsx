@@ -138,6 +138,15 @@ const EmailStatusIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </OutlineIcon>
 )
 
+const QrGeneratorIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <OutlineIcon {...props}>
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 17v3h-3" />
+  </OutlineIcon>
+)
+
 const menuItems = [
   {
     title: "Dashboard",
@@ -214,6 +223,11 @@ const menuItems = [
     title: "Voucher Manager",
     icon: VoucherManagerIcon,
     href: "/voucher-manager",
+  },
+  {
+    title: "QR Generator",
+    icon: QrGeneratorIcon,
+    href: "/qr-generator",
   },
   {
     type: "separator",
